@@ -5,15 +5,21 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { LogOut, Menu } from "lucide-react"
+import { LogOut, Menu, Loader2 } from "lucide-react"
 import { AdminSidebarContent } from "@/components/admin/sidebar-nav"
+import { createClient } from "@/lib/supabase/client"
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    const supabase = createClient()
+    await supabase.auth.signOut()
     router.push("/")
+    router.refresh()
   }
 
   return (
@@ -47,8 +53,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="hidden md:block" />
 
           {/* Logout Button */}
-          <Button variant="ghost" onClick={handleLogout} className="gap-2">
-            <LogOut className="h-4 w-4" />
+          <Button variant="ghost" onClick={handleLogout} disabled={loggingOut} className="gap-2">
+            {loggingOut ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <LogOut className="h-4 w-4" />
+            )}
             <span className="hidden sm:inline">Cerrar Sesión</span>
           </Button>
         </header>
