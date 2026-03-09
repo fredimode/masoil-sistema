@@ -609,22 +609,11 @@ export const clients: Client[] = [
   },
 ]
 
-// Helper function to generate order ID
-function generateOrderId(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, "0")
-  const day = String(date.getDate()).padStart(2, "0")
-  const random = Math.floor(Math.random() * 1000)
-    .toString()
-    .padStart(3, "0")
-  return `${year}${month}${day}-${random}`
-}
-
 // Generate orders
 export const orders: Order[] = [
   // Recent orders - today (Jan 14, 2025)
   {
-    id: generateOrderId(new Date("2025-01-14")),
+    id: "ORD-001",
     clientId: "c1",
     clientName: "Taller Mecánico Norte",
     vendedorId: "v1",
@@ -650,7 +639,7 @@ export const orders: Order[] = [
     isUrgent: true,
   },
   {
-    id: generateOrderId(new Date("2025-01-14")),
+    id: "ORD-002",
     clientId: "c4",
     clientName: "Repuestos Capital",
     vendedorId: "v2",
@@ -681,7 +670,7 @@ export const orders: Order[] = [
     isUrgent: false,
   },
   {
-    id: generateOrderId(new Date("2025-01-14")),
+    id: "ORD-003",
     clientId: "c10",
     clientName: "Taller Industrial Morón",
     vendedorId: "v3",
@@ -718,7 +707,7 @@ export const orders: Order[] = [
     isUrgent: false,
   },
   {
-    id: generateOrderId(new Date("2025-01-14")),
+    id: "ORD-004",
     clientId: "c9",
     clientName: "Taller Mecánico Lanús",
     vendedorId: "v5",
@@ -744,7 +733,7 @@ export const orders: Order[] = [
     isUrgent: false,
   },
   {
-    id: generateOrderId(new Date("2025-01-13")),
+    id: "ORD-005",
     clientId: "c14",
     clientName: "Taller Mecánico Tigre",
     vendedorId: "v1",
@@ -790,7 +779,7 @@ export const orders: Order[] = [
     isUrgent: true,
   },
   {
-    id: generateOrderId(new Date("2025-01-13")),
+    id: "ORD-006",
     clientId: "c7",
     clientName: "Auto Repuestos del Sur",
     vendedorId: "v2",
@@ -825,7 +814,7 @@ export const orders: Order[] = [
     isUrgent: false,
   },
   {
-    id: generateOrderId(new Date("2025-01-12")),
+    id: "ORD-007",
     clientId: "c1",
     clientName: "Taller Mecánico Norte",
     vendedorId: "v1",
@@ -853,7 +842,7 @@ export const orders: Order[] = [
     isUrgent: false,
   },
   {
-    id: generateOrderId(new Date("2025-01-11")),
+    id: "ORD-008",
     clientId: "c2",
     clientName: "AutoService Express",
     vendedorId: "v1",
@@ -883,7 +872,7 @@ export const orders: Order[] = [
     isUrgent: false,
   },
   {
-    id: generateOrderId(new Date("2025-01-10")),
+    id: "ORD-009",
     clientId: "c11",
     clientName: "Service Automotor Oeste",
     vendedorId: "v3",
@@ -911,7 +900,7 @@ export const orders: Order[] = [
     isUrgent: false,
   },
   {
-    id: generateOrderId(new Date("2025-01-10")),
+    id: "ORD-010",
     clientId: "c5",
     clientName: "Gomería San Telmo",
     vendedorId: "v2",

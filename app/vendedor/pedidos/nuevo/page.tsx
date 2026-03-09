@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { Suspense, useState, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,7 +22,7 @@ interface OrderItem {
   price: number
 }
 
-export default function NuevoPedidoPage() {
+function NuevoPedidoContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const preselectedClientId = searchParams.get("clientId")
@@ -347,5 +347,13 @@ export default function NuevoPedidoPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function NuevoPedidoPage() {
+  return (
+    <Suspense>
+      <NuevoPedidoContent />
+    </Suspense>
   )
 }

@@ -3,8 +3,10 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { getStatusConfig } from "@/lib/status-config"
+import { clients } from "@/lib/mock-data"
 import type { Order } from "@/lib/types"
 import Link from "next/link"
+import { MessageCircle } from "lucide-react"
 
 interface OrderCardProps {
   order: Order
@@ -12,6 +14,8 @@ interface OrderCardProps {
 
 export function OrderCard({ order }: OrderCardProps) {
   const statusConfig = getStatusConfig(order.status)
+  const client = clients.find((c) => c.id === order.clientId)
+  const whatsappNumber = client?.whatsapp?.replace(/\D/g, "")
 
   return (
     <Card className="p-4">
@@ -48,11 +52,13 @@ export function OrderCard({ order }: OrderCardProps) {
         <Button asChild size="sm" className="flex-1">
           <Link href={`/vendedor/pedidos/${order.id}`}>Ver detalle</Link>
         </Button>
-        <Button asChild size="sm" variant="outline">
-          <a href={`https://wa.me/${order.clientName}`} target="_blank" rel="noopener noreferrer">
-            Contactar
-          </a>
-        </Button>
+        {whatsappNumber && (
+          <Button asChild size="sm" variant="outline">
+            <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer">
+              <MessageCircle className="h-4 w-4" />
+            </a>
+          </Button>
+        )}
       </div>
     </Card>
   )
