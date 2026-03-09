@@ -1,15 +1,48 @@
+"use client"
+
+import { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
 import { StatusTimeline } from "@/components/vendedor/status-timeline"
 import { CountdownWidget } from "@/components/vendedor/countdown-widget"
 import { orders, clients } from "@/lib/mock-data"
 import { getStatusConfig } from "@/lib/status-config"
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils"
+import type { OrderStatus } from "@/lib/types"
 import { ArrowLeft, Printer, MessageCircle, Phone } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+
+const standardFlow: OrderStatus[] = ["RECIBIDO", "CONFIRMADO", "EN_ARMADO", "LISTO", "EN_ENTREGA", "ENTREGADO"]
+const customFlow: OrderStatus[] = ["RECIBIDO", "CONFIRMADO", "EN_FABRICACION", "LISTO", "EN_ENTREGA", "ENTREGADO"]
+const specialStatuses: OrderStatus[] = ["SIN_STOCK", "CON_PROVEEDOR", "CANCELADO"]
+
+function getNextStatuses(currentStatus: OrderStatus, isCustom: boolean): OrderStatus[] {
+  const flow = isCustom ? customFlow : standardFlow
+  const currentIndex = flow.indexOf(currentStatus)
+
+  const options: OrderStatus[] = []
+
+  // If in a normal flow, allow advancing to the next step
+  if (currentIndex >= 0 && currentIndex < flow.length - 1) {
+    options.push(flow[currentIndex + 1])
+  }
+
+  // Always allow special statuses (unless already in a terminal state)
+  if (!["ENTREGADO", "CANCELADO"].includes(currentStatus)) {
+    specialStatuses.forEach((s) => {
+      if (s !== currentStatus) options.push(s)
+    })
+  }
+
+  return options
+}
 
 export default function AdminPedidoDetailPage({ params }: { params: { id: string } }) {
   const order = orders.find((o) => o.id === params.id)
@@ -19,7 +52,36 @@ export default function AdminPedidoDetailPage({ params }: { params: { id: string
   }
 
   const client = clients.find((c) => c.id === order.clientId)
-  const statusConfig = getStatusConfig(order.status)
+  const whatsappHref = client ? `https://wa.me/${client.whatsapp.replace(/\D/g, "")}` : null
+
+  const [currentStatus, setCurrentStatus] = useState<OrderStatus>(order.status)
+  const [statusHistory, setStatusHistory] = useState(order.statusHistory)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [newStatus, setNewStatus] = useState<string>("")
+  const [statusNote, setStatusNote] = useState("")
+
+  const nextStatuses = getNextStatuses(currentStatus, order.isCustom)
+  const isTerminal = ["ENTREGADO", "CANCELADO"].includes(currentStatus)
+
+  const handleUpdateStatus = () => {
+    if (!newStatus) return
+
+    const now = new Date()
+    setCurrentStatus(newStatus as OrderStatus)
+    setStatusHistory([
+      ...statusHistory,
+      {
+        status: newStatus as OrderStatus,
+        timestamp: now,
+        userId: "admin1",
+        userName: "Admin Masoil",
+        notes: statusNote || undefined,
+      },
+    ])
+    setNewStatus("")
+    setStatusNote("")
+    setDialogOpen(false)
+  }
 
   return (
     <div className="p-8 space-y-6 max-w-6xl">
@@ -51,14 +113,65 @@ export default function AdminPedidoDetailPage({ params }: { params: { id: string
             <Printer className="h-4 w-4 mr-2" />
             Imprimir Remito
           </Button>
-          <Button>Actualizar Estado</Button>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button disabled={isTerminal}>
+                Actualizar Estado
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Actualizar Estado del Pedido</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-2">
+                <div className="text-sm text-muted-foreground">
+                  Estado actual: <Badge className={`${getStatusConfig(currentStatus).bgColor} ${getStatusConfig(currentStatus).color} ml-2`}>{getStatusConfig(currentStatus).label}</Badge>
+                </div>
+                <div className="space-y-2">
+                  <Label>Nuevo estado</Label>
+                  <Select value={newStatus} onValueChange={setNewStatus}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar estado..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {nextStatuses.map((status) => {
+                        const config = getStatusConfig(status)
+                        return (
+                          <SelectItem key={status} value={status}>
+                            {config.icon} {config.label}
+                          </SelectItem>
+                        )
+                      })}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Nota (opcional)</Label>
+                  <Textarea
+                    placeholder="Agregar una nota sobre el cambio de estado..."
+                    value={statusNote}
+                    onChange={(e) => setStatusNote(e.target.value)}
+                    rows={2}
+                  />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button onClick={handleUpdateStatus} disabled={!newStatus}>
+                    Confirmar
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
       {/* Status Timeline */}
       <Card className="p-6">
         <h3 className="font-semibold mb-4">Estado del Pedido</h3>
-        <StatusTimeline currentStatus={order.status} isCustom={order.isCustom} />
+        <StatusTimeline currentStatus={currentStatus} isCustom={order.isCustom} />
       </Card>
 
       {/* Countdown for Custom Orders */}
@@ -95,7 +208,7 @@ export default function AdminPedidoDetailPage({ params }: { params: { id: string
           <Card className="p-6">
             <h3 className="font-semibold mb-4">Historial de Estados</h3>
             <div className="space-y-4">
-              {order.statusHistory.map((change, index) => (
+              {statusHistory.map((change, index) => (
                 <div key={index} className="flex items-start gap-4 pb-4 border-b last:border-0">
                   <div className="w-2 h-2 rounded-full bg-primary mt-2" />
                   <div className="flex-1">
@@ -157,10 +270,14 @@ export default function AdminPedidoDetailPage({ params }: { params: { id: string
                   <Badge variant="outline">{client.zona}</Badge>
                   <Badge variant="outline">{client.paymentTerms}</Badge>
                 </div>
-                <Button className="w-full bg-transparent" variant="outline">
-                  <MessageCircle className="h-4 w-4 mr-2" />
-                  Contactar Cliente
-                </Button>
+                {whatsappHref && (
+                  <Button asChild className="w-full bg-transparent" variant="outline">
+                    <a href={whatsappHref} target="_blank" rel="noopener noreferrer">
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      Contactar Cliente
+                    </a>
+                  </Button>
+                )}
               </div>
             )}
           </Card>

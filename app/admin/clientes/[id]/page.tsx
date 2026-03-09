@@ -150,9 +150,15 @@ export default function AdminClientDetailPage({ params }: { params: { id: string
                 </div>
               </div>
               <Separator />
-              <Button className="w-full bg-transparent" variant="outline">
-                <MessageCircle className="h-4 w-4 mr-2" />
-                Enviar WhatsApp
+              <Button asChild className="w-full bg-transparent" variant="outline">
+                <a
+                  href={`https://wa.me/${client.whatsapp.replace(/\D/g, "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <MessageCircle className="h-4 w-4 mr-2" />
+                  Enviar WhatsApp
+                </a>
               </Button>
             </div>
           </Card>

@@ -60,11 +60,19 @@ export function ClientTable({ clients }: ClientTableProps) {
                       <Eye className="h-4 w-4" />
                     </Link>
                   </Button>
-                  <Button size="sm" variant="ghost">
-                    <Edit className="h-4 w-4" />
+                  <Button asChild size="sm" variant="ghost">
+                    <Link href={`/admin/clientes/${client.id}`}>
+                      <Edit className="h-4 w-4" />
+                    </Link>
                   </Button>
-                  <Button size="sm" variant="ghost">
-                    <MessageCircle className="h-4 w-4" />
+                  <Button asChild size="sm" variant="ghost">
+                    <a
+                      href={`https://wa.me/${client.whatsapp.replace(/\D/g, "")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </a>
                   </Button>
                 </div>
               </TableCell>
