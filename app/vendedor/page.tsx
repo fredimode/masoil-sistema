@@ -1,18 +1,41 @@
+"use client"
+
 import { QuickStats } from "@/components/vendedor/quick-stats"
 import { OrderCard } from "@/components/vendedor/order-card"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { orders, vendedores } from "@/lib/mock-data"
+import { Skeleton } from "@/components/ui/skeleton"
+import { orders } from "@/lib/mock-data"
+import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import { Plus, Search } from "lucide-react"
 import Link from "next/link"
 
 export default function VendedorDashboard() {
-  // Mock: Current vendedor is Carlos Fernández (v1)
-  const currentVendedor = vendedores[0]
+  const { vendedor, loading } = useCurrentVendedor()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="bg-primary text-primary-foreground p-4 pb-6">
+          <Skeleton className="h-7 w-40 mb-2 bg-primary-foreground/20" />
+          <Skeleton className="h-4 w-28 bg-primary-foreground/20" />
+        </div>
+        <div className="p-4 space-y-4">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+      </div>
+    )
+  }
+
+  // Fallback if vendedor not found (shouldn't happen if middleware works)
+  const vendedorName = vendedor?.name ?? "Vendedor"
+  const vendedorZonas = vendedor?.zonas ?? []
+  const vendedorId = vendedor?.id ?? ""
 
   // Filter orders for current vendedor
-  const myOrders = orders.filter((o) => o.vendedorId === currentVendedor.id)
+  const myOrders = orders.filter((o) => o.vendedorId === vendedorId)
 
   // Calculate stats
   const today = new Date()
@@ -32,8 +55,8 @@ export default function VendedorDashboard() {
       <div className="bg-primary text-primary-foreground p-4 pb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-xl font-bold">Hola, {currentVendedor.name.split(" ")[0]}</h1>
-            <p className="text-sm text-primary-foreground/80">{currentVendedor.zonas.join(", ")}</p>
+            <h1 className="text-xl font-bold">Hola, {vendedorName.split(" ")[0]}</h1>
+            <p className="text-sm text-primary-foreground/80">{vendedorZonas.join(", ")}</p>
           </div>
           <Badge variant="secondary" className="text-xs font-medium">
             Vendedor

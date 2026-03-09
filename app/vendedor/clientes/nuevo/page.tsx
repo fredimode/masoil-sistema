@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { vendedores } from "@/lib/mock-data"
+import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
+import { Skeleton } from "@/components/ui/skeleton"
 import type { Zona } from "@/lib/types"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
@@ -17,7 +18,7 @@ const zonas: Zona[] = ["Norte", "Capital", "Sur", "Oeste", "GBA"]
 
 export default function NuevoClientePage() {
   const router = useRouter()
-  const currentVendedor = vendedores[0]
+  const { vendedor, loading } = useCurrentVendedor()
 
   const [formData, setFormData] = useState({
     businessName: "",
@@ -26,7 +27,7 @@ export default function NuevoClientePage() {
     address: "",
     whatsapp: "",
     email: "",
-    zona: currentVendedor.zonas[0] || ("" as Zona),
+    zona: "" as Zona | "",
     paymentTerms: "30 días",
     creditLimit: "",
     notes: "",
@@ -70,7 +71,7 @@ export default function NuevoClientePage() {
     // En un caso real, aquí se enviaría a la API
     console.log({
       ...formData,
-      vendedorId: currentVendedor.id,
+      vendedorId: vendedor?.id,
       creditLimit: parseInt(formData.creditLimit) || 0,
     })
 
@@ -83,6 +84,20 @@ export default function NuevoClientePage() {
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: "" }))
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="bg-primary text-primary-foreground p-4">
+          <Skeleton className="h-7 w-40 bg-primary-foreground/20" />
+        </div>
+        <div className="p-4 space-y-4">
+          <Skeleton className="h-48 w-full" />
+          <Skeleton className="h-48 w-full" />
+        </div>
+      </div>
+    )
   }
 
   return (

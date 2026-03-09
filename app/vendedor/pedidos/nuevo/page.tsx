@@ -9,8 +9,10 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { clients, products, vendedores } from "@/lib/mock-data"
+import { clients, products } from "@/lib/mock-data"
+import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import { formatCurrency } from "@/lib/utils"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, Plus, Trash2, Search, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 
@@ -26,9 +28,10 @@ function NuevoPedidoContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const preselectedClientId = searchParams.get("clientId")
+  const { vendedor, loading } = useCurrentVendedor()
 
-  const currentVendedor = vendedores[0]
-  const myClients = clients.filter((c) => c.vendedorId === currentVendedor.id)
+  const vendedorId = vendedor?.id ?? ""
+  const myClients = clients.filter((c) => c.vendedorId === vendedorId)
 
   const [selectedClientId, setSelectedClientId] = useState(preselectedClientId || "")
   const [clientSearch, setClientSearch] = useState("")
@@ -121,6 +124,20 @@ function NuevoPedidoContent() {
 
     alert("Pedido creado exitosamente!")
     router.push("/vendedor/pedidos")
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="bg-primary text-primary-foreground p-4">
+          <Skeleton className="h-7 w-40 bg-primary-foreground/20" />
+        </div>
+        <div className="p-4 space-y-4">
+          <Skeleton className="h-48 w-full" />
+          <Skeleton className="h-48 w-full" />
+        </div>
+      </div>
+    )
   }
 
   return (
