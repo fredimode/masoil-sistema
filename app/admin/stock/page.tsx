@@ -17,7 +17,18 @@ export default function AdminStockPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>("todas")
   const [stockFilter, setStockFilter] = useState<string>("todos")
   const [csvPreview, setCsvPreview] = useState<Record<string, string>[] | null>(null)
+  const [localProducts, setLocalProducts] = useState(products)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function handleUpdateProduct(id: string, data: { price: number; stock: number }) {
+    setLocalProducts((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, price: data.price, stock: data.stock } : p))
+    )
+  }
+
+  function handleDeleteProduct(id: string) {
+    setLocalProducts((prev) => prev.filter((p) => p.id !== id))
+  }
 
   function handleExportXlsx() {
     const data = localProducts.map((p) => ({
@@ -63,18 +74,6 @@ export default function AdminStockPage() {
   const outOfStock = localProducts.filter((p) => p.stock === 0 && !p.isCustomizable).length
 
   // Filter products
-  const [localProducts, setLocalProducts] = useState(products)
-
-  function handleUpdateProduct(id: string, data: { price: number; stock: number }) {
-    setLocalProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, price: data.price, stock: data.stock } : p))
-    )
-  }
-
-  function handleDeleteProduct(id: string) {
-    setLocalProducts((prev) => prev.filter((p) => p.id !== id))
-  }
-
   let filteredProducts = [...localProducts]
 
   if (categoryFilter !== "todas") {
