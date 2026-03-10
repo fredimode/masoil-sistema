@@ -1,5 +1,6 @@
 import { streamText, stepCountIs, convertToModelMessages } from "ai"
 import { anthropic } from "@ai-sdk/anthropic"
+import { Resend } from "resend"
 import { z } from "zod"
 // TODO: reemplazar import de mock-data por queries a Supabase
 import { products, orders, clients, vendedores } from "@/lib/mock-data"
@@ -138,11 +139,23 @@ export async function POST(req: Request) {
           cuerpo: z.string().describe("Contenido del email"),
         }),
         execute: async ({ destinatario, asunto, cuerpo }: { destinatario: string; asunto: string; cuerpo: string }) => {
-          // TODO: integrar Resend
-          console.log("Email solicitado:", { destinatario, asunto, cuerpo })
-          return {
-            enviado: false,
-            mensaje: "Envío de emails pendiente de integración con Resend. El email fue registrado en los logs del servidor.",
+          if (!process.env.RESEND_API_KEY) {
+            return { enviado: false, mensaje: "RESEND_API_KEY no configurada. No se pudo enviar el email." }
+          }
+          try {
+            const resend = new Resend(process.env.RESEND_API_KEY)
+            const { error } = await resend.emails.send({
+              from: "Masoil Sistema <onboarding@resend.dev>",
+              to: destinatario,
+              subject: asunto,
+              html: cuerpo,
+            })
+            if (error) {
+              return { enviado: false, mensaje: `Error al enviar: ${error.message}` }
+            }
+            return { enviado: true, mensaje: `Email enviado correctamente a ${destinatario}` }
+          } catch (err) {
+            return { enviado: false, mensaje: `Error al enviar email: ${err instanceof Error ? err.message : "desconocido"}` }
           }
         },
       },
