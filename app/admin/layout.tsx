@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { LogOut, Menu, Loader2 } from "lucide-react"
 import { AdminSidebarContent } from "@/components/admin/sidebar-nav"
+import { AiChat } from "@/components/chat/ai-chat"
 import { createClient } from "@/lib/supabase/client"
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -66,6 +67,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Page Content */}
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
+
+      <AiChat />
     </div>
   )
 }
