@@ -3,7 +3,21 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { LayoutDashboard, FileText, Package, Users, BarChart3, Settings, Factory, AlertTriangle } from "lucide-react"
+import {
+  LayoutDashboard,
+  FileText,
+  Package,
+  Users,
+  BarChart3,
+  Settings,
+  Factory,
+  AlertTriangle,
+  DollarSign,
+  TrendingDown,
+  TrendingUp,
+  Percent,
+  Receipt,
+} from "lucide-react"
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
@@ -13,6 +27,12 @@ const navItems = [
   { href: "/admin/stock/alertas", label: "Alertas de Stock", icon: AlertTriangle },
   { href: "/admin/clientes", label: "Clientes", icon: Users },
   { href: "/admin/estadisticas", label: "Estadísticas", icon: BarChart3 },
+  { type: "separator" as const, label: "Finanzas" },
+  { href: "/admin/finanzas/egresos", label: "Egresos", icon: TrendingDown },
+  { href: "/admin/finanzas/ingresos", label: "Ingresos", icon: TrendingUp },
+  { href: "/admin/finanzas/comisiones", label: "Comisiones", icon: Percent },
+  { href: "/admin/facturacion", label: "Facturación", icon: Receipt },
+  { type: "separator" as const, label: "Sistema" },
   { href: "/admin/configuracion", label: "Configuración", icon: Settings },
 ]
 
@@ -30,15 +50,24 @@ export function AdminSidebarContent({ onNavigate }: AdminSidebarContentProps) {
         <p className="text-sm text-sidebar-foreground/60 mt-1">Panel Administrativo</p>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const isActive = pathname === item.href || (item.href !== "/admin" && pathname.startsWith(item.href))
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        {navItems.map((item, index) => {
+          if ("type" in item && item.type === "separator") {
+            return (
+              <div key={`sep-${index}`} className="pt-4 pb-1 px-4">
+                <p className="text-xs font-semibold text-sidebar-foreground/40 uppercase tracking-wider">{item.label}</p>
+              </div>
+            )
+          }
+
+          const navItem = item as { href: string; label: string; icon: React.ComponentType<{ className?: string }> }
+          const Icon = navItem.icon
+          const isActive = pathname === navItem.href || (navItem.href !== "/admin" && pathname.startsWith(navItem.href))
 
           return (
             <Link
-              key={item.href}
-              href={item.href}
+              key={navItem.href}
+              href={navItem.href}
               onClick={onNavigate}
               className={cn(
                 "flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-sm font-medium",
@@ -48,7 +77,7 @@ export function AdminSidebarContent({ onNavigate }: AdminSidebarContentProps) {
               )}
             >
               <Icon className="h-5 w-5" />
-              {item.label}
+              {navItem.label}
             </Link>
           )
         })}
