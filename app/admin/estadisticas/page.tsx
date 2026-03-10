@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import dynamic from "next/dynamic"
 import { Card } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -15,48 +15,92 @@ const EstadisticasCharts = dynamic(
   { ssr: false, loading: () => <div className="h-[300px] flex items-center justify-center">Cargando gráficos...</div> }
 )
 
+function getPeriodRange(period: string): { start: Date; end: Date; prevStart: Date; prevEnd: Date } {
+  const now = new Date()
+  const end = new Date(now)
+  let start: Date
+  let prevStart: Date
+  let prevEnd: Date
+
+  switch (period) {
+    case "semana": {
+      start = new Date(now)
+      start.setDate(now.getDate() - 7)
+      prevEnd = new Date(start)
+      prevStart = new Date(prevEnd)
+      prevStart.setDate(prevEnd.getDate() - 7)
+      break
+    }
+    case "trimestre": {
+      start = new Date(now)
+      start.setMonth(now.getMonth() - 3)
+      prevEnd = new Date(start)
+      prevStart = new Date(prevEnd)
+      prevStart.setMonth(prevEnd.getMonth() - 3)
+      break
+    }
+    case "año": {
+      start = new Date(now)
+      start.setFullYear(now.getFullYear() - 1)
+      prevEnd = new Date(start)
+      prevStart = new Date(prevEnd)
+      prevStart.setFullYear(prevEnd.getFullYear() - 1)
+      break
+    }
+    default: { // mes
+      start = new Date(now)
+      start.setMonth(now.getMonth() - 1)
+      prevEnd = new Date(start)
+      prevStart = new Date(prevEnd)
+      prevStart.setMonth(prevEnd.getMonth() - 1)
+      break
+    }
+  }
+
+  return { start, end, prevStart, prevEnd }
+}
+
+function calcTrend(current: number, previous: number): { value: string; up: boolean } {
+  if (previous === 0) return { value: current > 0 ? "+100%" : "0%", up: current > 0 }
+  const pct = ((current - previous) / previous) * 100
+  return { value: `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%`, up: pct >= 0 }
+}
+
 export default function AdminEstadisticasPage() {
   const [period, setPeriod] = useState("mes")
 
-  // Calculate metrics
-  const totalRevenue = orders.filter((o) => o.status === "ENTREGADO").reduce((sum, o) => sum + o.total, 0)
+  const { start, end, prevStart, prevEnd } = useMemo(() => getPeriodRange(period), [period])
 
-  const totalOrders = orders.length
-  const completedOrders = orders.filter((o) => o.status === "ENTREGADO").length
-  const fulfillmentRate = ((completedOrders / totalOrders) * 100).toFixed(1)
+  const currentOrders = useMemo(() => orders.filter((o) => o.createdAt >= start && o.createdAt <= end), [start, end])
+  const prevOrders = useMemo(() => orders.filter((o) => o.createdAt >= prevStart && o.createdAt <= prevEnd), [prevStart, prevEnd])
 
-  const avgOrderValue = totalRevenue / completedOrders
+  // Current period metrics
+  const totalRevenue = currentOrders.filter((o) => o.status === "ENTREGADO").reduce((sum, o) => sum + o.total, 0)
+  const totalOrdersCount = currentOrders.length
+  const completedOrders = currentOrders.filter((o) => o.status === "ENTREGADO").length
+  const fulfillmentRate = totalOrdersCount > 0 ? ((completedOrders / totalOrdersCount) * 100).toFixed(1) : "0"
+  const avgOrderValue = completedOrders > 0 ? totalRevenue / completedOrders : 0
 
-  // Sales by zone
-  const salesByZone = [
-    {
-      zona: "Norte",
-      ventas: orders.filter((o) => o.zona === "Norte" && o.status === "ENTREGADO").reduce((sum, o) => sum + o.total, 0),
-      pedidos: orders.filter((o) => o.zona === "Norte" && o.status === "ENTREGADO").length,
-    },
-    {
-      zona: "Capital",
-      ventas: orders
-        .filter((o) => o.zona === "Capital" && o.status === "ENTREGADO")
-        .reduce((sum, o) => sum + o.total, 0),
-      pedidos: orders.filter((o) => o.zona === "Capital" && o.status === "ENTREGADO").length,
-    },
-    {
-      zona: "Sur",
-      ventas: orders.filter((o) => o.zona === "Sur" && o.status === "ENTREGADO").reduce((sum, o) => sum + o.total, 0),
-      pedidos: orders.filter((o) => o.zona === "Sur" && o.status === "ENTREGADO").length,
-    },
-    {
-      zona: "Oeste",
-      ventas: orders.filter((o) => o.zona === "Oeste" && o.status === "ENTREGADO").reduce((sum, o) => sum + o.total, 0),
-      pedidos: orders.filter((o) => o.zona === "Oeste" && o.status === "ENTREGADO").length,
-    },
-    {
-      zona: "GBA",
-      ventas: orders.filter((o) => o.zona === "GBA" && o.status === "ENTREGADO").reduce((sum, o) => sum + o.total, 0),
-      pedidos: orders.filter((o) => o.zona === "GBA" && o.status === "ENTREGADO").length,
-    },
-  ]
+  // Previous period metrics
+  const prevRevenue = prevOrders.filter((o) => o.status === "ENTREGADO").reduce((sum, o) => sum + o.total, 0)
+  const prevTotalOrders = prevOrders.length
+  const prevCompleted = prevOrders.filter((o) => o.status === "ENTREGADO").length
+  const prevFulfillment = prevTotalOrders > 0 ? (prevCompleted / prevTotalOrders) * 100 : 0
+  const prevAvgValue = prevCompleted > 0 ? prevRevenue / prevCompleted : 0
+
+  // Trends
+  const revenueTrend = calcTrend(totalRevenue, prevRevenue)
+  const ordersTrend = calcTrend(totalOrdersCount, prevTotalOrders)
+  const avgTrend = calcTrend(avgOrderValue, prevAvgValue)
+  const fulfillTrend = calcTrend(parseFloat(fulfillmentRate), prevFulfillment)
+
+  // Sales by zone (current period)
+  const zonas = ["Norte", "Capital", "Sur", "Oeste", "GBA"]
+  const salesByZone = zonas.map((zona) => ({
+    zona,
+    ventas: currentOrders.filter((o) => o.zona === zona && o.status === "ENTREGADO").reduce((sum, o) => sum + o.total, 0),
+    pedidos: currentOrders.filter((o) => o.zona === zona && o.status === "ENTREGADO").length,
+  }))
 
   // Sales by category
   const salesByCategory = products.reduce(
@@ -64,9 +108,7 @@ export default function AdminEstadisticasPage() {
       if (!acc[product.category]) {
         acc[product.category] = { name: product.category, value: 0 }
       }
-
-      // Calculate sales for this product from orders
-      orders
+      currentOrders
         .filter((o) => o.status === "ENTREGADO")
         .forEach((order) => {
           const orderProduct = order.products.find((p) => p.productId === product.id)
@@ -74,12 +116,10 @@ export default function AdminEstadisticasPage() {
             acc[product.category].value += orderProduct.price * orderProduct.quantity
           }
         })
-
       return acc
     },
     {} as Record<string, { name: string; value: number }>,
   )
-
   const categoryData = Object.values(salesByCategory)
 
   // Sales by vendedor
@@ -87,48 +127,55 @@ export default function AdminEstadisticasPage() {
     .filter((v) => v.role === "vendedor")
     .map((vendedor) => ({
       name: vendedor.name.split(" ")[0],
-      ventas: orders
+      ventas: currentOrders
         .filter((o) => o.vendedorId === vendedor.id && o.status === "ENTREGADO")
         .reduce((sum, o) => sum + o.total, 0),
-      pedidos: orders.filter((o) => o.vendedorId === vendedor.id && o.status === "ENTREGADO").length,
+      pedidos: currentOrders.filter((o) => o.vendedorId === vendedor.id && o.status === "ENTREGADO").length,
     }))
     .sort((a, b) => b.ventas - a.ventas)
 
-  // Sales trend (mock data - last 7 days)
-  const salesTrend = [
-    { dia: "Lun", ventas: 450000 },
-    { dia: "Mar", ventas: 520000 },
-    { dia: "Mié", ventas: 480000 },
-    { dia: "Jue", ventas: 610000 },
-    { dia: "Vie", ventas: 590000 },
-    { dia: "Sáb", ventas: 380000 },
-    { dia: "Dom", ventas: 290000 },
-  ]
+  // Sales trend - group orders by day within the period
+  const salesTrend = useMemo(() => {
+    const dayNames = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"]
+    const days = Math.min(7, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)))
+    const result: { dia: string; ventas: number }[] = []
+
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(end)
+      d.setDate(end.getDate() - i)
+      d.setHours(0, 0, 0, 0)
+      const nextD = new Date(d)
+      nextD.setDate(d.getDate() + 1)
+
+      const dayTotal = currentOrders
+        .filter((o) => o.status === "ENTREGADO" && o.createdAt >= d && o.createdAt < nextD)
+        .reduce((sum, o) => sum + o.total, 0)
+
+      result.push({ dia: dayNames[d.getDay()], ventas: dayTotal })
+    }
+    return result
+  }, [currentOrders, start, end])
 
   // Top products
-  const productSales = products.map((product) => {
-    const sales = orders
-      .filter((o) => o.status === "ENTREGADO")
-      .reduce((sum, order) => {
-        const orderProduct = order.products.find((p) => p.productId === product.id)
-        return sum + (orderProduct ? orderProduct.quantity : 0)
-      }, 0)
+  const topProducts = useMemo(() => {
+    return products
+      .map((product) => {
+        const delivered = currentOrders.filter((o) => o.status === "ENTREGADO")
+        const unitsSold = delivered.reduce((sum, order) => {
+          const op = order.products.find((p) => p.productId === product.id)
+          return sum + (op ? op.quantity : 0)
+        }, 0)
+        const revenue = delivered.reduce((sum, order) => {
+          const op = order.products.find((p) => p.productId === product.id)
+          return sum + (op ? op.price * op.quantity : 0)
+        }, 0)
+        return { ...product, unitsSold, revenue }
+      })
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10)
+  }, [currentOrders])
 
-    const revenue = orders
-      .filter((o) => o.status === "ENTREGADO")
-      .reduce((sum, order) => {
-        const orderProduct = order.products.find((p) => p.productId === product.id)
-        return sum + (orderProduct ? orderProduct.price * orderProduct.quantity : 0)
-      }, 0)
-
-    return {
-      ...product,
-      unitsSold: sales,
-      revenue,
-    }
-  })
-
-  const topProducts = productSales.sort((a, b) => b.revenue - a.revenue).slice(0, 10)
+  const periodLabel = period === "semana" ? "semana anterior" : period === "mes" ? "mes anterior" : period === "trimestre" ? "trimestre anterior" : "año anterior"
 
   return (
     <div className="p-4 md:p-8 space-y-6">
@@ -161,10 +208,10 @@ export default function AdminEstadisticasPage() {
             </div>
           </div>
           <p className="text-xl md:text-3xl font-bold mb-1 md:mb-2">{formatCurrency(totalRevenue)}</p>
-          <div className="flex items-center gap-1 text-xs md:text-sm text-green-600">
-            <TrendingUp className="h-3 w-3 md:h-4 md:w-4" />
-            <span className="hidden md:inline">+15.3% vs mes anterior</span>
-            <span className="md:hidden">+15.3%</span>
+          <div className={`flex items-center gap-1 text-xs md:text-sm ${revenueTrend.up ? "text-green-600" : "text-red-600"}`}>
+            {revenueTrend.up ? <TrendingUp className="h-3 w-3 md:h-4 md:w-4" /> : <TrendingDown className="h-3 w-3 md:h-4 md:w-4" />}
+            <span className="hidden md:inline">{revenueTrend.value} vs {periodLabel}</span>
+            <span className="md:hidden">{revenueTrend.value}</span>
           </div>
         </Card>
 
@@ -175,11 +222,11 @@ export default function AdminEstadisticasPage() {
               <ShoppingCart className="h-4 w-4 md:h-5 md:w-5 text-blue-600" />
             </div>
           </div>
-          <p className="text-xl md:text-3xl font-bold mb-1 md:mb-2">{totalOrders}</p>
-          <div className="flex items-center gap-1 text-xs md:text-sm text-blue-600">
-            <TrendingUp className="h-3 w-3 md:h-4 md:w-4" />
-            <span className="hidden md:inline">+8.2% vs mes anterior</span>
-            <span className="md:hidden">+8.2%</span>
+          <p className="text-xl md:text-3xl font-bold mb-1 md:mb-2">{totalOrdersCount}</p>
+          <div className={`flex items-center gap-1 text-xs md:text-sm ${ordersTrend.up ? "text-blue-600" : "text-red-600"}`}>
+            {ordersTrend.up ? <TrendingUp className="h-3 w-3 md:h-4 md:w-4" /> : <TrendingDown className="h-3 w-3 md:h-4 md:w-4" />}
+            <span className="hidden md:inline">{ordersTrend.value} vs {periodLabel}</span>
+            <span className="md:hidden">{ordersTrend.value}</span>
           </div>
         </Card>
 
@@ -191,10 +238,10 @@ export default function AdminEstadisticasPage() {
             </div>
           </div>
           <p className="text-xl md:text-3xl font-bold mb-1 md:mb-2">{formatCurrency(avgOrderValue)}</p>
-          <div className="flex items-center gap-1 text-xs md:text-sm text-purple-600">
-            <TrendingUp className="h-3 w-3 md:h-4 md:w-4" />
-            <span className="hidden md:inline">+6.5% vs mes anterior</span>
-            <span className="md:hidden">+6.5%</span>
+          <div className={`flex items-center gap-1 text-xs md:text-sm ${avgTrend.up ? "text-purple-600" : "text-red-600"}`}>
+            {avgTrend.up ? <TrendingUp className="h-3 w-3 md:h-4 md:w-4" /> : <TrendingDown className="h-3 w-3 md:h-4 md:w-4" />}
+            <span className="hidden md:inline">{avgTrend.value} vs {periodLabel}</span>
+            <span className="md:hidden">{avgTrend.value}</span>
           </div>
         </Card>
 
@@ -206,10 +253,10 @@ export default function AdminEstadisticasPage() {
             </div>
           </div>
           <p className="text-xl md:text-3xl font-bold mb-1 md:mb-2">{fulfillmentRate}%</p>
-          <div className="flex items-center gap-1 text-xs md:text-sm text-red-600">
-            <TrendingDown className="h-3 w-3 md:h-4 md:w-4" />
-            <span className="hidden md:inline">-2.1% vs mes anterior</span>
-            <span className="md:hidden">-2.1%</span>
+          <div className={`flex items-center gap-1 text-xs md:text-sm ${fulfillTrend.up ? "text-green-600" : "text-red-600"}`}>
+            {fulfillTrend.up ? <TrendingUp className="h-3 w-3 md:h-4 md:w-4" /> : <TrendingDown className="h-3 w-3 md:h-4 md:w-4" />}
+            <span className="hidden md:inline">{fulfillTrend.value} vs {periodLabel}</span>
+            <span className="md:hidden">{fulfillTrend.value}</span>
           </div>
         </Card>
       </div>
