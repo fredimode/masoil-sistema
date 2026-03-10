@@ -6,60 +6,60 @@ import { z } from "zod"
 import { products, orders, clients, vendedores } from "@/lib/mock-data"
 
 function buildSystemPrompt(): string {
-  const productList = products
-    .map((p) => `- ${p.name} (${p.code}): stock ${p.stock}, $${p.price}, categoría ${p.category}${p.stock < p.criticalStockThreshold ? " ⚠️ CRÍTICO" : p.stock < p.lowStockThreshold ? " ⚠️ BAJO" : ""}`)
+  // Resumen por categoría de producto
+  const categoryMap: Record<string, { total: number; stockBajo: number }> = {}
+  for (const p of products) {
+    if (!categoryMap[p.category]) categoryMap[p.category] = { total: 0, stockBajo: 0 }
+    categoryMap[p.category].total++
+    if (p.stock < p.lowStockThreshold) categoryMap[p.category].stockBajo++
+  }
+  const productSummary = Object.entries(categoryMap)
+    .map(([cat, { total, stockBajo }]) => `  ${cat}: ${total} productos${stockBajo > 0 ? ` (${stockBajo} con stock bajo)` : ""}`)
     .join("\n")
 
-  const pendingOrders = orders
-    .filter((o) => !["ENTREGADO", "CANCELADO"].includes(o.status))
-    .map((o) => `- Pedido #${o.id}: ${o.clientName} (${o.zona}) - Estado: ${o.status} - Total: $${o.total}${o.isUrgent ? " 🔴 URGENTE" : ""}`)
+  // Resumen de pedidos por estado
+  const statusMap: Record<string, number> = {}
+  for (const o of orders) {
+    statusMap[o.status] = (statusMap[o.status] || 0) + 1
+  }
+  const orderSummary = Object.entries(statusMap)
+    .map(([status, count]) => `  ${status}: ${count}`)
     .join("\n")
-
-  const clientList = clients
-    .map((c) => `- ${c.businessName} (${c.zona}): contacto ${c.contactName}, ${c.totalOrders} pedidos, crédito $${c.creditLimit}`)
-    .join("\n")
-
-  const vendedorList = vendedores
-    .filter((v) => v.role === "vendedor")
-    .map((v) => `- ${v.name}: zonas ${v.zonas.join(", ")}${v.isActive ? "" : " (INACTIVO)"}`)
-    .join("\n")
-
-  const totalStock = products.reduce((s, p) => s + p.stock, 0)
-  const criticalCount = products.filter((p) => p.stock < p.criticalStockThreshold && p.stock > 0).length
-  const pendingCount = orders.filter((o) => !["ENTREGADO", "CANCELADO"].includes(o.status)).length
   const urgentCount = orders.filter((o) => o.isUrgent && !["ENTREGADO", "CANCELADO"].includes(o.status)).length
 
-  // TODO: inyectar stock actual, pedidos pendientes, alertas desde Supabase
+  // Resumen de clientes por zona
+  const zonaMap: Record<string, number> = {}
+  for (const c of clients) {
+    zonaMap[c.zona] = (zonaMap[c.zona] || 0) + 1
+  }
+  const clientSummary = Object.entries(zonaMap)
+    .map(([zona, count]) => `  ${zona}: ${count}`)
+    .join("\n")
 
-  return `Sos el asistente interno del sistema de gestión de Masoil Lubricantes, una distribuidora B2B de lubricantes y productos industriales en Argentina. Ayudás a los usuarios del sistema con consultas sobre pedidos, stock, clientes y operaciones.
+  // TODO: reemplazar mock-data por queries a Supabase
 
-Respondé siempre en español argentino. Sé conciso y útil. Podés usar las herramientas disponibles para consultar datos del sistema.
+  return `Sos el asistente interno de Masoil Lubricantes (distribuidora B2B, Argentina). Respondé siempre en español argentino. Respondé de forma concisa y directa. Máximo 2-3 oraciones salvo que el usuario pida detalle.
 
-## Resumen actual del sistema
-- ${products.length} productos en catálogo (${totalStock} unidades totales en stock)
-- ${criticalCount} productos con stock crítico
-- ${pendingCount} pedidos pendientes (${urgentCount} urgentes)
-- ${clients.length} clientes activos
-- ${vendedores.filter((v) => v.role === "vendedor").length} vendedores activos
+Usá las herramientas disponibles para consultar datos específicos (productos, pedidos, clientes). No inventes datos; si no tenés la info, usá un tool.
 
-## Productos actuales
-${productList}
+## Resumen del sistema
+Productos (${products.length} total):
+${productSummary}
 
-## Pedidos pendientes
-${pendingOrders || "No hay pedidos pendientes."}
+Pedidos (${orders.length} total, ${urgentCount} urgentes):
+${orderSummary}
 
-## Clientes
-${clientList}
+Clientes (${clients.length} total) por zona:
+${clientSummary}
 
-## Vendedores
-${vendedorList}`
+Vendedores activos: ${vendedores.filter((v) => v.role === "vendedor" && v.isActive).length}`
 }
 
 export async function POST(req: Request) {
   const { messages } = await req.json()
 
   const result = streamText({
-    model: anthropic("claude-sonnet-4-20250514"),
+    model: anthropic("claude-haiku-3-5-20241022"),
     system: buildSystemPrompt(),
     messages: await convertToModelMessages(messages),
     tools: {
