@@ -1,7 +1,11 @@
+"use client"
+
+import { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { clients, orders, vendedores } from "@/lib/mock-data"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { getStatusConfig } from "@/lib/status-config"
@@ -10,10 +14,36 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 
 export default function AdminClientDetailPage({ params }: { params: { id: string } }) {
-  const client = clients.find((c) => c.id === params.id)
+  const clientData = clients.find((c) => c.id === params.id)
 
-  if (!client) {
+  if (!clientData) {
     notFound()
+  }
+
+  const [client, setClient] = useState(clientData)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editForm, setEditForm] = useState({
+    businessName: client.businessName,
+    contactName: client.contactName,
+    whatsapp: client.whatsapp,
+    email: client.email,
+    address: client.address,
+  })
+
+  function handleSaveEdit() {
+    setClient((prev) => ({ ...prev, ...editForm }))
+    setEditOpen(false)
+  }
+
+  function openEditDialog() {
+    setEditForm({
+      businessName: client.businessName,
+      contactName: client.contactName,
+      whatsapp: client.whatsapp,
+      email: client.email,
+      address: client.address,
+    })
+    setEditOpen(true)
   }
 
   const vendedor = vendedores.find((v) => v.id === client.vendedorId)
@@ -42,7 +72,7 @@ export default function AdminClientDetailPage({ params }: { params: { id: string
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={openEditDialog}>
             <Edit className="h-4 w-4 mr-2" />
             Editar
           </Button>
@@ -233,6 +263,62 @@ export default function AdminClientDetailPage({ params }: { params: { id: string
           )}
         </div>
       </div>
+
+      {/* Edit Client Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Cliente</DialogTitle>
+            <DialogDescription>Modificar datos de {client.businessName}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Razón Social</label>
+              <input
+                value={editForm.businessName}
+                onChange={(e) => setEditForm((f) => ({ ...f, businessName: e.target.value }))}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Contacto</label>
+              <input
+                value={editForm.contactName}
+                onChange={(e) => setEditForm((f) => ({ ...f, contactName: e.target.value }))}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">WhatsApp</label>
+              <input
+                value={editForm.whatsapp}
+                onChange={(e) => setEditForm((f) => ({ ...f, whatsapp: e.target.value }))}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Email</label>
+              <input
+                value={editForm.email}
+                onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Dirección</label>
+              <input
+                value={editForm.address}
+                onChange={(e) => setEditForm((f) => ({ ...f, address: e.target.value }))}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveEdit}>Guardar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

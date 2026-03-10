@@ -16,13 +16,25 @@ export default function AdminStockPage() {
   const [stockFilter, setStockFilter] = useState<string>("todos")
 
   // Calculate stats
-  const totalProducts = products.length
-  const lowStock = products.filter((p) => p.stock < p.lowStockThreshold && p.stock > 0).length
-  const criticalStock = products.filter((p) => p.stock < p.criticalStockThreshold && p.stock > 0).length
-  const outOfStock = products.filter((p) => p.stock === 0 && !p.isCustomizable).length
+  const totalProducts = localProducts.length
+  const lowStock = localProducts.filter((p) => p.stock < p.lowStockThreshold && p.stock > 0).length
+  const criticalStock = localProducts.filter((p) => p.stock < p.criticalStockThreshold && p.stock > 0).length
+  const outOfStock = localProducts.filter((p) => p.stock === 0 && !p.isCustomizable).length
 
   // Filter products
-  let filteredProducts = [...products]
+  const [localProducts, setLocalProducts] = useState(products)
+
+  function handleUpdateProduct(id: string, data: { price: number; stock: number }) {
+    setLocalProducts((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, price: data.price, stock: data.stock } : p))
+    )
+  }
+
+  function handleDeleteProduct(id: string) {
+    setLocalProducts((prev) => prev.filter((p) => p.id !== id))
+  }
+
+  let filteredProducts = [...localProducts]
 
   if (categoryFilter !== "todas") {
     filteredProducts = filteredProducts.filter((p) => p.category === categoryFilter)
@@ -139,7 +151,7 @@ export default function AdminStockPage() {
 
       {/* Products Table */}
       {filteredProducts.length > 0 ? (
-        <ProductTable products={filteredProducts} />
+        <ProductTable products={filteredProducts} onUpdate={handleUpdateProduct} onDelete={handleDeleteProduct} />
       ) : (
         <div className="text-center py-12 text-muted-foreground border rounded-lg">
           <p>No se encontraron productos</p>
