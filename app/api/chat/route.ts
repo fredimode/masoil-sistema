@@ -56,10 +56,11 @@ Vendedores activos: ${vendedores.filter((v) => v.role === "vendedor" && v.isActi
 }
 
 export async function POST(req: Request) {
+  try {
   const { messages } = await req.json()
 
   const result = streamText({
-    model: anthropic("claude-3-5-haiku-20241022"),
+    model: anthropic("claude-haiku-4-5-20251001"),
     system: buildSystemPrompt(),
     messages: await convertToModelMessages(messages),
     tools: {
@@ -164,4 +165,11 @@ export async function POST(req: Request) {
   })
 
   return result.toUIMessageStreamResponse()
+  } catch (error) {
+    console.error("Chat API error:", error)
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error", details: String(error) }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    )
+  }
 }
