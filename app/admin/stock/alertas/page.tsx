@@ -1,12 +1,17 @@
+"use client"
+
+import { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { products } from "@/lib/mock-data"
 import { formatCurrency } from "@/lib/utils"
 import { AlertTriangle, Package, ShoppingCart } from "lucide-react"
 
 export default function AdminStockAlertsPage() {
+  const [orderDialog, setOrderDialog] = useState<{ name: string; code: string; stock: number } | null>(null)
   // Categorize alerts
   const criticalProducts = products.filter((p) => p.stock < p.criticalStockThreshold && p.stock > 0)
   const lowProducts = products.filter((p) => p.stock < p.lowStockThreshold && p.stock >= p.criticalStockThreshold)
@@ -105,7 +110,7 @@ export default function AdminStockAlertsPage() {
                       <span>{product.category}</span>
                     </div>
                   </div>
-                  <Button size="sm" variant="destructive" className="w-full">
+                  <Button size="sm" variant="destructive" className="w-full" onClick={() => setOrderDialog({ name: product.name, code: product.code, stock: product.stock })}>
                     Ordenar Ahora
                   </Button>
                 </div>
@@ -161,7 +166,7 @@ export default function AdminStockAlertsPage() {
                       <span>{product.category}</span>
                     </div>
                   </div>
-                  <Button size="sm" variant="outline" className="w-full bg-transparent">
+                  <Button size="sm" variant="outline" className="w-full bg-transparent" onClick={() => setOrderDialog({ name: product.name, code: product.code, stock: product.stock })}>
                     Planificar Pedido
                   </Button>
                 </div>
@@ -212,7 +217,7 @@ export default function AdminStockAlertsPage() {
                       <span>{product.category}</span>
                     </div>
                   </div>
-                  <Button size="sm" className="w-full">
+                  <Button size="sm" className="w-full" onClick={() => setOrderDialog({ name: product.name, code: product.code, stock: product.stock })}>
                     Ordenar Reposición
                   </Button>
                 </div>
@@ -236,6 +241,54 @@ export default function AdminStockAlertsPage() {
           </div>
         </Card>
       )}
+
+      {/* Order/Restock Dialog */}
+      <Dialog open={!!orderDialog} onOpenChange={(open) => !open && setOrderDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ordenar Reposición</DialogTitle>
+            <DialogDescription>
+              {orderDialog?.name} ({orderDialog?.code}) - Stock actual: {orderDialog?.stock}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div>
+              <label className="text-sm font-medium block mb-1">Cantidad a ordenar</label>
+              <input
+                type="number"
+                defaultValue={50}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                min={1}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Proveedor</label>
+              <input
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                placeholder="Nombre del proveedor..."
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium block mb-1">Notas</label>
+              <textarea
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                rows={2}
+                placeholder="Notas adicionales..."
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              La orden de compra se registrará en el sistema. Pendiente de integración con módulo de compras.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOrderDialog(null)}>Cancelar</Button>
+            <Button onClick={() => {
+              console.log("Orden de reposición:", orderDialog)
+              setOrderDialog(null)
+            }}>Confirmar Orden</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
