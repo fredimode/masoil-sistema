@@ -46,9 +46,11 @@ export default function AdminClientDetailPage({ params }: { params: { id: string
             <Edit className="h-4 w-4 mr-2" />
             Editar
           </Button>
-          <Button>
-            <FileText className="h-4 w-4 mr-2" />
-            Nuevo Pedido
+          <Button asChild>
+            <Link href={`/admin/pedidos/nuevo?clientId=${client.id}`}>
+              <FileText className="h-4 w-4 mr-2" />
+              Nuevo Pedido
+            </Link>
           </Button>
         </div>
       </div>

@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { orders } from "@/lib/mock-data"
 import { FileText, Clock, CheckCircle, AlertTriangle, TrendingUp } from "lucide-react"
+import Link from "next/link"
 import { formatCurrency } from "@/lib/utils"
 import { getStatusConfig } from "@/lib/status-config"
 
@@ -60,15 +61,16 @@ export default function AdminDashboard() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
-        <StatsCard title="Pedidos Hoy" value={todayOrders} icon={FileText} trend="+12% vs ayer" trendUp={true} />
-        <StatsCard title="Pedidos Pendientes" value={pendingOrders} icon={Clock} />
-        <StatsCard title="Pedidos Completados" value={completedOrders} icon={CheckCircle} />
+        <StatsCard title="Pedidos Hoy" value={todayOrders} icon={FileText} trend="+12% vs ayer" trendUp={true} href="/admin/pedidos?filter=hoy" />
+        <StatsCard title="Pedidos Pendientes" value={pendingOrders} icon={Clock} href="/admin/pedidos?filter=pendientes" />
+        <StatsCard title="Pedidos Completados" value={completedOrders} icon={CheckCircle} href="/admin/pedidos?filter=completados" />
         <StatsCard
           title="Pedidos Urgentes"
           value={urgentOrders}
           icon={AlertTriangle}
           trend="Requieren atención"
           trendUp={false}
+          href="/admin/pedidos?filter=urgentes"
         />
       </div>
 
@@ -93,23 +95,25 @@ export default function AdminDashboard() {
         <h3 className="text-lg font-semibold mb-4">Pedidos Recientes</h3>
         <div className="space-y-3">
           {recentOrders.map((order) => (
-            <div key={order.id} className="flex flex-col md:flex-row md:items-center justify-between p-3 md:p-4 border rounded-lg gap-3">
-              <div className="flex items-center gap-3 md:gap-4">
-                <div className="min-w-0">
-                  <p className="font-mono text-sm font-semibold">#{order.id}</p>
-                  <p className="text-sm text-muted-foreground truncate">{order.clientName}</p>
+            <Link key={order.id} href={`/admin/pedidos/${order.id}`} className="block">
+              <div className="flex flex-col md:flex-row md:items-center justify-between p-3 md:p-4 border rounded-lg gap-3 hover:shadow-md hover:border-primary/30 transition-all cursor-pointer">
+                <div className="flex items-center gap-3 md:gap-4">
+                  <div className="min-w-0">
+                    <p className="font-mono text-sm font-semibold">#{order.id}</p>
+                    <p className="text-sm text-muted-foreground truncate">{order.clientName}</p>
+                  </div>
+                  <Badge variant="outline" className="text-xs shrink-0">
+                    {order.zona}
+                  </Badge>
                 </div>
-                <Badge variant="outline" className="text-xs shrink-0">
-                  {order.zona}
-                </Badge>
+                <div className="flex items-center justify-between md:justify-end gap-3 md:gap-4">
+                  <p className="font-semibold">{formatCurrency(order.total)}</p>
+                  <Badge className={`${getStatusConfig(order.status).bgColor} ${getStatusConfig(order.status).color} shrink-0`}>
+                    {getStatusConfig(order.status).label}
+                  </Badge>
+                </div>
               </div>
-              <div className="flex items-center justify-between md:justify-end gap-3 md:gap-4">
-                <p className="font-semibold">{formatCurrency(order.total)}</p>
-                <Badge className={`${getStatusConfig(order.status).bgColor} ${getStatusConfig(order.status).color} shrink-0`}>
-                  {getStatusConfig(order.status).label}
-                </Badge>
-              </div>
-            </div>
+            </Link>
           ))}
         </div>
       </Card>
