@@ -596,7 +596,7 @@ export default function EgresosPage() {
                       className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
                     >
                       <option value="">Seleccionar...</option>
-                      {(centroActual as { subcategorias: string[] }).subcategorias.map((s: string) => (
+                      {(centroActual as unknown as { subcategorias: string[] }).subcategorias.map((s: string) => (
                         <option key={s} value={s}>
                           {s}
                         </option>
