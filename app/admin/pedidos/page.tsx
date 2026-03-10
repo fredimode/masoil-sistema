@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { orders } from "@/lib/mock-data"
 import { Search, Download, Plus } from "lucide-react"
 import Link from "next/link"
+import * as XLSX from "xlsx"
 
 export default function AdminPedidosPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -49,7 +50,22 @@ export default function AdminPedidosPage() {
           <p className="text-muted-foreground">Administra todos los pedidos del sistema</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => {
+            const data = filteredOrders.map((o) => ({
+              ID: o.id,
+              Cliente: o.clientName,
+              Vendedor: o.vendedorName,
+              Zona: o.zona,
+              Estado: o.status,
+              Total: o.total,
+              Urgente: o.isUrgent ? "Sí" : "No",
+              Fecha: o.createdAt.toLocaleDateString("es-AR"),
+            }))
+            const ws = XLSX.utils.json_to_sheet(data)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, "Pedidos")
+            XLSX.writeFile(wb, `pedidos_${new Date().toISOString().slice(0, 10)}.xlsx`)
+          }}>
             <Download className="h-4 w-4 mr-2" />
             Exportar
           </Button>

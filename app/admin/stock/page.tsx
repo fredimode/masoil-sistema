@@ -1,19 +1,60 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { ProductTable } from "@/components/admin/product-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { products } from "@/lib/mock-data"
 import { Search, Plus, Download, Upload } from "lucide-react"
 import Link from "next/link"
+import * as XLSX from "xlsx"
 
 export default function AdminStockPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("todas")
   const [stockFilter, setStockFilter] = useState<string>("todos")
+  const [csvPreview, setCsvPreview] = useState<Record<string, string>[] | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function handleExportXlsx() {
+    const data = localProducts.map((p) => ({
+      Código: p.code,
+      Nombre: p.name,
+      Categoría: p.category,
+      Stock: p.stock,
+      "Stock Bajo": p.lowStockThreshold,
+      "Stock Crítico": p.criticalStockThreshold,
+      Precio: p.price,
+    }))
+    const ws = XLSX.utils.json_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Inventario")
+    XLSX.writeFile(wb, `inventario_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
+  function handleCsvFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string
+      const lines = text.split("\n").filter((l) => l.trim())
+      if (lines.length < 2) return
+      const headers = lines[0].split(",").map((h) => h.trim())
+      const rows = lines.slice(1).map((line) => {
+        const vals = line.split(",").map((v) => v.trim())
+        const row: Record<string, string> = {}
+        headers.forEach((h, i) => { row[h] = vals[i] || "" })
+        return row
+      })
+      setCsvPreview(rows.slice(0, 10))
+    }
+    reader.readAsText(file)
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
 
   // Calculate stats
   const totalProducts = localProducts.length
@@ -73,11 +114,12 @@ export default function AdminStockPage() {
           <p className="text-muted-foreground">Gestiona el stock de todos los productos</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
+          <input type="file" accept=".csv" ref={fileInputRef} onChange={handleCsvFile} className="hidden" />
+          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
             <Upload className="h-4 w-4 mr-2" />
             Importar CSV
           </Button>
-          <Button variant="outline">
+          <Button variant="outline" onClick={handleExportXlsx}>
             <Download className="h-4 w-4 mr-2" />
             Exportar
           </Button>
@@ -157,6 +199,45 @@ export default function AdminStockPage() {
           <p>No se encontraron productos</p>
         </div>
       )}
+
+      {/* CSV Preview Dialog */}
+      <Dialog open={!!csvPreview} onOpenChange={(open) => !open && setCsvPreview(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Preview CSV Importado</DialogTitle>
+            <DialogDescription>Se muestran las primeras 10 filas del archivo</DialogDescription>
+          </DialogHeader>
+          {csvPreview && csvPreview.length > 0 && (
+            <div className="overflow-x-auto max-h-80">
+              <table className="w-full text-sm border">
+                <thead className="bg-gray-100">
+                  <tr>
+                    {Object.keys(csvPreview[0]).map((h) => (
+                      <th key={h} className="px-3 py-2 text-left font-medium border-b">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {csvPreview.map((row, i) => (
+                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                      {Object.values(row).map((v, j) => (
+                        <td key={j} className="px-3 py-2 border-b">{v}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCsvPreview(null)}>Cerrar</Button>
+            <Button onClick={() => {
+              alert("Importación de CSV pendiente de integración con Supabase")
+              setCsvPreview(null)
+            }}>Importar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

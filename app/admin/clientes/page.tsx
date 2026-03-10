@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card"
 import { clients, vendedores } from "@/lib/mock-data"
 import { Search, Plus, Download, Users, MapPin, TrendingUp } from "lucide-react"
 import Link from "next/link"
+import * as XLSX from "xlsx"
 
 export default function AdminClientesPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -49,7 +50,22 @@ export default function AdminClientesPage() {
           <p className="text-muted-foreground">Administra la base de datos de clientes</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={() => {
+            const data = filteredClients.map((c) => ({
+              "Razón Social": c.businessName,
+              Contacto: c.contactName,
+              WhatsApp: c.whatsapp,
+              Email: c.email,
+              Zona: c.zona,
+              "Total Pedidos": c.totalOrders,
+              "Límite Crédito": c.creditLimit,
+              Dirección: c.address,
+            }))
+            const ws = XLSX.utils.json_to_sheet(data)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, "Clientes")
+            XLSX.writeFile(wb, `clientes_${new Date().toISOString().slice(0, 10)}.xlsx`)
+          }}>
             <Download className="h-4 w-4 mr-2" />
             Exportar
           </Button>
