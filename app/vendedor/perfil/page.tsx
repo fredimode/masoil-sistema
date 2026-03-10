@@ -6,7 +6,8 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Mail, Phone, MapPin, LogOut, Loader2 } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
+import { Mail, Phone, MapPin, LogOut, Loader2, Bell, HelpCircle, MessageCircle } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
 interface VendedorProfile {
@@ -22,6 +23,8 @@ export default function VendedorPerfilPage() {
   const [profile, setProfile] = useState<VendedorProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   useEffect(() => {
     async function loadProfile() {
@@ -121,10 +124,12 @@ export default function VendedorPerfilPage() {
         <Card className="p-4">
           <h3 className="font-semibold mb-3">Configuración</h3>
           <div className="space-y-2">
-            <Button variant="outline" className="w-full justify-start bg-transparent">
+            <Button variant="outline" className="w-full justify-start bg-transparent" onClick={() => setNotifOpen(true)}>
+              <Bell className="h-4 w-4 mr-2" />
               Notificaciones
             </Button>
-            <Button variant="outline" className="w-full justify-start bg-transparent">
+            <Button variant="outline" className="w-full justify-start bg-transparent" onClick={() => setHelpOpen(true)}>
+              <HelpCircle className="h-4 w-4 mr-2" />
               Ayuda y soporte
             </Button>
             <Button
@@ -143,6 +148,51 @@ export default function VendedorPerfilPage() {
           </div>
         </Card>
       </div>
+
+      {/* Notifications Dialog */}
+      <Dialog open={notifOpen} onOpenChange={setNotifOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Notificaciones</DialogTitle>
+            <DialogDescription>Configuración de notificaciones</DialogDescription>
+          </DialogHeader>
+          <div className="py-6 text-center">
+            <Bell className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground">Próximamente podrás configurar notificaciones push y por email para cambios de estado de tus pedidos.</p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setNotifOpen(false)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Help Dialog */}
+      <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ayuda y Soporte</DialogTitle>
+            <DialogDescription>Contacta al equipo de soporte</DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <p className="text-sm text-muted-foreground">Si tenés algún problema o consulta, contactá a soporte:</p>
+            <Button asChild variant="outline" className="w-full justify-start">
+              <a href="https://wa.me/5491100000000" target="_blank" rel="noopener noreferrer">
+                <MessageCircle className="h-4 w-4 mr-2" />
+                Soporte por WhatsApp
+              </a>
+            </Button>
+            <Button asChild variant="outline" className="w-full justify-start">
+              <a href="mailto:soporte@masoil.com">
+                <Mail className="h-4 w-4 mr-2" />
+                soporte@masoil.com
+              </a>
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setHelpOpen(false)}>Cerrar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
