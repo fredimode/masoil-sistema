@@ -66,7 +66,10 @@ export function OrderTable({ orders: initialOrders }: OrderTableProps) {
                         <Eye className="h-4 w-4" />
                       </Link>
                     </Button>
-                    <Button size="sm" variant="ghost">
+                    <Button size="sm" variant="ghost" onClick={() => {
+                      const w = window.open(`/admin/pedidos/${order.id}`, "_blank")
+                      if (w) w.onload = () => w.print()
+                    }}>
                       <Printer className="h-4 w-4" />
                     </Button>
                   </div>
