@@ -1,4 +1,4 @@
-import { streamText, stepCountIs } from "ai"
+import { streamText, stepCountIs, convertToModelMessages } from "ai"
 import { anthropic } from "@ai-sdk/anthropic"
 import { z } from "zod"
 // TODO: reemplazar import de mock-data por queries a Supabase
@@ -60,7 +60,7 @@ export async function POST(req: Request) {
   const result = streamText({
     model: anthropic("claude-sonnet-4-20250514"),
     system: buildSystemPrompt(),
-    messages,
+    messages: await convertToModelMessages(messages),
     tools: {
       consultarStock: {
         description: "Consulta stock actual de un producto por nombre o código",
