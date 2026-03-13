@@ -35,3 +35,6 @@ nul
 
 # lockfiles (use pnpm only)
 package-lock.json
+
+# Excel data files (contienen datos reales, no subir)
+scripts/data/*.xlsx
