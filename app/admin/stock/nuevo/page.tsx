@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { createProduct } from "@/lib/supabase/queries"
 import type { ProductCategory } from "@/lib/types"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
@@ -32,6 +33,7 @@ export default function NuevoProductoPage() {
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [submitting, setSubmitting] = useState(false)
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
@@ -56,23 +58,31 @@ export default function NuevoProductoPage() {
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!validateForm()) return
 
-    // En un caso real, aquí se enviaría a la API
-    console.log({
-      ...formData,
-      price: parseFloat(formData.price),
-      stock: parseInt(formData.stock),
-      lowStockThreshold: parseInt(formData.lowStockThreshold),
-      criticalStockThreshold: parseInt(formData.criticalStockThreshold),
-      customLeadTime: formData.isCustomizable ? parseInt(formData.customLeadTime) : 0,
-    })
-
-    alert("Producto creado exitosamente!")
-    router.push("/admin/stock")
+    setSubmitting(true)
+    try {
+      await createProduct({
+        code: formData.code,
+        name: formData.name,
+        category: formData.category as string,
+        price: parseFloat(formData.price),
+        stock: parseInt(formData.stock),
+        isCustomizable: formData.isCustomizable,
+        customLeadTime: formData.isCustomizable ? parseInt(formData.customLeadTime) : 0,
+        lowStockThreshold: parseInt(formData.lowStockThreshold),
+        criticalStockThreshold: parseInt(formData.criticalStockThreshold),
+      })
+      router.push("/admin/stock")
+    } catch (err) {
+      console.error("Error creating product:", err)
+      alert("Error al crear el producto. Intente nuevamente.")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleChange = (field: string, value: string | boolean) => {
@@ -264,8 +274,8 @@ export default function NuevoProductoPage() {
           <Button asChild variant="outline" className="flex-1">
             <Link href="/admin/stock">Cancelar</Link>
           </Button>
-          <Button type="submit" className="flex-1">
-            Crear Producto
+          <Button type="submit" className="flex-1" disabled={submitting}>
+            {submitting ? "Creando..." : "Crear Producto"}
           </Button>
         </div>
       </form>

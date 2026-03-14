@@ -1,13 +1,14 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { ProductTable } from "@/components/admin/product-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
-import { products } from "@/lib/mock-data"
+import { fetchProducts, updateProduct, deleteProduct } from "@/lib/supabase/queries"
+import type { Product } from "@/lib/types"
 import { Search, Plus, Download, Upload } from "lucide-react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
@@ -17,17 +18,35 @@ export default function AdminStockPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>("todas")
   const [stockFilter, setStockFilter] = useState<string>("todos")
   const [csvPreview, setCsvPreview] = useState<Record<string, string>[] | null>(null)
-  const [localProducts, setLocalProducts] = useState(products)
+  const [localProducts, setLocalProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  function handleUpdateProduct(id: string, data: { price: number; stock: number }) {
-    setLocalProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, price: data.price, stock: data.stock } : p))
-    )
+  useEffect(() => {
+    fetchProducts()
+      .then(setLocalProducts)
+      .catch((err) => console.error("Error fetching products:", err))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function handleUpdateProduct(id: string, data: { price: number; stock: number }) {
+    try {
+      await updateProduct(id, { price: data.price, stock: data.stock })
+      const updated = await fetchProducts()
+      setLocalProducts(updated)
+    } catch (err) {
+      console.error("Error updating product:", err)
+    }
   }
 
-  function handleDeleteProduct(id: string) {
-    setLocalProducts((prev) => prev.filter((p) => p.id !== id))
+  async function handleDeleteProduct(id: string) {
+    try {
+      await deleteProduct(id)
+      const updated = await fetchProducts()
+      setLocalProducts(updated)
+    } catch (err) {
+      console.error("Error deleting product:", err)
+    }
   }
 
   function handleExportXlsx() {
@@ -66,6 +85,8 @@ export default function AdminStockPage() {
     reader.readAsText(file)
     if (fileInputRef.current) fileInputRef.current.value = ""
   }
+
+  if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
 
   // Calculate stats
   const totalProducts = localProducts.length

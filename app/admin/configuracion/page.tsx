@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -11,11 +11,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { vendedores as initialVendedores } from "@/lib/mock-data"
+import { fetchVendedores } from "@/lib/supabase/queries"
+import type { Vendedor } from "@/lib/types"
 import { Settings, Users, MapPin, Package, Bell, Edit, ShieldCheck, UserX } from "lucide-react"
 
 export default function AdminConfiguracionPage() {
-  const [vendedoresList, setVendedoresList] = useState(initialVendedores)
+  const [vendedoresList, setVendedoresList] = useState<Vendedor[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchVendedores()
+      .then(setVendedoresList)
+      .catch((err) => console.error("Error fetching vendedores:", err))
+      .finally(() => setLoading(false))
+  }, [])
+
   const activeVendedores = vendedoresList.filter((v) => v.role === "vendedor")
 
   // Agregar usuario dialog
@@ -45,6 +55,8 @@ export default function AdminConfiguracionPage() {
       prev.map((v) => (v.id === id ? { ...v, isActive: !v.isActive } : v))
     )
   }
+
+  if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
 
   return (
     <div className="p-4 md:p-8 space-y-6">

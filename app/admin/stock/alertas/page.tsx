@@ -1,17 +1,30 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
-import { products } from "@/lib/mock-data"
+import { fetchProducts } from "@/lib/supabase/queries"
+import type { Product } from "@/lib/types"
 import { formatCurrency } from "@/lib/utils"
 import { AlertTriangle, Package, ShoppingCart } from "lucide-react"
 
 export default function AdminStockAlertsPage() {
   const [orderDialog, setOrderDialog] = useState<{ name: string; code: string; stock: number } | null>(null)
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchProducts()
+      .then(setProducts)
+      .catch((err) => console.error("Error fetching products:", err))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
+
   // Categorize alerts
   const criticalProducts = products.filter((p) => p.stock < p.criticalStockThreshold && p.stock > 0)
   const lowProducts = products.filter((p) => p.stock < p.lowStockThreshold && p.stock >= p.criticalStockThreshold)

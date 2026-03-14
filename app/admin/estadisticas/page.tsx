@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import dynamic from "next/dynamic"
 import { Card } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { orders, products, vendedores } from "@/lib/mock-data"
+import { fetchOrders, fetchProducts, fetchVendedores } from "@/lib/supabase/queries"
+import type { Order, Product, Vendedor } from "@/lib/types"
 import { formatCurrency } from "@/lib/utils"
 import { TrendingUp, TrendingDown, DollarSign, Package, Users, ShoppingCart } from "lucide-react"
 
@@ -68,11 +69,26 @@ function calcTrend(current: number, previous: number): { value: string; up: bool
 
 export default function AdminEstadisticasPage() {
   const [period, setPeriod] = useState("mes")
+  const [orders, setOrders] = useState<Order[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [vendedores, setVendedores] = useState<Vendedor[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    Promise.all([fetchOrders(), fetchProducts(), fetchVendedores()])
+      .then(([o, p, v]) => {
+        setOrders(o)
+        setProducts(p)
+        setVendedores(v)
+      })
+      .catch((err) => console.error("Error fetching data:", err))
+      .finally(() => setLoading(false))
+  }, [])
 
   const { start, end, prevStart, prevEnd } = useMemo(() => getPeriodRange(period), [period])
 
-  const currentOrders = useMemo(() => orders.filter((o) => o.createdAt >= start && o.createdAt <= end), [start, end])
-  const prevOrders = useMemo(() => orders.filter((o) => o.createdAt >= prevStart && o.createdAt <= prevEnd), [prevStart, prevEnd])
+  const currentOrders = useMemo(() => orders.filter((o) => o.createdAt >= start && o.createdAt <= end), [orders, start, end])
+  const prevOrders = useMemo(() => orders.filter((o) => o.createdAt >= prevStart && o.createdAt <= prevEnd), [orders, prevStart, prevEnd])
 
   // Current period metrics
   const totalRevenue = currentOrders.filter((o) => o.status === "ENTREGADO").reduce((sum, o) => sum + o.total, 0)
@@ -173,9 +189,11 @@ export default function AdminEstadisticasPage() {
       })
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 10)
-  }, [currentOrders])
+  }, [products, currentOrders])
 
   const periodLabel = period === "semana" ? "semana anterior" : period === "mes" ? "mes anterior" : period === "trimestre" ? "trimestre anterior" : "año anterior"
+
+  if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
 
   return (
     <div className="p-4 md:p-8 space-y-6">
