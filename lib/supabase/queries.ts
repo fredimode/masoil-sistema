@@ -342,3 +342,147 @@ export async function fetchVendedores(): Promise<Vendedor[]> {
   if (error) throw error
   return (data || []).map(mapVendedor)
 }
+
+// ---------------------------------------------------------------------------
+// Proveedores
+// ---------------------------------------------------------------------------
+
+export async function fetchProveedores(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("proveedores")
+    .select("*")
+    .order("nombre")
+  if (error) throw error
+  return data || []
+}
+
+export async function fetchProveedorById(id: string): Promise<any | null> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase.from("proveedores").select("*").eq("id", id).single()
+  if (error) return null
+  return data
+}
+
+export async function createProveedor(prov: {
+  nombre: string; cuit?: string; empresa?: string; condicion_pago?: string;
+  cbu?: string; contactos?: string; observaciones?: string;
+}): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("proveedores").insert(prov)
+  if (error) throw error
+}
+
+export async function updateProveedor(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("proveedores").update({ ...updates, updated_at: new Date().toISOString() }).eq("id", id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
+// Compras
+// ---------------------------------------------------------------------------
+
+export async function fetchCompras(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("compras")
+    .select("*")
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function fetchOrdenesCompra(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("ordenes_compra")
+    .select("*")
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function createCompra(compra: {
+  proveedor_nombre: string; proveedor_id?: string; articulo: string;
+  medio_solicitud?: string; solicitado_por?: string; vendedor?: string;
+  nro_cotizacion?: string; nro_nota_pedido?: string; estado?: string; fecha?: string;
+}): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("compras").insert(compra)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
+// Pagos a Proveedores
+// ---------------------------------------------------------------------------
+
+export async function fetchPagosProveedores(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("pagos_proveedores")
+    .select("*")
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function createPagoProveedor(pago: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("pagos_proveedores").insert(pago)
+  if (error) throw error
+}
+
+export async function updateEstadoPago(id: string, estado: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("pagos_proveedores").update({ estado_pago: estado }).eq("id", id)
+  if (error) throw error
+}
+
+export async function fetchReclamos(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("reclamos_pagos_proveedores")
+    .select("*")
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function createReclamo(reclamo: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("reclamos_pagos_proveedores").insert(reclamo)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
+// Cobranzas
+// ---------------------------------------------------------------------------
+
+export async function fetchCobranzasPendientes(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("cobranzas_pendientes")
+    .select("*")
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+export async function createCobro(cobro: {
+  order_id?: string; fecha: string; monto: number; medio_pago: string; referencia?: string; notas?: string;
+}): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("ingresos").insert(cobro)
+  if (error) throw error
+}
+
+export async function fetchClientesConCobranza(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("clients")
+    .select("id, business_name, razon_social, zona, condicion_pago, canal_facturacion, canal_observaciones, telefono, email")
+    .order("business_name")
+  if (error) throw error
+  return data || []
+}
