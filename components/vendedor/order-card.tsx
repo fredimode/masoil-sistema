@@ -3,18 +3,17 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { getStatusConfig } from "@/lib/status-config"
-import { clients } from "@/lib/mock-data"
-import type { Order } from "@/lib/types"
+import type { Order, Client } from "@/lib/types"
 import Link from "next/link"
 import { MessageCircle } from "lucide-react"
 
 interface OrderCardProps {
   order: Order
+  client?: Client | null
 }
 
-export function OrderCard({ order }: OrderCardProps) {
+export function OrderCard({ order, client }: OrderCardProps) {
   const statusConfig = getStatusConfig(order.status)
-  const client = clients.find((c) => c.id === order.clientId)
   const whatsappNumber = client?.whatsapp?.replace(/\D/g, "")
 
   return (

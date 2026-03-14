@@ -2,66 +2,85 @@ import { streamText, stepCountIs, convertToModelMessages } from "ai"
 import { anthropic } from "@ai-sdk/anthropic"
 import { Resend } from "resend"
 import { z } from "zod"
-// TODO: reemplazar import de mock-data por queries a Supabase
-import { products, orders, clients, vendedores } from "@/lib/mock-data"
+import { createClient } from "@supabase/supabase-js"
 
-function buildSystemPrompt(): string {
-  // Resumen por categoría de producto
+function createServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
+
+async function buildSystemPrompt(): Promise<string> {
+  const supabase = createServiceClient()
+
+  // Fetch products summary
+  const { data: products } = await supabase.from("products").select("category, stock, low_stock_threshold")
   const categoryMap: Record<string, { total: number; stockBajo: number }> = {}
-  for (const p of products) {
+  for (const p of products || []) {
     if (!categoryMap[p.category]) categoryMap[p.category] = { total: 0, stockBajo: 0 }
     categoryMap[p.category].total++
-    if (p.stock < p.lowStockThreshold) categoryMap[p.category].stockBajo++
+    if (p.stock < p.low_stock_threshold) categoryMap[p.category].stockBajo++
   }
   const productSummary = Object.entries(categoryMap)
     .map(([cat, { total, stockBajo }]) => `  ${cat}: ${total} productos${stockBajo > 0 ? ` (${stockBajo} con stock bajo)` : ""}`)
     .join("\n")
 
-  // Resumen de pedidos por estado
+  // Fetch orders summary
+  const { data: orders } = await supabase.from("orders").select("status, is_urgent")
   const statusMap: Record<string, number> = {}
-  for (const o of orders) {
+  let urgentCount = 0
+  for (const o of orders || []) {
     statusMap[o.status] = (statusMap[o.status] || 0) + 1
+    if (o.is_urgent && !["ENTREGADO", "CANCELADO"].includes(o.status)) urgentCount++
   }
   const orderSummary = Object.entries(statusMap)
     .map(([status, count]) => `  ${status}: ${count}`)
     .join("\n")
-  const urgentCount = orders.filter((o) => o.isUrgent && !["ENTREGADO", "CANCELADO"].includes(o.status)).length
 
-  // Resumen de clientes por zona
+  // Fetch clients summary
+  const { data: clients } = await supabase.from("clients").select("zona")
   const zonaMap: Record<string, number> = {}
-  for (const c of clients) {
-    zonaMap[c.zona] = (zonaMap[c.zona] || 0) + 1
+  for (const c of clients || []) {
+    const z = c.zona || "Sin zona"
+    zonaMap[z] = (zonaMap[z] || 0) + 1
   }
   const clientSummary = Object.entries(zonaMap)
     .map(([zona, count]) => `  ${zona}: ${count}`)
     .join("\n")
 
-  // TODO: reemplazar mock-data por queries a Supabase
+  // Fetch active vendedores count
+  const { count: vendedorCount } = await supabase
+    .from("vendedores")
+    .select("id", { count: "exact", head: true })
+    .eq("role", "vendedor")
+    .eq("is_active", true)
 
   return `Sos el asistente interno de Masoil Lubricantes (distribuidora B2B, Argentina). Respondé siempre en español argentino. Respondé de forma concisa y directa. Máximo 2-3 oraciones salvo que el usuario pida detalle.
 
 Usá las herramientas disponibles para consultar datos específicos (productos, pedidos, clientes). No inventes datos; si no tenés la info, usá un tool.
 
 ## Resumen del sistema
-Productos (${products.length} total):
+Productos (${(products || []).length} total):
 ${productSummary}
 
-Pedidos (${orders.length} total, ${urgentCount} urgentes):
+Pedidos (${(orders || []).length} total, ${urgentCount} urgentes):
 ${orderSummary}
 
-Clientes (${clients.length} total) por zona:
+Clientes (${(clients || []).length} total) por zona:
 ${clientSummary}
 
-Vendedores activos: ${vendedores.filter((v) => v.role === "vendedor" && v.isActive).length}`
+Vendedores activos: ${vendedorCount || 0}`
 }
 
 export async function POST(req: Request) {
   try {
   const { messages } = await req.json()
+  const supabase = createServiceClient()
 
   const result = streamText({
     model: anthropic("claude-haiku-4-5-20251001"),
-    system: buildSystemPrompt(),
+    system: await buildSystemPrompt(),
     messages: await convertToModelMessages(messages),
     tools: {
       consultarStock: {
@@ -70,14 +89,12 @@ export async function POST(req: Request) {
           producto: z.string().describe("Nombre o código del producto a buscar"),
         }),
         execute: async ({ producto }: { producto: string }) => {
-          const query = producto.toLowerCase()
-          const matches = products.filter(
-            (p) =>
-              p.name.toLowerCase().includes(query) ||
-              p.code.toLowerCase().includes(query)
-          )
+          const { data: matches } = await supabase
+            .from("products")
+            .select("name, code, stock, price, category, low_stock_threshold, critical_stock_threshold")
+            .or(`name.ilike.%${producto}%,code.ilike.%${producto}%`)
 
-          if (matches.length === 0) {
+          if (!matches || matches.length === 0) {
             return { encontrado: false, mensaje: `No se encontró ningún producto que coincida con "${producto}"`, productos: [] as unknown[] }
           }
 
@@ -90,8 +107,8 @@ export async function POST(req: Request) {
               stock: p.stock,
               precio: p.price,
               categoria: p.category,
-              stockBajo: p.stock < p.lowStockThreshold,
-              stockCritico: p.stock < p.criticalStockThreshold,
+              stockBajo: p.stock < p.low_stock_threshold,
+              stockCritico: p.stock < p.critical_stock_threshold,
             })),
           }
         },
@@ -103,13 +120,25 @@ export async function POST(req: Request) {
         }),
         execute: async ({ query }: { query: string }) => {
           const q = query.toUpperCase()
-          const matches = orders.filter(
-            (o) =>
-              o.clientName.toUpperCase().includes(q) ||
-              o.status === q ||
-              o.zona.toUpperCase() === q ||
-              o.vendedorName.toUpperCase().includes(q)
-          )
+
+          // Try matching by status first, then by client name or zona
+          let matches: any[] = []
+          const { data: byStatus } = await supabase
+            .from("orders")
+            .select("id, client_name, vendedor_name, zona, status, total, is_urgent, created_at, order_items(id)")
+            .eq("status", q)
+            .limit(10)
+
+          if (byStatus && byStatus.length > 0) {
+            matches = byStatus
+          } else {
+            const { data: byName } = await supabase
+              .from("orders")
+              .select("id, client_name, vendedor_name, zona, status, total, is_urgent, created_at, order_items(id)")
+              .or(`client_name.ilike.%${query}%,vendedor_name.ilike.%${query}%,zona.ilike.%${query}%`)
+              .limit(10)
+            matches = byName || []
+          }
 
           if (matches.length === 0) {
             return { encontrados: 0, mensaje: `No se encontraron pedidos para "${query}"`, pedidos: [] as unknown[] }
@@ -118,16 +147,16 @@ export async function POST(req: Request) {
           return {
             encontrados: matches.length,
             mensaje: `Se encontraron ${matches.length} pedido(s)`,
-            pedidos: matches.slice(0, 10).map((o) => ({
+            pedidos: matches.map((o: any) => ({
               id: o.id,
-              cliente: o.clientName,
-              vendedor: o.vendedorName,
+              cliente: o.client_name,
+              vendedor: o.vendedor_name,
               zona: o.zona,
               estado: o.status,
               total: o.total,
-              urgente: o.isUrgent,
-              productos: o.products.length,
-              fecha: o.createdAt.toLocaleDateString("es-AR"),
+              urgente: o.is_urgent,
+              productos: (o.order_items || []).length,
+              fecha: new Date(o.created_at).toLocaleDateString("es-AR"),
             })),
           }
         },
