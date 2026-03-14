@@ -1,13 +1,22 @@
 -- =============================================================================
 -- Migration: Schema real para datos operativos de Masoil
--- Fecha: 2026-03-13
--- Descripción: Adapta tabla clients + crea tablas proveedores, compras,
---              ordenes_compra, pagos_proveedores, cobranzas_pendientes
+-- Fecha: 2026-03-13 (actualizado 2026-03-14)
+-- Descripción: Relaja constraints en clients, agrega columnas operativas,
+--              crea tablas proveedores, compras, ordenes_compra,
+--              pagos_proveedores, cobranzas_pendientes, gastos_vehiculos,
+--              mantenimientos_vehiculos, reclamos_pagos_proveedores
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
--- A) Modificar tabla clients: agregar columnas operativas
+-- A) Relajar NOT NULL constraints en clients para datos reales
 -- ---------------------------------------------------------------------------
+ALTER TABLE clients ALTER COLUMN vendedor_id DROP NOT NULL;
+ALTER TABLE clients ALTER COLUMN contact_name SET DEFAULT '';
+ALTER TABLE clients ALTER COLUMN contact_name DROP NOT NULL;
+ALTER TABLE clients ALTER COLUMN zona SET DEFAULT 'Capital';
+ALTER TABLE clients ALTER COLUMN zona DROP NOT NULL;
+
+-- Agregar columnas operativas
 ALTER TABLE clients
   ADD COLUMN IF NOT EXISTS cuit TEXT,
   ADD COLUMN IF NOT EXISTS razon_social TEXT,
@@ -18,7 +27,8 @@ ALTER TABLE clients
   ADD COLUMN IF NOT EXISTS canal_observaciones TEXT,
   ADD COLUMN IF NOT EXISTS telefono TEXT,
   ADD COLUMN IF NOT EXISTS contactos_adicionales TEXT,
-  ADD COLUMN IF NOT EXISTS anotaciones TEXT;
+  ADD COLUMN IF NOT EXISTS anotaciones TEXT,
+  ADD COLUMN IF NOT EXISTS cambio_razon_social TEXT;
 
 -- Índices para clients
 CREATE INDEX IF NOT EXISTS idx_clients_cuit ON clients (cuit);
@@ -31,7 +41,7 @@ CREATE TABLE IF NOT EXISTS proveedores (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   nombre TEXT NOT NULL,
   cuit TEXT,
-  empresa TEXT,  -- 'Masoil', 'Aquiles', 'Conancap', o NULL si compartido
+  empresa TEXT,
   condicion_pago TEXT,
   cbu TEXT,
   contactos TEXT,
@@ -130,6 +140,59 @@ CREATE INDEX IF NOT EXISTS idx_cobranzas_client_id ON cobranzas_pendientes (clie
 CREATE INDEX IF NOT EXISTS idx_cobranzas_razon_social ON cobranzas_pendientes (razon_social);
 
 -- ---------------------------------------------------------------------------
+-- G) Tabla gastos_vehiculos
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS gastos_vehiculos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vehiculo TEXT,
+  patente TEXT,
+  usuario TEXT,
+  fecha DATE,
+  km_inicio NUMERIC,
+  km_final NUMERIC,
+  concepto TEXT,
+  monto NUMERIC(14,2),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_gastos_vehiculos_patente ON gastos_vehiculos (patente);
+CREATE INDEX IF NOT EXISTS idx_gastos_vehiculos_usuario ON gastos_vehiculos (usuario);
+
+-- ---------------------------------------------------------------------------
+-- H) Tabla mantenimientos_vehiculos
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS mantenimientos_vehiculos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vehiculo TEXT,
+  patente TEXT,
+  descripcion TEXT,
+  fecha DATE,
+  kilometraje TEXT,
+  proveedor TEXT,
+  observaciones TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mantenimientos_patente ON mantenimientos_vehiculos (patente);
+
+-- ---------------------------------------------------------------------------
+-- I) Tabla reclamos_pagos_proveedores
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS reclamos_pagos_proveedores (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  proveedor_nombre TEXT,
+  empresa TEXT,
+  forma_pago TEXT,
+  fecha_reclamo DATE,
+  fecha_pago DATE,
+  observaciones TEXT,
+  estado TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_reclamos_estado ON reclamos_pagos_proveedores (estado);
+
+-- ---------------------------------------------------------------------------
 -- RLS: habilitar en todas las tablas nuevas
 -- ---------------------------------------------------------------------------
 ALTER TABLE proveedores ENABLE ROW LEVEL SECURITY;
@@ -137,41 +200,41 @@ ALTER TABLE compras ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ordenes_compra ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pagos_proveedores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cobranzas_pendientes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE gastos_vehiculos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mantenimientos_vehiculos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reclamos_pagos_proveedores ENABLE ROW LEVEL SECURITY;
 
--- Policies básicas: usuarios autenticados tienen acceso completo
+-- Policies: usuarios autenticados tienen acceso completo
 -- (refinar con roles admin/vendedor más adelante)
 
-CREATE POLICY "Authenticated users can read proveedores"
-  ON proveedores FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Authenticated users can insert proveedores"
-  ON proveedores FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "Authenticated users can update proveedores"
-  ON proveedores FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_read_proveedores" ON proveedores FOR SELECT TO authenticated USING (true);
+CREATE POLICY "auth_insert_proveedores" ON proveedores FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "auth_update_proveedores" ON proveedores FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Authenticated users can read compras"
-  ON compras FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Authenticated users can insert compras"
-  ON compras FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "Authenticated users can update compras"
-  ON compras FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_read_compras" ON compras FOR SELECT TO authenticated USING (true);
+CREATE POLICY "auth_insert_compras" ON compras FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "auth_update_compras" ON compras FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Authenticated users can read ordenes_compra"
-  ON ordenes_compra FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Authenticated users can insert ordenes_compra"
-  ON ordenes_compra FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "Authenticated users can update ordenes_compra"
-  ON ordenes_compra FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_read_ordenes_compra" ON ordenes_compra FOR SELECT TO authenticated USING (true);
+CREATE POLICY "auth_insert_ordenes_compra" ON ordenes_compra FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "auth_update_ordenes_compra" ON ordenes_compra FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Authenticated users can read pagos_proveedores"
-  ON pagos_proveedores FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Authenticated users can insert pagos_proveedores"
-  ON pagos_proveedores FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "Authenticated users can update pagos_proveedores"
-  ON pagos_proveedores FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_read_pagos_proveedores" ON pagos_proveedores FOR SELECT TO authenticated USING (true);
+CREATE POLICY "auth_insert_pagos_proveedores" ON pagos_proveedores FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "auth_update_pagos_proveedores" ON pagos_proveedores FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
-CREATE POLICY "Authenticated users can read cobranzas_pendientes"
-  ON cobranzas_pendientes FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Authenticated users can insert cobranzas_pendientes"
-  ON cobranzas_pendientes FOR INSERT TO authenticated WITH CHECK (true);
-CREATE POLICY "Authenticated users can update cobranzas_pendientes"
-  ON cobranzas_pendientes FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "auth_read_cobranzas" ON cobranzas_pendientes FOR SELECT TO authenticated USING (true);
+CREATE POLICY "auth_insert_cobranzas" ON cobranzas_pendientes FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "auth_update_cobranzas" ON cobranzas_pendientes FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+CREATE POLICY "auth_read_gastos_vehiculos" ON gastos_vehiculos FOR SELECT TO authenticated USING (true);
+CREATE POLICY "auth_insert_gastos_vehiculos" ON gastos_vehiculos FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "auth_update_gastos_vehiculos" ON gastos_vehiculos FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+CREATE POLICY "auth_read_mantenimientos" ON mantenimientos_vehiculos FOR SELECT TO authenticated USING (true);
+CREATE POLICY "auth_insert_mantenimientos" ON mantenimientos_vehiculos FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "auth_update_mantenimientos" ON mantenimientos_vehiculos FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+CREATE POLICY "auth_read_reclamos" ON reclamos_pagos_proveedores FOR SELECT TO authenticated USING (true);
+CREATE POLICY "auth_insert_reclamos" ON reclamos_pagos_proveedores FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "auth_update_reclamos" ON reclamos_pagos_proveedores FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
