@@ -12,11 +12,13 @@ import {
   Settings,
   Factory,
   AlertTriangle,
-  DollarSign,
   TrendingDown,
   TrendingUp,
   Percent,
   Receipt,
+  Building2,
+  ShoppingCart,
+  CreditCard,
 } from "lucide-react"
 
 const navItems = [
@@ -27,6 +29,11 @@ const navItems = [
   { href: "/admin/stock/alertas", label: "Alertas de Stock", icon: AlertTriangle },
   { href: "/admin/clientes", label: "Clientes", icon: Users },
   { href: "/admin/estadisticas", label: "Estadísticas", icon: BarChart3 },
+  { type: "separator" as const, label: "Operaciones" },
+  { href: "/admin/proveedores", label: "Proveedores", icon: Building2 },
+  { href: "/admin/compras", label: "Compras", icon: ShoppingCart },
+  { href: "/admin/pagos", label: "Pagos Proveedores", icon: CreditCard },
+  { href: "/admin/cobranzas", label: "Cobranzas", icon: Receipt },
   { type: "separator" as const, label: "Finanzas" },
   { href: "/admin/finanzas/egresos", label: "Egresos", icon: TrendingDown },
   { href: "/admin/finanzas/ingresos", label: "Ingresos", icon: TrendingUp },
