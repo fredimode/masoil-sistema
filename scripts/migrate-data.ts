@@ -390,7 +390,7 @@ async function importCompras(provMap: Map<string, string>) {
   let lastVendedor: string | null = null;
 
   for (const row of rows) {
-    const fecha = parseDate(col(row, "fecha", "Fecha", "FECHA"));
+    const fecha = parseDate(col(row, "º", "fecha", "Fecha", "FECHA"));
     const provNombre = clean(col(row, "Proveedor", "PROVEEDOR"));
     const medio = clean(col(row, "Porque medio se solicito", "Medio"));
     const solicitado = clean(col(row, "Solicitado por cliente", "Solicitado por"));
