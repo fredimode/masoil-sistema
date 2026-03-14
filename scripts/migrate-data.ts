@@ -382,19 +382,38 @@ async function importCompras(provMap: Map<string, string>) {
   console.log(`  📄 ${sheetName}: ${rows.length} filas`);
 
   const compras: any[] = [];
+  // Carry-forward: filas agrupadas repiten proveedor/fecha solo en la primera fila
+  let lastFecha: string | null = null;
+  let lastProveedor: string | null = null;
+  let lastMedio: string | null = null;
+  let lastSolicitado: string | null = null;
+  let lastVendedor: string | null = null;
+
   for (const row of rows) {
+    const fecha = parseDate(col(row, "fecha", "Fecha", "FECHA"));
     const provNombre = clean(col(row, "Proveedor", "PROVEEDOR"));
+    const medio = clean(col(row, "Porque medio se solicito", "Medio"));
+    const solicitado = clean(col(row, "Solicitado por cliente", "Solicitado por"));
+    const vendedor = clean(col(row, "Vendedor", "VENDEDOR"));
     const articulo = clean(col(row, "Articulo", "ARTICULO", "Ingreso de artículos"));
-    if (!provNombre && !articulo) continue;
+
+    // Update carry-forward values when present
+    if (fecha) lastFecha = fecha;
+    if (provNombre) lastProveedor = provNombre;
+    if (medio) lastMedio = medio;
+    if (solicitado) lastSolicitado = solicitado;
+    if (vendedor) lastVendedor = vendedor;
+
+    if (!lastProveedor && !articulo) continue;
 
     compras.push({
-      fecha: parseDate(col(row, "fecha", "Fecha", "FECHA")),
-      proveedor_nombre: provNombre,
-      proveedor_id: findProveedorId(provMap, provNombre),
+      fecha: fecha || lastFecha,
+      proveedor_nombre: provNombre || lastProveedor,
+      proveedor_id: findProveedorId(provMap, provNombre || lastProveedor),
       articulo,
-      medio_solicitud: clean(col(row, "Porque medio se solicito", "Medio")),
-      solicitado_por: clean(col(row, "Solicitado por cliente", "Solicitado por")),
-      vendedor: clean(col(row, "Vendedor", "VENDEDOR")),
+      medio_solicitud: medio || lastMedio,
+      solicitado_por: solicitado || lastSolicitado,
+      vendedor: vendedor || lastVendedor,
       nro_cotizacion: clean(col(row, "Nº de cotizacion", "Nº de cotización", "N° de cotizacion")),
       nro_nota_pedido: clean(col(row, "Nº nota de pedido", "N° nota de pedido")),
       estado: clean(col(row, "Estado", "ESTADO")),
@@ -424,19 +443,33 @@ async function importOrdenesCompra(provMap: Map<string, string>) {
   console.log(`  📄 ${sheetName}: ${rows.length} filas`);
 
   const ordenes: any[] = [];
+  // Carry-forward for grouped rows
+  let lastOcFecha: string | null = null;
+  let lastOcProveedor: string | null = null;
+  let lastOcRazon: string | null = null;
+
   for (const row of rows) {
+    const fecha = parseDate(col(row, "FECHA", "Fecha"));
     const provNombre = clean(col(row, "PROVEEDOR", "Proveedor"));
-    if (!provNombre) continue;
+    const razon = clean(col(row, "RAZON SOCIAL", "Razón Social"));
+
+    if (fecha) lastOcFecha = fecha;
+    if (provNombre) lastOcProveedor = provNombre;
+    if (razon) lastOcRazon = razon;
+
+    // Need at least proveedor or importe to be a valid row
+    const importe = parseNumber(col(row, "IMPORTE TOTAL", "Importe Total"));
+    if (!provNombre && !lastOcProveedor && importe === null) continue;
 
     ordenes.push({
-      fecha: parseDate(col(row, "FECHA", "Fecha")),
-      proveedor_nombre: provNombre,
-      proveedor_id: findProveedorId(provMap, provNombre),
-      importe_total: parseNumber(col(row, "IMPORTE TOTAL", "Importe Total")),
+      fecha: fecha || lastOcFecha,
+      proveedor_nombre: provNombre || lastOcProveedor,
+      proveedor_id: findProveedorId(provMap, provNombre || lastOcProveedor),
+      importe_total: importe,
       estado: clean(col(row, "ESTADO COMPRA", "Estado")),
       ubicacion_oc: clean(col(row, "UBICACION O.C", "UBICACION OC")),
       nro_oc: clean(col(row, "Nª OC", "N° OC", "NRO OC")),
-      razon_social: clean(col(row, "RAZON SOCIAL", "Razón Social")),
+      razon_social: razon || lastOcRazon,
     });
   }
 
@@ -461,20 +494,37 @@ async function importPagosProveedores(provMap: Map<string, string>) {
     if (rows.length === 0) continue;
     console.log(`  📄 ${sheetName}: ${rows.length} filas`);
 
+    // Carry-forward for grouped rows
+    let lastPagoProv: string | null = null;
+    let lastPagoCuit: string | null = null;
+    let lastPagoEmpresa: string | null = null;
+    let lastPagoCbu: string | null = null;
+
     for (const row of rows) {
       const provNombre = clean(col(row, "PROVEEDOR", "Proveedor"));
-      if (!provNombre) continue;
+      const cuit = clean(col(row, "CUIT", "Cuit"));
+      const empresa = clean(col(row, "EMPRESA", "Empresa"));
+      const cbu = clean(col(row, "CBU TRANSFERENCIA", "CBU"));
+
+      if (provNombre) lastPagoProv = provNombre;
+      if (cuit) lastPagoCuit = cuit;
+      if (empresa) lastPagoEmpresa = empresa;
+      if (cbu) lastPagoCbu = cbu;
+
+      // Need at least proveedor or importe
+      const importe = parseNumber(col(row, "IMPORTE", "Importe"));
+      if (!provNombre && !lastPagoProv && importe === null) continue;
 
       allPagos.push({
-        proveedor_nombre: provNombre,
-        proveedor_id: findProveedorId(provMap, provNombre),
-        cuit: clean(col(row, "CUIT", "Cuit")),
-        empresa: clean(col(row, "EMPRESA", "Empresa")),
+        proveedor_nombre: provNombre || lastPagoProv,
+        proveedor_id: findProveedorId(provMap, provNombre || lastPagoProv),
+        cuit: cuit || lastPagoCuit,
+        empresa: empresa || lastPagoEmpresa,
         fecha_fc: parseDate(col(row, "FECHA FC", "Fecha FC")),
         numero_fc: clean(col(row, "NUMERO FC/OC", "NUMERO FC", "N° FC")),
-        importe: parseNumber(col(row, "IMPORTE", "Importe")),
+        importe,
         forma_pago: clean(col(row, "FORMA y PLAZO DE PAGO", "FORMA DE PAGO", "Forma de pago")),
-        cbu: clean(col(row, "CBU TRANSFERENCIA", "CBU")),
+        cbu: cbu || lastPagoCbu,
         observaciones: clean(col(row, "observaciones", "Observaciones", "OBSERVACIONES")),
         estado_pago: clean(col(row, "ESTADO DE PAGO", "Estado de pago")),
         nro_cheque: clean(col(row, "N° CHEQUE/S", "N° CHEQUE", "NRO CHEQUE")),
