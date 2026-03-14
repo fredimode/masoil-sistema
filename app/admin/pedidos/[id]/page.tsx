@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -11,10 +11,10 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { StatusTimeline } from "@/components/vendedor/status-timeline"
 import { CountdownWidget } from "@/components/vendedor/countdown-widget"
-import { orders, clients } from "@/lib/mock-data"
+import { fetchOrderById, fetchClientById, updateOrderStatus } from "@/lib/supabase/queries"
 import { getStatusConfig } from "@/lib/status-config"
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils"
-import type { OrderStatus } from "@/lib/types"
+import type { Order, Client, OrderStatus } from "@/lib/types"
 import { ArrowLeft, Printer, MessageCircle, Phone } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -44,43 +44,85 @@ function getNextStatuses(currentStatus: OrderStatus, isCustom: boolean): OrderSt
   return options
 }
 
-export default function AdminPedidoDetailPage({ params }: { params: { id: string } }) {
-  const order = orders.find((o) => o.id === params.id)
+export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = React.use(params)
+
+  const [order, setOrder] = useState<Order | null>(null)
+  const [client, setClient] = useState<Client | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [currentStatus, setCurrentStatus] = useState<OrderStatus>("RECIBIDO")
+  const [statusHistory, setStatusHistory] = useState<Order["statusHistory"]>([])
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [newStatus, setNewStatus] = useState<string>("")
+  const [statusNote, setStatusNote] = useState("")
+  const [updating, setUpdating] = useState(false)
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const orderData = await fetchOrderById(id)
+        if (!orderData) {
+          setOrder(null)
+          setLoading(false)
+          return
+        }
+        setOrder(orderData)
+        setCurrentStatus(orderData.status)
+        setStatusHistory(orderData.statusHistory)
+
+        // Fetch client details for sidebar
+        if (orderData.clientId) {
+          const clientData = await fetchClientById(orderData.clientId)
+          setClient(clientData)
+        }
+      } catch (err) {
+        console.error("Error fetching order:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [id])
+
+  if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
 
   if (!order) {
     notFound()
   }
 
-  const client = clients.find((c) => c.id === order.clientId)
   const whatsappHref = client ? `https://wa.me/${client.whatsapp.replace(/\D/g, "")}` : null
-
-  const [currentStatus, setCurrentStatus] = useState<OrderStatus>(order.status)
-  const [statusHistory, setStatusHistory] = useState(order.statusHistory)
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [newStatus, setNewStatus] = useState<string>("")
-  const [statusNote, setStatusNote] = useState("")
 
   const nextStatuses = getNextStatuses(currentStatus, order.isCustom)
   const isTerminal = ["ENTREGADO", "CANCELADO"].includes(currentStatus)
 
-  const handleUpdateStatus = () => {
+  const handleUpdateStatus = async () => {
     if (!newStatus) return
 
-    const now = new Date()
-    setCurrentStatus(newStatus as OrderStatus)
-    setStatusHistory([
-      ...statusHistory,
-      {
-        status: newStatus as OrderStatus,
-        timestamp: now,
-        userId: "admin1",
-        userName: "Admin Masoil",
-        notes: statusNote || undefined,
-      },
-    ])
-    setNewStatus("")
-    setStatusNote("")
-    setDialogOpen(false)
+    setUpdating(true)
+    try {
+      await updateOrderStatus(order.id, newStatus as OrderStatus, "admin1", "Admin Masoil", statusNote || undefined)
+
+      const now = new Date()
+      setCurrentStatus(newStatus as OrderStatus)
+      setStatusHistory([
+        ...statusHistory,
+        {
+          status: newStatus as OrderStatus,
+          timestamp: now,
+          userId: "admin1",
+          userName: "Admin Masoil",
+          notes: statusNote || undefined,
+        },
+      ])
+      setNewStatus("")
+      setStatusNote("")
+      setDialogOpen(false)
+    } catch (err) {
+      console.error("Error updating status:", err)
+      alert("Error al actualizar el estado del pedido")
+    } finally {
+      setUpdating(false)
+    }
   }
 
   return (
@@ -158,8 +200,8 @@ export default function AdminPedidoDetailPage({ params }: { params: { id: string
                   <Button variant="outline" onClick={() => setDialogOpen(false)}>
                     Cancelar
                   </Button>
-                  <Button onClick={handleUpdateStatus} disabled={!newStatus}>
-                    Confirmar
+                  <Button onClick={handleUpdateStatus} disabled={!newStatus || updating}>
+                    {updating ? "Actualizando..." : "Confirmar"}
                   </Button>
                 </div>
               </div>

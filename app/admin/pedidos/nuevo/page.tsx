@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { clients, products, vendedores } from "@/lib/mock-data"
+import { fetchClients, fetchProducts, fetchVendedores, createOrder } from "@/lib/supabase/queries"
+import type { Client, Product, Vendedor } from "@/lib/types"
 import { formatCurrency } from "@/lib/utils"
 import { ArrowLeft, Plus, Trash2, Search, AlertTriangle } from "lucide-react"
 import Link from "next/link"
@@ -25,6 +26,11 @@ interface OrderItem {
 export default function AdminNuevoPedidoPage() {
   const router = useRouter()
 
+  const [clients, setClients] = useState<Client[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [vendedores, setVendedores] = useState<Vendedor[]>([])
+  const [loading, setLoading] = useState(true)
+
   const [selectedClientId, setSelectedClientId] = useState("")
   const [selectedVendedorId, setSelectedVendedorId] = useState("")
   const [clientSearch, setClientSearch] = useState("")
@@ -35,24 +41,36 @@ export default function AdminNuevoPedidoPage() {
   const [isUrgent, setIsUrgent] = useState(false)
   const [isCustom, setIsCustom] = useState(false)
   const [productSearch, setProductSearch] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    Promise.all([fetchClients(), fetchProducts(), fetchVendedores()])
+      .then(([clientsData, productsData, vendedoresData]) => {
+        setClients(clientsData)
+        setProducts(productsData)
+        setVendedores(vendedoresData)
+      })
+      .catch((err) => console.error("Error fetching data:", err))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
 
   const activeVendedores = vendedores.filter((v) => v.role === "vendedor" && v.isActive)
 
   // Filter clients for search
-  const filteredClients = useMemo(() => {
-    let filtered = clients
+  const filteredClients = clients.filter((c) => {
+    let match = true
     if (selectedVendedorId) {
-      filtered = clients.filter((c) => c.vendedorId === selectedVendedorId)
+      match = c.vendedorId === selectedVendedorId
     }
-    if (clientSearch) {
-      filtered = filtered.filter(
-        (c) =>
-          c.businessName.toLowerCase().includes(clientSearch.toLowerCase()) ||
-          c.contactName.toLowerCase().includes(clientSearch.toLowerCase())
-      )
+    if (match && clientSearch) {
+      match =
+        c.businessName.toLowerCase().includes(clientSearch.toLowerCase()) ||
+        c.contactName.toLowerCase().includes(clientSearch.toLowerCase())
     }
-    return filtered
-  }, [clientSearch, selectedVendedorId])
+    return match
+  })
 
   // Filter products for search
   const filteredProducts = useMemo(() => {
@@ -62,7 +80,7 @@ export default function AdminNuevoPedidoPage() {
         p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
         p.code.toLowerCase().includes(productSearch.toLowerCase())
     )
-  }, [productSearch])
+  }, [productSearch, products])
 
   const selectedClient = clients.find((c) => c.id === selectedClientId)
 
@@ -109,25 +127,43 @@ export default function AdminNuevoPedidoPage() {
 
   const subtotal = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!selectedClientId || orderItems.length === 0) {
       alert("Por favor selecciona un cliente y agrega al menos un producto")
       return
     }
 
-    // En un caso real, aquí se enviaría a la API
-    console.log({
-      clientId: selectedClientId,
-      vendedorId: selectedVendedorId,
-      items: orderItems,
-      notes,
-      isUrgent,
-      isCustom,
-      total: subtotal,
-    })
+    const vendedor = vendedores.find((v) => v.id === selectedVendedorId)
+    const client = clients.find((c) => c.id === selectedClientId)
 
-    alert("Pedido creado exitosamente!")
-    router.push("/admin/pedidos")
+    if (!client) {
+      alert("Cliente no encontrado")
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      await createOrder({
+        clientId: selectedClientId,
+        clientName: client.businessName,
+        vendedorId: selectedVendedorId || "admin1",
+        vendedorName: vendedor?.name || "Admin Masoil",
+        zona: client.zona,
+        notes,
+        isCustom,
+        isUrgent,
+        total: subtotal,
+        items: orderItems,
+      })
+
+      alert("Pedido creado exitosamente!")
+      router.push("/admin/pedidos")
+    } catch (err) {
+      console.error("Error creating order:", err)
+      alert("Error al crear el pedido. Intenta de nuevo.")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -363,9 +399,9 @@ export default function AdminNuevoPedidoPage() {
           <Button
             onClick={handleSubmit}
             className="flex-1"
-            disabled={!selectedClientId || orderItems.length === 0}
+            disabled={!selectedClientId || orderItems.length === 0 || submitting}
           >
-            Crear Pedido
+            {submitting ? "Creando..." : "Crear Pedido"}
           </Button>
         </div>
       </div>

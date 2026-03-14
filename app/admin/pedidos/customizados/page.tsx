@@ -1,13 +1,29 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { orders } from "@/lib/mock-data"
+import { fetchOrders } from "@/lib/supabase/queries"
+import type { Order } from "@/lib/types"
 import { formatCurrency, formatDate, getDaysRemaining } from "@/lib/utils"
 import { getStatusConfig } from "@/lib/status-config"
 import Link from "next/link"
 import { Eye } from "lucide-react"
 
 export default function AdminCustomOrdersPage() {
+  const [orders, setOrders] = useState<Order[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchOrders()
+      .then(setOrders)
+      .catch((err) => console.error("Error fetching orders:", err))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
+
   const customOrders = orders.filter((o) => o.isCustom)
 
   return (

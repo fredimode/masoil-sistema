@@ -1,19 +1,31 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { OrderTable } from "@/components/admin/order-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { orders } from "@/lib/mock-data"
+import { fetchOrders } from "@/lib/supabase/queries"
+import type { Order } from "@/lib/types"
 import { Search, Download, Plus } from "lucide-react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
 
 export default function AdminPedidosPage() {
+  const [orders, setOrders] = useState<Order[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("todos")
   const [zonaFilter, setZonaFilter] = useState<string>("todas")
+
+  useEffect(() => {
+    fetchOrders()
+      .then(setOrders)
+      .catch((err) => console.error("Error fetching orders:", err))
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
 
   // Filter orders
   let filteredOrders = [...orders]
