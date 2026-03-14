@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { ClientTable } from "@/components/admin/client-table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card } from "@/components/ui/card"
-import { clients, vendedores } from "@/lib/mock-data"
+import { fetchClients, fetchVendedores } from "@/lib/supabase/queries"
+import type { Client, Vendedor } from "@/lib/types"
 import { Search, Plus, Download, Users, MapPin, TrendingUp } from "lucide-react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
@@ -15,11 +16,31 @@ export default function AdminClientesPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [zonaFilter, setZonaFilter] = useState<string>("todas")
   const [vendedorFilter, setVendedorFilter] = useState<string>("todos")
+  const [clients, setClients] = useState<Client[]>([])
+  const [vendedores, setVendedores] = useState<Vendedor[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [c, v] = await Promise.all([fetchClients(), fetchVendedores()])
+        setClients(c)
+        setVendedores(v)
+      } catch (err) {
+        console.error("Error loading data:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
+
+  if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
 
   // Calculate stats
   const totalClients = clients.length
-  const avgOrders = (clients.reduce((sum, c) => sum + c.totalOrders, 0) / totalClients).toFixed(1)
-  const topClient = clients.reduce((max, c) => (c.totalOrders > max.totalOrders ? c : max), clients[0])
+  const avgOrders = totalClients > 0 ? (clients.reduce((sum, c) => sum + c.totalOrders, 0) / totalClients).toFixed(1) : "0"
+  const topClient = clients.length > 0 ? clients.reduce((max, c) => (c.totalOrders > max.totalOrders ? c : max), clients[0]) : null
 
   // Filter clients
   let filteredClients = [...clients]
@@ -111,8 +132,8 @@ export default function AdminClientesPage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Cliente Top</p>
-              <p className="text-lg font-bold truncate">{topClient.businessName}</p>
-              <p className="text-xs text-muted-foreground">{topClient.totalOrders} pedidos</p>
+              <p className="text-lg font-bold truncate">{topClient?.businessName ?? "-"}</p>
+              <p className="text-xs text-muted-foreground">{topClient ? `${topClient.totalOrders} pedidos` : ""}</p>
             </div>
           </div>
         </Card>

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,8 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { vendedores } from "@/lib/mock-data"
-import type { Zona } from "@/lib/types"
+import { fetchVendedores, createClient } from "@/lib/supabase/queries"
+import type { Vendedor, Zona } from "@/lib/types"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 
@@ -17,6 +17,25 @@ const zonas: Zona[] = ["Norte", "Capital", "Sur", "Oeste", "GBA"]
 
 export default function AdminNuevoClientePage() {
   const router = useRouter()
+  const [vendedores, setVendedores] = useState<Vendedor[]>([])
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState("")
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const v = await fetchVendedores()
+        setVendedores(v)
+      } catch (err) {
+        console.error("Error loading vendedores:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
+
   const activeVendedores = vendedores.filter((v) => v.role === "vendedor" && v.isActive)
 
   const [formData, setFormData] = useState({
@@ -66,19 +85,34 @@ export default function AdminNuevoClientePage() {
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!validateForm()) return
 
-    // En un caso real, aquí se enviaría a la API
-    console.log({
-      ...formData,
-      creditLimit: parseInt(formData.creditLimit) || 0,
-    })
+    setSubmitting(true)
+    setSubmitError("")
 
-    alert("Cliente creado exitosamente!")
-    router.push("/admin/clientes")
+    try {
+      await createClient({
+        businessName: formData.businessName,
+        contactName: formData.contactName,
+        whatsapp: formData.whatsapp,
+        email: formData.email,
+        zona: formData.zona as string,
+        vendedorId: formData.vendedorId,
+        address: formData.address,
+        paymentTerms: formData.paymentTerms,
+        creditLimit: parseInt(formData.creditLimit) || 0,
+        notes: formData.notes,
+      })
+      router.push("/admin/clientes")
+    } catch (err) {
+      console.error("Error creating client:", err)
+      setSubmitError("Error al crear el cliente. Intente nuevamente.")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleChange = (field: string, value: string) => {
@@ -87,6 +121,8 @@ export default function AdminNuevoClientePage() {
       setErrors((prev) => ({ ...prev, [field]: "" }))
     }
   }
+
+  if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
 
   return (
     <div className="p-6 md:p-8">
@@ -103,6 +139,12 @@ export default function AdminNuevoClientePage() {
             <p className="text-muted-foreground">Crear un nuevo cliente en el sistema</p>
           </div>
         </div>
+
+        {submitError && (
+          <div className="bg-destructive/10 text-destructive px-4 py-3 rounded-lg text-sm">
+            {submitError}
+          </div>
+        )}
 
         {/* Datos básicos */}
         <Card className="p-6">
@@ -290,8 +332,8 @@ export default function AdminNuevoClientePage() {
           <Button asChild variant="outline" className="flex-1">
             <Link href="/admin/clientes">Cancelar</Link>
           </Button>
-          <Button type="submit" className="flex-1">
-            Crear Cliente
+          <Button type="submit" className="flex-1" disabled={submitting}>
+            {submitting ? "Creando..." : "Crear Cliente"}
           </Button>
         </div>
       </form>

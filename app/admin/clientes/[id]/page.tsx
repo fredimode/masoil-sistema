@@ -1,41 +1,85 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
-import { clients, orders, vendedores } from "@/lib/mock-data"
+import { fetchClientById, fetchOrders, fetchVendedores } from "@/lib/supabase/queries"
+import type { Client, Order, Vendedor } from "@/lib/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { getStatusConfig } from "@/lib/status-config"
 import { ArrowLeft, Edit, MessageCircle, Phone, Mail, MapPin, CreditCard, FileText } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
-export default function AdminClientDetailPage({ params }: { params: { id: string } }) {
-  const clientData = clients.find((c) => c.id === params.id)
+export default function AdminClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = React.use(params)
 
-  if (!clientData) {
+  const [client, setClient] = useState<Client | null>(null)
+  const [clientOrders, setClientOrders] = useState<Order[]>([])
+  const [vendedor, setVendedor] = useState<Vendedor | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [notFoundState, setNotFoundState] = useState(false)
+
+  const [editOpen, setEditOpen] = useState(false)
+  const [editForm, setEditForm] = useState({
+    businessName: "",
+    contactName: "",
+    whatsapp: "",
+    email: "",
+    address: "",
+  })
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [clientData, allOrders, allVendedores] = await Promise.all([
+          fetchClientById(id),
+          fetchOrders(),
+          fetchVendedores(),
+        ])
+
+        if (!clientData) {
+          setNotFoundState(true)
+          return
+        }
+
+        setClient(clientData)
+        setClientOrders(allOrders.filter((o) => o.clientId === clientData.id))
+        setVendedor(allVendedores.find((v) => v.id === clientData.vendedorId) || null)
+        setEditForm({
+          businessName: clientData.businessName,
+          contactName: clientData.contactName,
+          whatsapp: clientData.whatsapp,
+          email: clientData.email,
+          address: clientData.address,
+        })
+      } catch (err) {
+        console.error("Error loading client:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [id])
+
+  if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
+
+  if (notFoundState) {
     notFound()
   }
 
-  const [client, setClient] = useState(clientData)
-  const [editOpen, setEditOpen] = useState(false)
-  const [editForm, setEditForm] = useState({
-    businessName: client.businessName,
-    contactName: client.contactName,
-    whatsapp: client.whatsapp,
-    email: client.email,
-    address: client.address,
-  })
+  if (!client) return null
 
   function handleSaveEdit() {
-    setClient((prev) => ({ ...prev, ...editForm }))
+    setClient((prev) => prev ? { ...prev, ...editForm } : prev)
     setEditOpen(false)
   }
 
   function openEditDialog() {
+    if (!client) return
     setEditForm({
       businessName: client.businessName,
       contactName: client.contactName,
@@ -45,9 +89,6 @@ export default function AdminClientDetailPage({ params }: { params: { id: string
     })
     setEditOpen(true)
   }
-
-  const vendedor = vendedores.find((v) => v.id === client.vendedorId)
-  const clientOrders = orders.filter((o) => o.clientId === client.id)
 
   // Calculate metrics
   const totalSpent = clientOrders.filter((o) => o.status === "ENTREGADO").reduce((sum, o) => sum + o.total, 0)
