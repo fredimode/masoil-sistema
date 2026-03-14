@@ -1,24 +1,50 @@
+"use client"
+
+import React, { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { StatusTimeline } from "@/components/vendedor/status-timeline"
 import { CountdownWidget } from "@/components/vendedor/countdown-widget"
-import { orders, clients } from "@/lib/mock-data"
+import { fetchOrderById, fetchClientById } from "@/lib/supabase/queries"
 import { getStatusConfig } from "@/lib/status-config"
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils"
+import type { Order, Client } from "@/lib/types"
 import { ArrowLeft, Phone, MessageCircle, MapPin } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
-export default function VendedorPedidoDetailPage({ params }: { params: { id: string } }) {
-  const order = orders.find((o) => o.id === params.id)
+export default function VendedorPedidoDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = React.use(params)
+  const [order, setOrder] = useState<Order | null>(null)
+  const [client, setClient] = useState<Client | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function load() {
+      const o = await fetchOrderById(id)
+      if (!o) { setLoading(false); return }
+      setOrder(o)
+      const c = await fetchClientById(o.clientId)
+      setClient(c)
+      setLoading(false)
+    }
+    load()
+  }, [id])
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
 
   if (!order) {
     notFound()
   }
 
-  const client = clients.find((c) => c.id === order.clientId)
   const statusConfig = getStatusConfig(order.status)
 
   return (
@@ -81,18 +107,20 @@ export default function VendedorPedidoDetailPage({ params }: { params: { id: str
                   <Badge variant="outline">{client.paymentTerms}</Badge>
                 </div>
               </div>
-              <div className="mt-3">
-                <Button asChild size="sm" variant="outline" className="w-full bg-transparent">
-                  <a
-                    href={`https://wa.me/${client.whatsapp.replace(/\D/g, "")}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <MessageCircle className="h-4 w-4 mr-2" />
-                    Contactar por WhatsApp
-                  </a>
-                </Button>
-              </div>
+              {client.whatsapp && (
+                <div className="mt-3">
+                  <Button asChild size="sm" variant="outline" className="w-full bg-transparent">
+                    <a
+                      href={`https://wa.me/${client.whatsapp.replace(/\D/g, "")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      Contactar por WhatsApp
+                    </a>
+                  </Button>
+                </div>
+              )}
             </Card>
           )}
 

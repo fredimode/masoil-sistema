@@ -1,12 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { clients } from "@/lib/mock-data"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
+import { fetchClientsByVendedor } from "@/lib/supabase/queries"
+import type { Client } from "@/lib/types"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Search, Phone, MessageCircle, Plus, MapPin, Mail } from "lucide-react"
 import { formatDate } from "@/lib/utils"
@@ -14,9 +15,20 @@ import Link from "next/link"
 
 export default function VendedorClientesPage() {
   const { vendedor, loading } = useCurrentVendedor()
+  const [clients, setClients] = useState<Client[]>([])
+  const [loadingClients, setLoadingClients] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
 
-  if (loading) {
+  useEffect(() => {
+    if (!vendedor?.id) return
+    setLoadingClients(true)
+    fetchClientsByVendedor(vendedor.id)
+      .then(setClients)
+      .catch(() => setClients([]))
+      .finally(() => setLoadingClients(false))
+  }, [vendedor?.id])
+
+  if (loading || loadingClients) {
     return (
       <div className="min-h-screen bg-background">
         <div className="bg-primary text-primary-foreground p-4">
@@ -31,10 +43,8 @@ export default function VendedorClientesPage() {
     )
   }
 
-  const vendedorId = vendedor?.id ?? ""
-
   // Filter clients
-  let filteredClients = clients.filter((c) => c.vendedorId === vendedorId)
+  let filteredClients = [...clients]
 
   if (searchTerm) {
     filteredClients = filteredClients.filter(

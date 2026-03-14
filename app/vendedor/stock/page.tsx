@@ -1,20 +1,47 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { StockIndicator } from "@/components/vendedor/stock-indicator"
-import { products } from "@/lib/mock-data"
+import { Skeleton } from "@/components/ui/skeleton"
+import { fetchProducts } from "@/lib/supabase/queries"
+import type { Product } from "@/lib/types"
 import { Search } from "lucide-react"
 import { formatCurrency } from "@/lib/utils"
 
 export default function VendedorStockPage() {
+  const [products, setProducts] = useState<Product[]>([])
+  const [loadingProducts, setLoadingProducts] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("todos")
 
+  useEffect(() => {
+    fetchProducts()
+      .then(setProducts)
+      .catch(() => setProducts([]))
+      .finally(() => setLoadingProducts(false))
+  }, [])
+
+  if (loadingProducts) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="bg-primary text-primary-foreground p-4">
+          <Skeleton className="h-7 w-48 mb-4 bg-primary-foreground/20" />
+          <Skeleton className="h-10 w-full bg-primary-foreground/20" />
+        </div>
+        <div className="p-4 space-y-3">
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+      </div>
+    )
+  }
+
   // Filter products
-  let filteredProducts = products
+  let filteredProducts = [...products]
 
   if (categoryFilter !== "todos") {
     filteredProducts = filteredProducts.filter((p) => p.category === categoryFilter)

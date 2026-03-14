@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
+import { createClient } from "@/lib/supabase/queries"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { Zona } from "@/lib/types"
 import { ArrowLeft } from "lucide-react"
@@ -34,6 +35,7 @@ export default function NuevoClientePage() {
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [submitting, setSubmitting] = useState(false)
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {}
@@ -63,20 +65,31 @@ export default function NuevoClientePage() {
     return Object.keys(newErrors).length === 0
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!validateForm()) return
 
-    // En un caso real, aquí se enviaría a la API
-    console.log({
-      ...formData,
-      vendedorId: vendedor?.id,
-      creditLimit: parseInt(formData.creditLimit) || 0,
-    })
-
-    alert("Cliente creado exitosamente!")
-    router.push("/vendedor/clientes")
+    setSubmitting(true)
+    try {
+      await createClient({
+        businessName: formData.businessName,
+        contactName: formData.contactName,
+        whatsapp: formData.whatsapp,
+        email: formData.email,
+        zona: formData.zona,
+        vendedorId: vendedor?.id,
+        address: formData.address,
+        paymentTerms: formData.paymentTerms,
+        creditLimit: parseInt(formData.creditLimit) || 0,
+        notes: formData.notes,
+      })
+      router.push("/vendedor/clientes")
+    } catch (err) {
+      alert("Error al crear el cliente. Intenta de nuevo.")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const handleChange = (field: string, value: string) => {
@@ -275,8 +288,8 @@ export default function NuevoClientePage() {
             <Button asChild variant="outline" className="flex-1">
               <Link href="/vendedor/clientes">Cancelar</Link>
             </Button>
-            <Button type="submit" className="flex-1">
-              Crear Cliente
+            <Button type="submit" className="flex-1" disabled={submitting}>
+              {submitting ? "Creando..." : "Crear Cliente"}
             </Button>
           </div>
         </div>

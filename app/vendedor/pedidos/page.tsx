@@ -1,14 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { orders } from "@/lib/mock-data"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
+import { fetchOrdersByVendedor } from "@/lib/supabase/queries"
+import type { Order } from "@/lib/types"
 import { Plus, Search, Clock, MapPin } from "lucide-react"
 import Link from "next/link"
 import { formatCurrency, formatDate } from "@/lib/utils"
@@ -16,10 +17,21 @@ import { getStatusConfig } from "@/lib/status-config"
 
 export default function VendedorPedidosPage() {
   const { vendedor, loading } = useCurrentVendedor()
+  const [orders, setOrders] = useState<Order[]>([])
+  const [loadingOrders, setLoadingOrders] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("todos")
 
-  if (loading) {
+  useEffect(() => {
+    if (!vendedor?.id) return
+    setLoadingOrders(true)
+    fetchOrdersByVendedor(vendedor.id)
+      .then(setOrders)
+      .catch(() => setOrders([]))
+      .finally(() => setLoadingOrders(false))
+  }, [vendedor?.id])
+
+  if (loading || loadingOrders) {
     return (
       <div className="min-h-screen bg-background">
         <div className="bg-primary text-primary-foreground p-4">
@@ -34,10 +46,8 @@ export default function VendedorPedidosPage() {
     )
   }
 
-  const vendedorId = vendedor?.id ?? ""
-
   // Filter orders
-  let filteredOrders = orders.filter((o) => o.vendedorId === vendedorId)
+  let filteredOrders = [...orders]
 
   if (statusFilter !== "todos") {
     if (statusFilter === "pendientes") {

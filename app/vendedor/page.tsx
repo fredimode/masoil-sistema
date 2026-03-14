@@ -1,20 +1,33 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { QuickStats } from "@/components/vendedor/quick-stats"
 import { OrderCard } from "@/components/vendedor/order-card"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { orders } from "@/lib/mock-data"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
+import { fetchOrdersByVendedor } from "@/lib/supabase/queries"
+import type { Order } from "@/lib/types"
 import { Plus, Search } from "lucide-react"
 import Link from "next/link"
 
 export default function VendedorDashboard() {
   const { vendedor, loading } = useCurrentVendedor()
+  const [orders, setOrders] = useState<Order[]>([])
+  const [loadingOrders, setLoadingOrders] = useState(true)
 
-  if (loading) {
+  useEffect(() => {
+    if (!vendedor?.id) return
+    setLoadingOrders(true)
+    fetchOrdersByVendedor(vendedor.id)
+      .then(setOrders)
+      .catch(() => setOrders([]))
+      .finally(() => setLoadingOrders(false))
+  }, [vendedor?.id])
+
+  if (loading || loadingOrders) {
     return (
       <div className="min-h-screen bg-background">
         <div className="bg-primary text-primary-foreground p-4 pb-6">
@@ -32,22 +45,18 @@ export default function VendedorDashboard() {
   // Fallback if vendedor not found (shouldn't happen if middleware works)
   const vendedorName = vendedor?.name ?? "Vendedor"
   const vendedorZonas = vendedor?.zonas ?? []
-  const vendedorId = vendedor?.id ?? ""
-
-  // Filter orders for current vendedor
-  const myOrders = orders.filter((o) => o.vendedorId === vendedorId)
 
   // Calculate stats
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  const todayOrders = myOrders.filter((o) => o.createdAt >= today).length
+  const todayOrders = orders.filter((o) => o.createdAt >= today).length
 
-  const pendingOrders = myOrders.filter((o) => !["ENTREGADO", "CANCELADO"].includes(o.status)).length
+  const pendingOrders = orders.filter((o) => !["ENTREGADO", "CANCELADO"].includes(o.status)).length
 
-  const urgentOrders = myOrders.filter((o) => o.isUrgent && !["ENTREGADO", "CANCELADO"].includes(o.status)).length
+  const urgentOrders = orders.filter((o) => o.isUrgent && !["ENTREGADO", "CANCELADO"].includes(o.status)).length
 
   // Get recent orders
-  const recentOrders = myOrders.slice(0, 5)
+  const recentOrders = orders.slice(0, 5)
 
   return (
     <div className="min-h-screen bg-background">

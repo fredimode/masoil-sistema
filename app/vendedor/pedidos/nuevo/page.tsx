@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useState, useMemo } from "react"
+import { Suspense, useState, useEffect, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -9,8 +9,9 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { clients, products } from "@/lib/mock-data"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
+import { fetchClientsByVendedor, fetchProducts, createOrder } from "@/lib/supabase/queries"
+import type { Client, Product } from "@/lib/types"
 import { formatCurrency } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, Plus, Trash2, Search, AlertTriangle } from "lucide-react"
@@ -30,8 +31,30 @@ function NuevoPedidoContent() {
   const preselectedClientId = searchParams.get("clientId")
   const { vendedor, loading } = useCurrentVendedor()
 
+  const [clients, setClients] = useState<Client[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [loadingData, setLoadingData] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+
   const vendedorId = vendedor?.id ?? ""
-  const myClients = clients.filter((c) => c.vendedorId === vendedorId)
+
+  useEffect(() => {
+    if (!vendedorId) return
+    setLoadingData(true)
+    Promise.all([
+      fetchClientsByVendedor(vendedorId),
+      fetchProducts(),
+    ])
+      .then(([c, p]) => {
+        setClients(c)
+        setProducts(p)
+      })
+      .catch(() => {
+        setClients([])
+        setProducts([])
+      })
+      .finally(() => setLoadingData(false))
+  }, [vendedorId])
 
   const [selectedClientId, setSelectedClientId] = useState(preselectedClientId || "")
   const [clientSearch, setClientSearch] = useState("")
@@ -44,13 +67,13 @@ function NuevoPedidoContent() {
 
   // Filter clients for search
   const filteredClients = useMemo(() => {
-    if (!clientSearch) return myClients
-    return myClients.filter(
+    if (!clientSearch) return clients
+    return clients.filter(
       (c) =>
         c.businessName.toLowerCase().includes(clientSearch.toLowerCase()) ||
         c.contactName.toLowerCase().includes(clientSearch.toLowerCase())
     )
-  }, [myClients, clientSearch])
+  }, [clients, clientSearch])
 
   // Filter products for search
   const filteredProducts = useMemo(() => {
@@ -60,7 +83,7 @@ function NuevoPedidoContent() {
         p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
         p.code.toLowerCase().includes(productSearch.toLowerCase())
     )
-  }, [productSearch])
+  }, [products, productSearch])
 
   const selectedClient = clients.find((c) => c.id === selectedClientId)
 
@@ -107,26 +130,40 @@ function NuevoPedidoContent() {
 
   const subtotal = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
-  const handleSubmit = () => {
-    if (!selectedClientId || orderItems.length === 0) {
+  const hasCustomProduct = orderItems.some((item) => {
+    const product = products.find((p) => p.id === item.productId)
+    return product?.isCustomizable
+  })
+
+  const handleSubmit = async () => {
+    if (!selectedClientId || orderItems.length === 0 || !vendedor) {
       alert("Por favor selecciona un cliente y agrega al menos un producto")
       return
     }
 
-    // En un caso real, aquí se enviaría a la API
-    console.log({
-      clientId: selectedClientId,
-      items: orderItems,
-      notes,
-      isUrgent,
-      total: subtotal,
-    })
-
-    alert("Pedido creado exitosamente!")
-    router.push("/vendedor/pedidos")
+    setSubmitting(true)
+    try {
+      await createOrder({
+        clientId: selectedClientId,
+        clientName: selectedClient?.businessName ?? "",
+        vendedorId: vendedor.id,
+        vendedorName: vendedor.name,
+        zona: selectedClient?.zona ?? "",
+        notes,
+        isCustom: hasCustomProduct,
+        isUrgent,
+        total: subtotal,
+        items: orderItems,
+      })
+      router.push("/vendedor/pedidos")
+    } catch (err) {
+      alert("Error al crear el pedido. Intenta de nuevo.")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
-  if (loading) {
+  if (loading || loadingData) {
     return (
       <div className="min-h-screen bg-background">
         <div className="bg-primary text-primary-foreground p-4">
@@ -356,9 +393,9 @@ function NuevoPedidoContent() {
             <Button
               onClick={handleSubmit}
               className="flex-1"
-              disabled={!selectedClientId || orderItems.length === 0}
+              disabled={!selectedClientId || orderItems.length === 0 || submitting}
             >
-              Crear Pedido
+              {submitting ? "Creando..." : "Crear Pedido"}
             </Button>
           </div>
         </div>
