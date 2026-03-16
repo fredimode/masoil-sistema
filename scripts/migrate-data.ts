@@ -774,6 +774,427 @@ async function importMantenimientos() {
 }
 
 // ---------------------------------------------------------------------------
+// 10) Importar productos de GestionPro
+// ---------------------------------------------------------------------------
+async function importProductosGestionPro() {
+  console.log("\n📋 Importando productos GestionPro...");
+
+  const filename = "Lista de Productos.xlsx";
+  let wb: XLSX.WorkBook;
+  try { wb = readExcel(filename); } catch (e: any) { console.error(`  ❌ ${e.message}`); return; }
+
+  const rows = sheetToRows(wb, wb.SheetNames[0]);
+  console.log(`  📄 ${wb.SheetNames[0]}: ${rows.length} filas`);
+
+  // Limpiar productos mock existentes (seed data)
+  console.log("  🧹 Limpiando productos mock...");
+  const { error: delErr } = await supabase.from("products").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  if (delErr) console.log(`  ⚠️  ${delErr.message}`);
+
+  const products: any[] = [];
+  let skipped = 0;
+
+  for (const row of rows) {
+    const codigo = clean(col(row, "Codigo", "CODIGO", "Código"));
+    const descripcion = clean(col(row, "Descripcion", "DESCRIPCION", "Descripción"));
+    if (!codigo || !descripcion) { skipped++; continue; }
+
+    products.push({
+      code: codigo,
+      name: descripcion,
+      codigo_gestionpro: codigo,
+      stock: Math.max(0, Math.round(parseNumber(col(row, "Stock_ACTUAL", "Stock_Actual")) || 0)),
+      stock_min: Math.max(0, Math.round(parseNumber(col(row, "Stock_MIN")) || 0)),
+      stock_reponer: Math.max(0, Math.round(parseNumber(col(row, "Stock_REPONER")) || 0)),
+      stock_max: Math.max(0, Math.round(parseNumber(col(row, "Stock_MAX")) || 0)),
+      low_stock_threshold: Math.max(0, Math.round(parseNumber(col(row, "Stock_MIN")) || 5)),
+      critical_stock_threshold: Math.max(0, Math.round((parseNumber(col(row, "Stock_MIN")) || 5) / 2)),
+      price: parseNumber(col(row, "Lista_1_FINAL", "Lista_1_NETO")) || 0,
+      costo_neto: parseNumber(col(row, "Costo_Neto")),
+      bonif_costo: clean(col(row, "Bonif_Costo")),
+      importe_bon_rec: parseNumber(col(row, "Importe_BonRec")),
+      costo_bonif_neto: parseNumber(col(row, "Costo_Bonif_Neto")),
+      grupo_rubro: clean(col(row, "Grupo1_Rubro")),
+      dolarizado: clean(col(row, "Dolarizado")),
+      moneda: clean(col(row, "Moneda")) || "$",
+      tasa_iva: parseNumber(col(row, "TasaIVA")) ?? 21,
+      u_medida: clean(col(row, "u_medida")),
+      ubicacion: clean(col(row, "Ubicacion", "Ubicación")),
+      observaciones: clean(col(row, "Observaciones", "OBSERVACIONES")),
+      lista_1_neto: parseNumber(col(row, "Lista_1_NETO")),
+      lista_1_final: parseNumber(col(row, "Lista_1_FINAL")),
+      lista_1_utilidad: parseNumber(col(row, "Lista_1_UTILIDAD%")),
+      lista_2_neto: parseNumber(col(row, "Lista_2_NETO")),
+      lista_2_final: parseNumber(col(row, "Lista_2_FINAL")),
+      lista_2_utilidad: parseNumber(col(row, "Lista_2_UTILIDAD%")),
+      lista_3_neto: parseNumber(col(row, "Lista_3_NETO")),
+      lista_3_final: parseNumber(col(row, "Lista_3_FINAL")),
+      lista_3_utilidad: parseNumber(col(row, "Lista_3_UTILIDAD%")),
+      lista_4_neto: parseNumber(col(row, "Lista_4_NETO")),
+      lista_4_final: parseNumber(col(row, "Lista_4_FINAL")),
+      lista_4_utilidad: parseNumber(col(row, "Lista_4_UTILIDAD%")),
+      // category queda null — grupo_rubro tiene el rubro original
+      is_customizable: false,
+      custom_lead_time: 0,
+    });
+  }
+
+  console.log(`  Productos validos: ${products.length}, saltados: ${skipped}`);
+  const inserted = await insertBatch("products", products);
+  console.log(`  ✅ Productos GestionPro: ${inserted} insertados`);
+  return inserted;
+}
+
+// ---------------------------------------------------------------------------
+// 11) Importar clientes de GestionPro
+// ---------------------------------------------------------------------------
+async function importClientesGestionPro() {
+  console.log("\n📋 Importando clientes GestionPro...");
+
+  const filename = "Lista de Clientes.xlsx";
+  let wb: XLSX.WorkBook;
+  try { wb = readExcel(filename); } catch (e: any) { console.error(`  ❌ ${e.message}`); return; }
+
+  const rows = sheetToRows(wb, wb.SheetNames[0]);
+  console.log(`  📄 ${wb.SheetNames[0]}: ${rows.length} filas`);
+
+  // Cargar vendedores para mapear nombres → ids
+  const { data: vendedores } = await supabase.from("vendedores").select("id, name");
+  const vendedorMap = new Map<string, string>();
+  if (vendedores) {
+    for (const v of vendedores) {
+      vendedorMap.set(v.name.toLowerCase().trim(), v.id);
+    }
+  }
+
+  function findVendedorId(nombre: string | null): string | null {
+    if (!nombre) return null;
+    const key = nombre.toLowerCase().trim();
+    if (vendedorMap.has(key)) return vendedorMap.get(key)!;
+    // Partial match
+    for (const [k, id] of vendedorMap) {
+      if (k.includes(key) || key.includes(k)) return id;
+    }
+    return null;
+  }
+
+  let created = 0, updated = 0, errors = 0, skipped = 0;
+
+  for (const row of rows) {
+    const razonSocial = clean(col(row, "RazonSocial", "Razon Social", "RAZON SOCIAL"));
+    if (!razonSocial) { skipped++; continue; }
+
+    const vendedorNombre = clean(col(row, "Vendedor", "VENDEDOR"));
+
+    const clientData: any = {
+      business_name: razonSocial,
+      codigo_gestionpro: clean(col(row, "Codigo", "CODIGO")),
+      nombre_fantasia: clean(col(row, "NombreFantasia", "Nombre Fantasia")),
+      domicilio: clean(col(row, "Domicilio", "DOMICILIO")),
+      localidad: clean(col(row, "Localidad", "LOCALIDAD")),
+      provincia: clean(col(row, "Provincia", "PROVINCIA")),
+      pais: clean(col(row, "Pais", "PAIS")),
+      codigo_postal: clean(col(row, "CodigoPostal", "Codigo Postal")),
+      telefono: clean(col(row, "Tel", "TEL", "Telefono")),
+      tipo_docum: clean(col(row, "TipoDOCUM", "Tipo Docum")),
+      numero_docum: clean(col(row, "NumeroDOCUM", "Numero Docum")),
+      condicion_iva: clean(col(row, "CondicionIVA", "Condicion IVA")),
+      categoria: clean(col(row, "Categoria", "CATEGORIA")),
+      bonif_recargo: clean(col(row, "Bonif/Recargo", "Bonif_Recargo")),
+      contacto: clean(col(row, "Contacto", "CONTACTO")),
+      condicion_pago: clean(col(row, "CondicionDePago", "Condicion De Pago")),
+      fecha_alta: parseDate(col(row, "FechaAlta", "Fecha Alta")),
+      fecha_ultima_compra: parseDate(col(row, "FechaUltimaCompra", "Fecha Ultima Compra")),
+      email: clean(col(row, "Email", "EMAIL")),
+      pagina_web: clean(col(row, "PaginaWEB", "Pagina Web")),
+      lista_precios: clean(col(row, "ListaPrecios", "Lista Precios")),
+      lugar_entrega: clean(col(row, "Lugar_entrega", "Lugar Entrega")),
+      codigo_proveedor: clean(col(row, "codigo_de_proveedor", "Codigo Proveedor")),
+      notes: clean(col(row, "Observaciones", "OBSERVACIONES")),
+      vendedor_id: findVendedorId(vendedorNombre),
+    };
+
+    // Buscar si ya existe por business_name (razon social)
+    const { data: existing } = await supabase
+      .from("clients")
+      .select("id")
+      .eq("business_name", razonSocial)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      const { error } = await supabase.from("clients").update(clientData).eq("id", existing[0].id);
+      if (error) { console.error(`  ❌ Update "${razonSocial}": ${error.message}`); errors++; }
+      else { updated++; }
+    } else {
+      const { error } = await supabase.from("clients").insert(clientData);
+      if (error) { console.error(`  ❌ Insert "${razonSocial}": ${error.message}`); errors++; }
+      else { created++; }
+    }
+  }
+
+  console.log(`  ✅ Clientes GP: ${created} creados, ${updated} actualizados, ${skipped} saltados, ${errors} errores`);
+  return created + updated;
+}
+
+// ---------------------------------------------------------------------------
+// 12) Importar proveedores de GestionPro
+// ---------------------------------------------------------------------------
+async function importProveedoresGestionPro() {
+  console.log("\n📋 Importando proveedores GestionPro...");
+
+  const filename = "Lista de Proveedores.xlsx";
+  let wb: XLSX.WorkBook;
+  try { wb = readExcel(filename); } catch (e: any) { console.error(`  ❌ ${e.message}`); return; }
+
+  const rows = sheetToRows(wb, wb.SheetNames[0]);
+  console.log(`  📄 ${wb.SheetNames[0]}: ${rows.length} filas`);
+
+  let created = 0, updated = 0, errors = 0, skipped = 0;
+
+  for (const row of rows) {
+    const razonSocial = clean(col(row, "RazonSocial", "Razon Social", "RAZON SOCIAL"));
+    if (!razonSocial) { skipped++; continue; }
+
+    const cuit = clean(col(row, "NumeroDOCUM", "Numero Docum"));
+
+    const provData: any = {
+      nombre: razonSocial,
+      codigo_gestionpro: clean(col(row, "Codigo", "CODIGO")),
+      nombre_fantasia: clean(col(row, "NombreFantasia", "Nombre Fantasia")),
+      domicilio: clean(col(row, "Domicilio", "DOMICILIO")),
+      localidad: clean(col(row, "Localidad", "LOCALIDAD")),
+      provincia: clean(col(row, "Provincia", "PROVINCIA")),
+      pais: clean(col(row, "Pais", "PAIS")),
+      codigo_postal: clean(col(row, "CodigoPostal", "Codigo Postal")),
+      telefono: clean(col(row, "Tel", "TEL", "Telefono")),
+      tipo_docum: clean(col(row, "TipoDOCUM", "Tipo Docum")),
+      numero_docum: cuit,
+      cuit: cuit,
+      condicion_iva: clean(col(row, "CondicionIVA", "Condicion IVA")),
+      categoria: clean(col(row, "Categoria", "CATEGORIA")),
+      contactos: clean(col(row, "Contacto", "CONTACTO")),
+      condicion_pago: clean(col(row, "CondicionDePago", "Condicion De Pago")),
+      email: clean(col(row, "Email", "EMAIL")),
+      pagina_web: clean(col(row, "PaginaWEB", "Pagina Web")),
+      imp_contable_cod: clean(col(row, "imp_contable_cod")),
+      imp_contable_descrip: clean(col(row, "imp_contable_descrip")),
+      saldo: parseNumber(col(row, "Saldo", "SALDO")),
+      observaciones: clean(col(row, "Observaciones", "OBSERVACIONES")),
+    };
+
+    // Buscar si ya existe por CUIT o nombre
+    let existing: any[] | null = null;
+    if (cuit) {
+      const { data } = await supabase.from("proveedores").select("id").eq("cuit", cuit).limit(1);
+      existing = data;
+    }
+    if (!existing || existing.length === 0) {
+      const { data } = await supabase.from("proveedores").select("id").eq("nombre", razonSocial).limit(1);
+      existing = data;
+    }
+
+    if (existing && existing.length > 0) {
+      const { error } = await supabase.from("proveedores").update(provData).eq("id", existing[0].id);
+      if (error) { console.error(`  ❌ Update "${razonSocial}": ${error.message}`); errors++; }
+      else { updated++; }
+    } else {
+      const { error } = await supabase.from("proveedores").insert(provData);
+      if (error) { console.error(`  ❌ Insert "${razonSocial}": ${error.message}`); errors++; }
+      else { created++; }
+    }
+  }
+
+  console.log(`  ✅ Proveedores GP: ${created} creados, ${updated} actualizados, ${skipped} saltados, ${errors} errores`);
+  return created + updated;
+}
+
+// ---------------------------------------------------------------------------
+// 13) Importar facturas de GestionPro
+// ---------------------------------------------------------------------------
+async function importFacturasGestionPro() {
+  console.log("\n📋 Importando facturas GestionPro...");
+
+  const filename = "Lista de Facturas.xlsx";
+  let wb: XLSX.WorkBook;
+  try { wb = readExcel(filename); } catch (e: any) { console.error(`  ❌ ${e.message}`); return; }
+
+  const rows = sheetToRows(wb, wb.SheetNames[0]);
+  console.log(`  📄 ${wb.SheetNames[0]}: ${rows.length} filas`);
+
+  const facturas: any[] = [];
+
+  for (const row of rows) {
+    facturas.push({
+      fecha: parseDate(col(row, "Fecha", "FECHA")),
+      tipo_comprobante: clean(col(row, "Comprobante", "COMPROBANTE")),
+      sucursal: clean(col(row, "Sucursal", "SUCURSAL")),
+      nro_comprobante: clean(col(row, "Nro_Comprobante", "Nro Comprobante")),
+      letra: clean(col(row, "Letra", "LETRA")),
+      cod_cliente: clean(col(row, "Cod_Cliente", "Cod Cliente")),
+      razon_social: clean(col(row, "Razon_Social_Cliente", "Razon Social Cliente")),
+      documento: clean(col(row, "Docum_Cliente", "Docum Cliente")),
+      resp_iva: clean(col(row, "Resp_IVA", "Resp IVA")),
+      provincia: clean(col(row, "Provincia", "PROVINCIA")),
+      localidad: clean(col(row, "Localidad", "LOCALIDAD")),
+      condicion_pago: clean(col(row, "Condicion_Pago", "Condicion Pago")),
+      vendedor: clean(col(row, "Vendedor", "VENDEDOR")),
+      neto: parseNumber(col(row, "Neto", "NETO")),
+      impuestos: parseNumber(col(row, "Impuestos", "IMPUESTOS")),
+      total: parseNumber(col(row, "Total", "TOTAL")),
+      moneda: clean(col(row, "Moneda", "MONEDA")),
+      cotizacion: parseNumber(col(row, "Cotizacion", "COTIZACION")),
+      cae: clean(col(row, "cae", "CAE")),
+    });
+  }
+
+  const inserted = await insertBatch("facturas_gestionpro", facturas);
+  console.log(`  ✅ Facturas GP: ${inserted} insertadas`);
+  return inserted;
+}
+
+// ---------------------------------------------------------------------------
+// 14) Importar recibos de GestionPro
+// ---------------------------------------------------------------------------
+async function importRecibosGestionPro() {
+  console.log("\n📋 Importando recibos GestionPro...");
+
+  const filename = "Lista de Recibos.xlsx";
+  let wb: XLSX.WorkBook;
+  try { wb = readExcel(filename); } catch (e: any) { console.error(`  ❌ ${e.message}`); return; }
+
+  const rows = sheetToRows(wb, wb.SheetNames[0]);
+  console.log(`  📄 ${wb.SheetNames[0]}: ${rows.length} filas`);
+
+  const recibos: any[] = [];
+
+  for (const row of rows) {
+    recibos.push({
+      fecha: parseDate(col(row, "Fecha", "FECHA")),
+      sucursal: clean(col(row, "Sucursal", "SUCURSAL")),
+      nro_comprobante: clean(col(row, "Nro_Comprobante", "Nro Comprobante")),
+      cod_cliente: clean(col(row, "Cod_Cliente", "Cod Cliente")),
+      razon_social: clean(col(row, "Razon_Social_Cliente", "Razon Social Cliente")),
+      documento: clean(col(row, "Docum_Cliente", "Docum Cliente")),
+      vendedor: clean(col(row, "Vendedor", "VENDEDOR")),
+      importe: parseNumber(col(row, "Importe", "IMPORTE")),
+    });
+  }
+
+  const inserted = await insertBatch("recibos", recibos);
+  console.log(`  ✅ Recibos GP: ${inserted} insertados`);
+  return inserted;
+}
+
+// ---------------------------------------------------------------------------
+// 15) Importar servicios fijos (Servicios Castro)
+// ---------------------------------------------------------------------------
+async function importServiciosFijos() {
+  console.log("\n📋 Importando servicios fijos...");
+
+  const filename = "Servicios Castro.xlsx";
+  let wb: XLSX.WorkBook;
+  try { wb = readExcel(filename); } catch (e: any) { console.error(`  ❌ ${e.message}`); return; }
+
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  if (!sheet) { console.error("  ❌ Hoja no encontrada"); return; }
+
+  // Leer como array de arrays — fila 0 es titulo mergeado, fila 1 son headers reales
+  const raw = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: null });
+  if (raw.length < 3) { console.log("  ⚠️  Muy pocas filas"); return; }
+
+  // Encontrar fila de headers (buscar "SERVICIO" o similar)
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(raw.length, 5); i++) {
+    const r = raw[i] as any[];
+    if (r && r.some((c: any) => c && String(c).toUpperCase().includes("SERVICIO"))) {
+      headerIdx = i;
+      break;
+    }
+  }
+
+  const headers = (raw[headerIdx] as any[]).map((h: any) => h ? String(h).trim().toUpperCase() : "");
+
+  // Map column indices
+  const servicioCol = headers.findIndex((h) => h.includes("SERVICIO"));
+  const formaCol = headers.findIndex((h) => h.includes("FORMA"));
+  const obsCol = headers.findIndex((h) => h.includes("OBSERV"));
+  const vencCol = headers.findIndex((h) => h.includes("VENCIMIENTO"));
+  const estadoCol = headers.findIndex((h) => h.includes("ESTADO"));
+  const importeCol = headers.findIndex((h) => h.includes("IMPORTE"));
+
+  const servicios: any[] = [];
+
+  for (let i = headerIdx + 1; i < raw.length; i++) {
+    const r = raw[i] as any[];
+    if (!r || r.every((v: any) => v === null || v === undefined || String(v).trim() === "")) continue;
+
+    const servicio = servicioCol >= 0 ? clean(r[servicioCol]) : null;
+    if (!servicio) continue;
+
+    servicios.push({
+      servicio,
+      forma_pago: formaCol >= 0 ? clean(r[formaCol]) : null,
+      observaciones: obsCol >= 0 ? clean(r[obsCol]) : null,
+      vencimiento: vencCol >= 0 ? parseDate(r[vencCol]) : null,
+      estado: estadoCol >= 0 ? clean(r[estadoCol]) : null,
+      importe: importeCol >= 0 ? parseNumber(r[importeCol]) : null,
+    });
+  }
+
+  console.log(`  Servicios validos: ${servicios.length}`);
+  const inserted = await insertBatch("servicios_fijos", servicios);
+  console.log(`  ✅ Servicios fijos: ${inserted} insertados`);
+  return inserted;
+}
+
+// ---------------------------------------------------------------------------
+// 16) Importar movimientos de caja chica
+// ---------------------------------------------------------------------------
+async function importMovimientosCajaChica() {
+  console.log("\n📋 Importando movimientos caja chica...");
+
+  const filename = "MOVIMIENTOS CAJA CHICA.xlsx";
+  let wb: XLSX.WorkBook;
+  try { wb = readExcel(filename); } catch (e: any) { console.error(`  ❌ ${e.message}`); return; }
+
+  // Solo importar hojas con estructura consistente
+  const targetSheets = ["2024", "2023", "FONDO-LLAVEIMP"];
+  const allMovimientos: any[] = [];
+
+  for (const sheetName of wb.SheetNames) {
+    // Solo procesar hojas target
+    if (!targetSheets.some((t) => sheetName.toUpperCase().includes(t.toUpperCase()))) {
+      console.log(`  ⏭️  Saltando hoja "${sheetName}" (estructura inconsistente)`);
+      continue;
+    }
+
+    const rows = sheetToRows(wb, sheetName);
+    if (rows.length === 0) continue;
+    console.log(`  📄 ${sheetName}: ${rows.length} filas`);
+
+    for (const row of rows) {
+      const concepto = clean(col(row, "CONCEPTO", "Concepto"));
+      const valor = parseNumber(col(row, "VALOR", "Valor"));
+      if (!concepto && valor === null) continue;
+
+      allMovimientos.push({
+        fecha: parseDate(col(row, "FECHA", "Fecha")),
+        tipo: clean(col(row, "TIPO", "Tipo")),
+        concepto,
+        valor,
+        saldo: parseNumber(col(row, "SALDO", "Saldo")),
+        periodo: sheetName,
+      });
+    }
+  }
+
+  console.log(`  Total movimientos: ${allMovimientos.length}`);
+  const inserted = await insertBatch("movimientos_caja_chica", allMovimientos);
+  console.log(`  ✅ Movimientos caja chica: ${inserted} insertados`);
+  return inserted;
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
@@ -792,7 +1213,12 @@ async function main() {
 
   // Limpiar tablas sin upsert para evitar duplicados en re-ejecución
   console.log("\n🧹 Limpiando tablas de datos (re-importación segura)...");
-  for (const table of ["compras", "ordenes_compra", "pagos_proveedores", "reclamos_pagos_proveedores", "gastos_vehiculos", "mantenimientos_vehiculos"]) {
+  const tablesToClean = [
+    "compras", "ordenes_compra", "pagos_proveedores",
+    "reclamos_pagos_proveedores", "gastos_vehiculos", "mantenimientos_vehiculos",
+    "facturas_gestionpro", "recibos", "servicios_fijos", "movimientos_caja_chica",
+  ];
+  for (const table of tablesToClean) {
     const { error } = await supabase.from(table).delete().neq("id", "00000000-0000-0000-0000-000000000000");
     if (error) {
       console.log(`  ⚠️  ${table}: ${error.message} (puede no existir aún)`);
@@ -801,6 +1227,7 @@ async function main() {
     }
   }
 
+  // --- Imports existentes ---
   await importClients();
   await importProveedores();
   await importReclamos();
@@ -814,6 +1241,32 @@ async function main() {
   await updateCanalFacturacion();
   await importGastosVehiculos();
   await importMantenimientos();
+
+  // --- Imports GestionPro (nuevos) ---
+  console.log("\n" + "=".repeat(60));
+  console.log("📦 IMPORTACIÓN GESTIONPRO");
+  console.log("=".repeat(60));
+
+  const resumen: Record<string, number> = {};
+
+  resumen["productos"] = (await importProductosGestionPro()) || 0;
+  resumen["clientes_gp"] = (await importClientesGestionPro()) || 0;
+  resumen["proveedores_gp"] = (await importProveedoresGestionPro()) || 0;
+  resumen["facturas_gp"] = (await importFacturasGestionPro()) || 0;
+  resumen["recibos"] = (await importRecibosGestionPro()) || 0;
+  resumen["servicios_fijos"] = (await importServiciosFijos()) || 0;
+  resumen["movimientos_caja"] = (await importMovimientosCajaChica()) || 0;
+
+  // Resumen final
+  console.log("\n" + "=".repeat(60));
+  console.log("📊 RESUMEN FINAL GESTIONPRO");
+  console.log("=".repeat(60));
+  let totalGP = 0;
+  for (const [tabla, count] of Object.entries(resumen)) {
+    console.log(`  ${tabla.padEnd(25)} ${count}`);
+    totalGP += count;
+  }
+  console.log(`  ${"TOTAL".padEnd(25)} ${totalGP}`);
 
   console.log("\n🎉 Migración completada!");
 }
