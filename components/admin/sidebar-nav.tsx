@@ -1,5 +1,6 @@
 "use client"
 
+import Image from "next/image"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
@@ -53,7 +54,17 @@ export function AdminSidebarContent({ onNavigate }: AdminSidebarContentProps) {
   return (
     <>
       <div className="p-6 border-b border-sidebar-border">
-        <h1 className="text-xl font-bold text-sidebar-primary">Masoil Lubricantes</h1>
+        <div className="flex items-center gap-3">
+          <Image
+            src="/iconomasoil.png"
+            alt="Masoil"
+            width={40}
+            height={40}
+            className="h-10 w-auto"
+            priority
+          />
+          <span className="text-xl font-bold text-sidebar-primary tracking-tight">masoil</span>
+        </div>
         <p className="text-sm text-sidebar-foreground/60 mt-1">Panel Administrativo</p>
       </div>
 

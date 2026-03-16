@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/card"
 import { fetchClients, fetchVendedores } from "@/lib/supabase/queries"
 import { normalizeSearch } from "@/lib/utils"
 import type { Client, Vendedor } from "@/lib/types"
-import { Search, Plus, Download, Users, MapPin, TrendingUp } from "lucide-react"
+import { Search, Plus, Download, Users, TrendingUp } from "lucide-react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
 
@@ -41,8 +41,6 @@ export default function AdminClientesPage() {
   // Calculate stats
   const totalClients = clients.length
   const avgOrders = totalClients > 0 ? (clients.reduce((sum, c) => sum + c.totalOrders, 0) / totalClients).toFixed(1) : "0"
-  const topClient = clients.length > 0 ? clients.reduce((max, c) => (c.totalOrders > max.totalOrders ? c : max), clients[0]) : null
-
   // Filter clients
   let filteredClients = [...clients]
 
@@ -102,11 +100,11 @@ export default function AdminClientesPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="p-6">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-              <Users className="h-6 w-6 text-blue-600" />
+            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+              <Users className="h-6 w-6 text-primary" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Clientes</p>
@@ -117,25 +115,12 @@ export default function AdminClientesPage() {
 
         <Card className="p-6">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-              <TrendingUp className="h-6 w-6 text-green-600" />
+            <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
+              <TrendingUp className="h-6 w-6 text-accent" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Promedio Pedidos</p>
               <p className="text-3xl font-bold">{avgOrders}</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-              <MapPin className="h-6 w-6 text-purple-600" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Cliente Top</p>
-              <p className="text-lg font-bold truncate">{topClient?.businessName ?? "-"}</p>
-              <p className="text-xs text-muted-foreground">{topClient ? `${topClient.totalOrders} pedidos` : ""}</p>
             </div>
           </div>
         </Card>
