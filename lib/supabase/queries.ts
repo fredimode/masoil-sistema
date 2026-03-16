@@ -389,8 +389,18 @@ export async function fetchCompras(): Promise<any[]> {
     .from("compras")
     .select("*")
     .order("created_at", { ascending: false })
+    .limit(50000)
   if (error) throw error
   return data || []
+}
+
+export async function fetchComprasCount(): Promise<number> {
+  const supabase = createSupabaseClient()
+  const { count, error } = await supabase
+    .from("compras")
+    .select("*", { count: "exact", head: true })
+  if (error) throw error
+  return count || 0
 }
 
 export async function fetchOrdenesCompra(): Promise<any[]> {
@@ -399,6 +409,7 @@ export async function fetchOrdenesCompra(): Promise<any[]> {
     .from("ordenes_compra")
     .select("*")
     .order("created_at", { ascending: false })
+    .limit(50000)
   if (error) throw error
   return data || []
 }
@@ -485,4 +496,68 @@ export async function fetchClientesConCobranza(): Promise<any[]> {
     .order("business_name")
   if (error) throw error
   return data || []
+}
+
+// ---------------------------------------------------------------------------
+// Delete / Update helpers for Operaciones
+// ---------------------------------------------------------------------------
+
+export async function deleteCompra(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("compras").delete().eq("id", id)
+  if (error) throw error
+}
+
+export async function updateCompra(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("compras").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+export async function deleteOrdenCompra(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("ordenes_compra").delete().eq("id", id)
+  if (error) throw error
+}
+
+export async function updateOrdenCompra(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("ordenes_compra").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+export async function deletePagoProveedor(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("pagos_proveedores").delete().eq("id", id)
+  if (error) throw error
+}
+
+export async function updatePagoProveedor(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("pagos_proveedores").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+export async function deleteReclamo(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("reclamos_pagos_proveedores").delete().eq("id", id)
+  if (error) throw error
+}
+
+export async function updateReclamo(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("reclamos_pagos_proveedores").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+export async function deleteCobranzaPendiente(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("cobranzas_pendientes").delete().eq("id", id)
+  if (error) throw error
+}
+
+export async function deleteProveedor(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("proveedores").delete().eq("id", id)
+  if (error) throw error
 }

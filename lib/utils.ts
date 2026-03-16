@@ -63,6 +63,10 @@ export function formatMoney(value: number, currency: "ARS" | "USD" = "ARS", deci
   }).format(value)
 }
 
+export function normalizeSearch(text: string): string {
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+}
+
 export function formatDateStr(dateString: string | Date | null | undefined): string {
   if (!dateString || dateString === "" || dateString === "undefined" || dateString === "null") {
     return "-"

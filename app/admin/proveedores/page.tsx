@@ -14,8 +14,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { fetchProveedores } from "@/lib/supabase/queries"
-import { Search, Plus, Download, Users, Building2, CreditCard } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { fetchProveedores, updateProveedor, deleteProveedor } from "@/lib/supabase/queries"
+import { normalizeSearch } from "@/lib/utils"
+import { Search, Plus, Download, Users, Building2, CreditCard, Eye, Pencil, Trash2 } from "lucide-react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
 
@@ -25,18 +33,24 @@ export default function AdminProveedoresPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [empresaFilter, setEmpresaFilter] = useState<string>("todos")
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const data = await fetchProveedores()
-        setProveedores(data)
-      } catch (err) {
-        console.error("Error loading proveedores:", err)
-      } finally {
-        setLoading(false)
-      }
+  // Action dialogs
+  const [editingItem, setEditingItem] = useState<any | null>(null)
+  const [editForm, setEditForm] = useState<any>({})
+  const [deletingItem, setDeletingItem] = useState<any | null>(null)
+
+  async function loadData() {
+    try {
+      const data = await fetchProveedores()
+      setProveedores(data)
+    } catch (err) {
+      console.error("Error loading proveedores:", err)
+    } finally {
+      setLoading(false)
     }
-    load()
+  }
+
+  useEffect(() => {
+    loadData()
   }, [])
 
   if (loading) {
@@ -61,11 +75,11 @@ export default function AdminProveedoresPage() {
   }
 
   if (searchTerm) {
-    const term = searchTerm.toLowerCase()
+    const term = normalizeSearch(searchTerm)
     filtered = filtered.filter(
       (p) =>
-        (p.nombre && p.nombre.toLowerCase().includes(term)) ||
-        (p.cuit && p.cuit.toLowerCase().includes(term))
+        normalizeSearch(p.nombre || "").includes(term) ||
+        normalizeSearch(p.cuit || "").includes(term)
     )
   }
 
@@ -74,7 +88,7 @@ export default function AdminProveedoresPage() {
       Nombre: p.nombre,
       CUIT: p.cuit || "",
       Empresa: p.empresa || "",
-      "Condición de Pago": p.condicion_pago || "",
+      "Condicion de Pago": p.condicion_pago || "",
       CBU: p.cbu || "",
       Contactos: p.contactos || "",
       Observaciones: p.observaciones || "",
@@ -85,13 +99,37 @@ export default function AdminProveedoresPage() {
     XLSX.writeFile(wb, `proveedores_${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
 
+  async function handleEdit() {
+    if (!editingItem) return
+    try {
+      await updateProveedor(editingItem.id, editForm)
+      setEditingItem(null)
+      setLoading(true)
+      await loadData()
+    } catch (err) {
+      console.error("Error actualizando proveedor:", err)
+    }
+  }
+
+  async function handleDelete() {
+    if (!deletingItem) return
+    try {
+      await deleteProveedor(deletingItem.id)
+      setDeletingItem(null)
+      setLoading(true)
+      await loadData()
+    } catch (err) {
+      console.error("Error eliminando proveedor:", err)
+    }
+  }
+
   return (
     <div className="p-8 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold mb-2">Proveedores</h1>
-          <p className="text-muted-foreground">Gestión de proveedores del sistema</p>
+          <p className="text-muted-foreground">Gestion de proveedores del sistema</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleExport}>
@@ -186,55 +224,151 @@ export default function AdminProveedoresPage() {
 
       {/* Table */}
       {filtered.length > 0 ? (
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nombre</TableHead>
-                <TableHead>CUIT</TableHead>
-                <TableHead>Empresa</TableHead>
-                <TableHead>Condición de pago</TableHead>
-                <TableHead>CBU</TableHead>
-                <TableHead>Contactos</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((p) => (
-                <TableRow key={p.id}>
-                  <TableCell className="font-medium">{p.nombre}</TableCell>
-                  <TableCell>{p.cuit || "-"}</TableCell>
-                  <TableCell>
-                    {p.empresa ? (
-                      <Badge variant="outline">{p.empresa}</Badge>
-                    ) : (
-                      "-"
-                    )}
-                  </TableCell>
-                  <TableCell>{p.condicion_pago || "-"}</TableCell>
-                  <TableCell>
-                    <Badge variant={p.cbu ? "default" : "secondary"}>
-                      {p.cbu ? "Si" : "No"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="max-w-[200px] truncate">
-                    {p.contactos || "-"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button asChild size="sm" variant="ghost">
-                      <Link href={`/admin/proveedores/${p.id}`}>Ver</Link>
-                    </Button>
-                  </TableCell>
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nombre</TableHead>
+                  <TableHead>CUIT</TableHead>
+                  <TableHead>Empresa</TableHead>
+                  <TableHead className="w-[150px]">Condicion de pago</TableHead>
+                  <TableHead>CBU</TableHead>
+                  <TableHead className="w-[180px]">Contactos</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((p) => (
+                  <TableRow key={p.id}>
+                    <TableCell className="font-medium">{p.nombre}</TableCell>
+                    <TableCell>{p.cuit || "-"}</TableCell>
+                    <TableCell>
+                      {p.empresa ? (
+                        <Badge variant="outline">{p.empresa}</Badge>
+                      ) : (
+                        "-"
+                      )}
+                    </TableCell>
+                    <TableCell className="max-w-[150px] truncate" title={p.condicion_pago || ""}>
+                      {p.condicion_pago || "-"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={p.cbu ? "default" : "secondary"}>
+                        {p.cbu ? "Si" : "No"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="max-w-[180px] truncate" title={p.contactos || ""}>
+                      {p.contactos || "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button asChild size="sm" variant="ghost" className="h-8 w-8 p-0">
+                          <Link href={`/admin/proveedores/${p.id}`} title="Ver">
+                            <Eye className="h-4 w-4" />
+                          </Link>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0"
+                          title="Editar"
+                          onClick={() => {
+                            setEditingItem(p)
+                            setEditForm({
+                              nombre: p.nombre || "",
+                              cuit: p.cuit || "",
+                              empresa: p.empresa || "",
+                              condicion_pago: p.condicion_pago || "",
+                              cbu: p.cbu || "",
+                              contactos: p.contactos || "",
+                              observaciones: p.observaciones || "",
+                            })
+                          }}
+                        >
+                          <Pencil className="h-4 w-4 text-blue-600" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0"
+                          title="Eliminar"
+                          onClick={() => setDeletingItem(p)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </Card>
       ) : (
         <div className="text-center py-12 text-muted-foreground border rounded-lg">
           <p>No se encontraron proveedores</p>
         </div>
       )}
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editingItem} onOpenChange={(open) => !open && setEditingItem(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar Proveedor</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Nombre</label>
+              <input type="text" value={editForm.nombre || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, nombre: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">CUIT</label>
+              <input type="text" value={editForm.cuit || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, cuit: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Empresa</label>
+              <input type="text" value={editForm.empresa || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, empresa: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Condicion de pago</label>
+              <input type="text" value={editForm.condicion_pago || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, condicion_pago: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">CBU</label>
+              <input type="text" value={editForm.cbu || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, cbu: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Contactos</label>
+              <input type="text" value={editForm.contactos || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, contactos: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Observaciones</label>
+              <textarea value={editForm.observaciones || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, observaciones: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" rows={3} />
+            </div>
+          </div>
+          <DialogFooter>
+            <button onClick={() => setEditingItem(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
+            <button onClick={handleEdit} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm">Guardar</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Dialog */}
+      <Dialog open={!!deletingItem} onOpenChange={(open) => !open && setDeletingItem(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirmar eliminacion</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            Esta seguro que desea eliminar el proveedor <strong>{deletingItem?.nombre}</strong>?
+          </p>
+          <DialogFooter>
+            <button onClick={() => setDeletingItem(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
+            <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">Eliminar</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

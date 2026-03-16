@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { fetchOrders } from "@/lib/supabase/queries"
+import { normalizeSearch } from "@/lib/utils"
 import type { Order } from "@/lib/types"
 import { Search, Download, Plus } from "lucide-react"
 import Link from "next/link"
@@ -45,11 +46,12 @@ export default function AdminPedidosPage() {
   }
 
   if (searchTerm) {
+    const q = normalizeSearch(searchTerm)
     filteredOrders = filteredOrders.filter(
       (o) =>
-        o.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        o.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        o.vendedorName.toLowerCase().includes(searchTerm.toLowerCase()),
+        normalizeSearch(o.clientName).includes(q) ||
+        normalizeSearch(o.id).includes(q) ||
+        normalizeSearch(o.vendedorName).includes(q),
     )
   }
 

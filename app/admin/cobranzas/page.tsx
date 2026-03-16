@@ -27,13 +27,15 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog"
 import {
   fetchCobranzasPendientes,
   fetchClientesConCobranza,
   createCobro,
+  deleteCobranzaPendiente,
 } from "@/lib/supabase/queries"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, normalizeSearch } from "@/lib/utils"
 import {
   Search,
   Download,
@@ -43,6 +45,8 @@ import {
   Plus,
   ArrowUpDown,
   AlertCircle,
+  Eye,
+  Trash2,
 } from "lucide-react"
 import * as XLSX from "xlsx"
 
@@ -97,7 +101,7 @@ export default function CobranzasPage() {
   const [sortField, setSortField] = useState<SortField>("fecha_comprobante")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
 
-  // Dialog
+  // Dialog - registrar cobro
   const [dialogOpen, setDialogOpen] = useState(false)
   const [cobroForm, setCobroForm] = useState({
     clienteId: "",
@@ -110,22 +114,30 @@ export default function CobranzasPage() {
   const [submitting, setSubmitting] = useState(false)
   const [successMsg, setSuccessMsg] = useState("")
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [cob, cli] = await Promise.all([
-          fetchCobranzasPendientes(),
-          fetchClientesConCobranza(),
-        ])
-        setCobranzas(cob ?? [])
-        setClientes(cli ?? [])
-      } catch (err) {
-        console.error("Error loading cobranzas:", err)
-      } finally {
-        setLoading(false)
-      }
+  // Action dialogs - Clientes
+  const [viewingCliente, setViewingCliente] = useState<ClienteCobranza | null>(null)
+
+  // Action dialogs - Comprobantes
+  const [viewingComprobante, setViewingComprobante] = useState<CobranzaPendiente | null>(null)
+  const [deletingComprobante, setDeletingComprobante] = useState<CobranzaPendiente | null>(null)
+
+  async function loadAllData() {
+    try {
+      const [cob, cli] = await Promise.all([
+        fetchCobranzasPendientes(),
+        fetchClientesConCobranza(),
+      ])
+      setCobranzas(cob ?? [])
+      setClientes(cli ?? [])
+    } catch (err) {
+      console.error("Error loading cobranzas:", err)
+    } finally {
+      setLoading(false)
     }
-    load()
+  }
+
+  useEffect(() => {
+    loadAllData()
   }, [])
 
   if (loading) {
@@ -141,7 +153,7 @@ export default function CobranzasPage() {
   const totalPendiente = cobranzas.reduce((sum, c) => sum + (c.saldo ?? 0), 0)
   const breakdownByRazonSocial = cobranzas.reduce<Record<string, number>>(
     (acc, c) => {
-      const key = c.razon_social || "Sin razón social"
+      const key = c.razon_social || "Sin razon social"
       acc[key] = (acc[key] ?? 0) + (c.saldo ?? 0)
       return acc
     },
@@ -149,59 +161,45 @@ export default function CobranzasPage() {
   )
 
   // --- Unique filter options ---
-  const uniqueRazonesSociales = [
-    ...new Set(clientes.map((c) => c.razon_social).filter(Boolean)),
-  ].sort()
-  const uniqueZonas = [
-    ...new Set(clientes.map((c) => c.zona).filter(Boolean)),
-  ].sort()
-  const uniqueCanales = [
-    ...new Set(clientes.map((c) => c.canal_facturacion).filter(Boolean)),
-  ].sort()
-  const uniqueRazonesCobranzas = [
-    ...new Set(cobranzas.map((c) => c.razon_social).filter(Boolean)),
-  ].sort()
+  const uniqueRazonesSociales = [...new Set(clientes.map((c) => c.razon_social).filter(Boolean))].sort()
+  const uniqueZonas = [...new Set(clientes.map((c) => c.zona).filter(Boolean))].sort()
+  const uniqueCanales = [...new Set(clientes.map((c) => c.canal_facturacion).filter(Boolean))].sort()
+  const uniqueRazonesCobranzas = [...new Set(cobranzas.map((c) => c.razon_social).filter(Boolean))].sort()
 
   // --- Filter clients ---
   let filteredClients = [...clientes]
   if (searchTerm) {
-    const q = searchTerm.toLowerCase()
+    const q = normalizeSearch(searchTerm)
     filteredClients = filteredClients.filter(
       (c) =>
-        (c.business_name ?? "").toLowerCase().includes(q) ||
-        (c.razon_social ?? "").toLowerCase().includes(q) ||
-        (c.email ?? "").toLowerCase().includes(q) ||
-        (c.telefono ?? "").toLowerCase().includes(q)
+        normalizeSearch(c.business_name ?? "").includes(q) ||
+        normalizeSearch(c.razon_social ?? "").includes(q) ||
+        normalizeSearch(c.email ?? "").includes(q) ||
+        normalizeSearch(c.telefono ?? "").includes(q)
     )
   }
   if (razonSocialFilter !== "todas") {
-    filteredClients = filteredClients.filter(
-      (c) => c.razon_social === razonSocialFilter
-    )
+    filteredClients = filteredClients.filter((c) => c.razon_social === razonSocialFilter)
   }
   if (zonaFilter !== "todas") {
     filteredClients = filteredClients.filter((c) => c.zona === zonaFilter)
   }
   if (canalFilter !== "todos") {
-    filteredClients = filteredClients.filter(
-      (c) => c.canal_facturacion === canalFilter
-    )
+    filteredClients = filteredClients.filter((c) => c.canal_facturacion === canalFilter)
   }
 
   // --- Filter & sort comprobantes ---
   let filteredCobranzas = [...cobranzas]
   if (comprobantesSearch) {
-    const q = comprobantesSearch.toLowerCase()
+    const q = normalizeSearch(comprobantesSearch)
     filteredCobranzas = filteredCobranzas.filter(
       (c) =>
-        (c.cliente_nombre ?? "").toLowerCase().includes(q) ||
-        (c.comprobante ?? "").toLowerCase().includes(q)
+        normalizeSearch(c.cliente_nombre ?? "").includes(q) ||
+        normalizeSearch(c.comprobante ?? "").includes(q)
     )
   }
   if (comprobantesRazonFilter !== "todas") {
-    filteredCobranzas = filteredCobranzas.filter(
-      (c) => c.razon_social === comprobantesRazonFilter
-    )
+    filteredCobranzas = filteredCobranzas.filter((c) => c.razon_social === comprobantesRazonFilter)
   }
   filteredCobranzas.sort((a, b) => {
     let valA: string | number = a[sortField] ?? ""
@@ -211,9 +209,7 @@ export default function CobranzasPage() {
     }
     valA = String(valA)
     valB = String(valB)
-    return sortDir === "asc"
-      ? valA.localeCompare(valB)
-      : valB.localeCompare(valA)
+    return sortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA)
   })
 
   function toggleSort(field: SortField) {
@@ -240,10 +236,7 @@ export default function CobranzasPage() {
     const ws = XLSX.utils.json_to_sheet(data)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "Clientes Cobranza")
-    XLSX.writeFile(
-      wb,
-      `cobranzas_clientes_${new Date().toISOString().slice(0, 10)}.xlsx`
-    )
+    XLSX.writeFile(wb, `cobranzas_clientes_${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
 
   // --- Canal badge color ---
@@ -281,18 +274,26 @@ export default function CobranzasPage() {
         notas: "",
         fecha: new Date().toISOString().slice(0, 10),
       })
-      // Reload data
-      const [cob, cli] = await Promise.all([
-        fetchCobranzasPendientes(),
-        fetchClientesConCobranza(),
-      ])
-      setCobranzas(cob ?? [])
-      setClientes(cli ?? [])
+      setLoading(true)
+      await loadAllData()
     } catch (err) {
       console.error("Error registrando cobro:", err)
       alert("Error al registrar el cobro. Intente nuevamente.")
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  // --- Delete comprobante ---
+  async function handleDeleteComprobante() {
+    if (!deletingComprobante) return
+    try {
+      await deleteCobranzaPendiente(deletingComprobante.id)
+      setDeletingComprobante(null)
+      setLoading(true)
+      await loadAllData()
+    } catch (err) {
+      console.error("Error eliminando comprobante:", err)
     }
   }
 
@@ -304,9 +305,7 @@ export default function CobranzasPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold mb-2">Cobranzas</h1>
-          <p className="text-muted-foreground">
-            Gestiona cobros pendientes y facturacion de clientes
-          </p>
+          <p className="text-muted-foreground">Gestiona cobros pendientes y facturacion de clientes</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={exportClients}>
@@ -322,9 +321,7 @@ export default function CobranzasPage() {
 
       {/* Success toast */}
       {successMsg && (
-        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg">
-          {successMsg}
-        </div>
+        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg">{successMsg}</div>
       )}
 
       {/* Empty cobranzas notice */}
@@ -333,20 +330,16 @@ export default function CobranzasPage() {
           <div className="flex items-start gap-3">
             <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
             <div>
-              <p className="font-semibold text-lg">
-                Sin datos de cobranzas cargados
-              </p>
+              <p className="font-semibold text-lg">Sin datos de cobranzas cargados</p>
               <p className="text-muted-foreground mt-1">
-                No hay comprobantes pendientes de cobro en el sistema. Cuando se
-                carguen facturas o comprobantes, apareceran aqui con el detalle
-                de saldos pendientes.
+                No hay comprobantes pendientes de cobro en el sistema. Cuando se carguen facturas o comprobantes, apareceran aqui con el detalle de saldos pendientes.
               </p>
             </div>
           </div>
         </Card>
       )}
 
-      {/* Stats cards (only when cobranzas data exists) */}
+      {/* Stats cards */}
       {hasCobranzas && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="p-6">
@@ -355,53 +348,36 @@ export default function CobranzasPage() {
                 <Users className="h-6 w-6 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">
-                  Clientes con deuda
-                </p>
+                <p className="text-sm text-muted-foreground">Clientes con deuda</p>
                 <p className="text-3xl font-bold">{uniqueClientsWithDebt}</p>
               </div>
             </div>
           </Card>
-
           <Card className="p-6">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
                 <DollarSign className="h-6 w-6 text-red-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">
-                  Monto total pendiente
-                </p>
-                <p className="text-3xl font-bold">
-                  {formatCurrency(totalPendiente)}
-                </p>
+                <p className="text-sm text-muted-foreground">Monto total pendiente</p>
+                <p className="text-3xl font-bold">{formatCurrency(totalPendiente)}</p>
               </div>
             </div>
           </Card>
-
           <Card className="p-6">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
                 <Building2 className="h-6 w-6 text-purple-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground mb-1">
-                  Deuda por razon social
-                </p>
+                <p className="text-sm text-muted-foreground mb-1">Deuda por razon social</p>
                 <div className="space-y-0.5">
-                  {Object.entries(breakdownByRazonSocial).map(
-                    ([razon, monto]) => (
-                      <div
-                        key={razon}
-                        className="flex justify-between text-sm gap-4"
-                      >
-                        <span className="truncate">{razon}</span>
-                        <span className="font-semibold whitespace-nowrap">
-                          {formatCurrency(monto)}
-                        </span>
-                      </div>
-                    )
-                  )}
+                  {Object.entries(breakdownByRazonSocial).map(([razon, monto]) => (
+                    <div key={razon} className="flex justify-between text-sm gap-4">
+                      <span className="truncate">{razon}</span>
+                      <span className="font-semibold whitespace-nowrap">{formatCurrency(monto)}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
@@ -425,41 +401,29 @@ export default function CobranzasPage() {
             />
           </div>
           <Select value={razonSocialFilter} onValueChange={setRazonSocialFilter}>
-            <SelectTrigger className="w-52">
-              <SelectValue placeholder="Razon Social" />
-            </SelectTrigger>
+            <SelectTrigger className="w-52"><SelectValue placeholder="Razon Social" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todas">Todas las razones sociales</SelectItem>
               {uniqueRazonesSociales.map((r) => (
-                <SelectItem key={r} value={r}>
-                  {r}
-                </SelectItem>
+                <SelectItem key={r} value={r}>{r}</SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Select value={zonaFilter} onValueChange={setZonaFilter}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Zona" />
-            </SelectTrigger>
+            <SelectTrigger className="w-40"><SelectValue placeholder="Zona" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todas">Todas las zonas</SelectItem>
               {uniqueZonas.map((z) => (
-                <SelectItem key={z} value={z}>
-                  {z}
-                </SelectItem>
+                <SelectItem key={z} value={z}>{z}</SelectItem>
               ))}
             </SelectContent>
           </Select>
           <Select value={canalFilter} onValueChange={setCanalFilter}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Canal Facturacion" />
-            </SelectTrigger>
+            <SelectTrigger className="w-48"><SelectValue placeholder="Canal Facturacion" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="todos">Todos los canales</SelectItem>
               {uniqueCanales.map((c) => (
-                <SelectItem key={c} value={c}>
-                  {c}
-                </SelectItem>
+                <SelectItem key={c} value={c}>{c}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -467,49 +431,46 @@ export default function CobranzasPage() {
 
         {/* Table */}
         <div className="border rounded-lg overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Razon Social</TableHead>
-                <TableHead>Zona</TableHead>
-                <TableHead>Condicion de pago</TableHead>
-                <TableHead>Canal Facturacion</TableHead>
-                <TableHead>Observaciones canal</TableHead>
-                <TableHead>Telefono</TableHead>
-                <TableHead>Email</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredClients.length === 0 ? (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell
-                    colSpan={8}
-                    className="text-center py-8 text-muted-foreground"
-                  >
-                    No se encontraron clientes
-                  </TableCell>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Razon Social</TableHead>
+                  <TableHead>Zona</TableHead>
+                  <TableHead>Condicion de pago</TableHead>
+                  <TableHead>Canal Facturacion</TableHead>
+                  <TableHead className="w-[150px]">Telefono</TableHead>
+                  <TableHead className="w-[150px]">Email</TableHead>
+                  <TableHead className="text-center w-[70px]">Acciones</TableHead>
                 </TableRow>
-              ) : (
-                filteredClients.map((c) => (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium">
-                      {c.business_name}
-                    </TableCell>
-                    <TableCell>{c.razon_social || "-"}</TableCell>
-                    <TableCell>{c.zona || "-"}</TableCell>
-                    <TableCell>{c.condicion_pago || "-"}</TableCell>
-                    <TableCell>{canalBadge(c.canal_facturacion)}</TableCell>
-                    <TableCell className="max-w-[200px] truncate">
-                      {c.canal_observaciones || "-"}
-                    </TableCell>
-                    <TableCell>{c.telefono || "-"}</TableCell>
-                    <TableCell>{c.email || "-"}</TableCell>
+              </TableHeader>
+              <TableBody>
+                {filteredClients.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No se encontraron clientes</TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ) : (
+                  filteredClients.map((c) => (
+                    <TableRow key={c.id}>
+                      <TableCell className="font-medium">{c.business_name}</TableCell>
+                      <TableCell>{c.razon_social || "-"}</TableCell>
+                      <TableCell>{c.zona || "-"}</TableCell>
+                      <TableCell>{c.condicion_pago || "-"}</TableCell>
+                      <TableCell>{canalBadge(c.canal_facturacion)}</TableCell>
+                      <TableCell className="max-w-[150px] truncate" title={c.telefono || ""}>{c.telefono || "-"}</TableCell>
+                      <TableCell className="max-w-[150px] truncate" title={c.email || ""}>{c.email || "-"}</TableCell>
+                      <TableCell className="text-center">
+                        <button onClick={() => setViewingCliente(c)} className="p-1 hover:bg-gray-200 rounded" title="Ver detalle">
+                          <Eye className="h-4 w-4 text-gray-600" />
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       </div>
 
@@ -529,21 +490,12 @@ export default function CobranzasPage() {
                 className="pl-10"
               />
             </div>
-            <Select
-              value={comprobantesRazonFilter}
-              onValueChange={setComprobantesRazonFilter}
-            >
-              <SelectTrigger className="w-52">
-                <SelectValue placeholder="Razon Social" />
-              </SelectTrigger>
+            <Select value={comprobantesRazonFilter} onValueChange={setComprobantesRazonFilter}>
+              <SelectTrigger className="w-52"><SelectValue placeholder="Razon Social" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="todas">
-                  Todas las razones sociales
-                </SelectItem>
+                <SelectItem value="todas">Todas las razones sociales</SelectItem>
                 {uniqueRazonesCobranzas.map((r) => (
-                  <SelectItem key={r} value={r}>
-                    {r}
-                  </SelectItem>
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -551,116 +503,123 @@ export default function CobranzasPage() {
 
           {/* Table */}
           <div className="border rounded-lg overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead
-                    className="cursor-pointer select-none"
-                    onClick={() => toggleSort("cliente_nombre")}
-                  >
-                    <span className="flex items-center gap-1">
-                      Cliente
-                      <ArrowUpDown className="h-3 w-3" />
-                    </span>
-                  </TableHead>
-                  <TableHead
-                    className="cursor-pointer select-none"
-                    onClick={() => toggleSort("comprobante")}
-                  >
-                    <span className="flex items-center gap-1">
-                      Comprobante
-                      <ArrowUpDown className="h-3 w-3" />
-                    </span>
-                  </TableHead>
-                  <TableHead
-                    className="cursor-pointer select-none"
-                    onClick={() => toggleSort("fecha_comprobante")}
-                  >
-                    <span className="flex items-center gap-1">
-                      Fecha
-                      <ArrowUpDown className="h-3 w-3" />
-                    </span>
-                  </TableHead>
-                  <TableHead
-                    className="cursor-pointer select-none text-right"
-                    onClick={() => toggleSort("total")}
-                  >
-                    <span className="flex items-center justify-end gap-1">
-                      Total
-                      <ArrowUpDown className="h-3 w-3" />
-                    </span>
-                  </TableHead>
-                  <TableHead
-                    className="cursor-pointer select-none text-right"
-                    onClick={() => toggleSort("saldo")}
-                  >
-                    <span className="flex items-center justify-end gap-1">
-                      Saldo
-                      <ArrowUpDown className="h-3 w-3" />
-                    </span>
-                  </TableHead>
-                  <TableHead
-                    className="cursor-pointer select-none text-right"
-                    onClick={() => toggleSort("saldo_acumulado")}
-                  >
-                    <span className="flex items-center justify-end gap-1">
-                      Saldo Acumulado
-                      <ArrowUpDown className="h-3 w-3" />
-                    </span>
-                  </TableHead>
-                  <TableHead
-                    className="cursor-pointer select-none"
-                    onClick={() => toggleSort("razon_social")}
-                  >
-                    <span className="flex items-center gap-1">
-                      Razon Social
-                      <ArrowUpDown className="h-3 w-3" />
-                    </span>
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredCobranzas.length === 0 ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell
-                      colSpan={7}
-                      className="text-center py-8 text-muted-foreground"
-                    >
-                      No se encontraron comprobantes
-                    </TableCell>
+                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("cliente_nombre")}>
+                      <span className="flex items-center gap-1">Cliente<ArrowUpDown className="h-3 w-3" /></span>
+                    </TableHead>
+                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("comprobante")}>
+                      <span className="flex items-center gap-1">Comprobante<ArrowUpDown className="h-3 w-3" /></span>
+                    </TableHead>
+                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("fecha_comprobante")}>
+                      <span className="flex items-center gap-1">Fecha<ArrowUpDown className="h-3 w-3" /></span>
+                    </TableHead>
+                    <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("total")}>
+                      <span className="flex items-center justify-end gap-1">Total<ArrowUpDown className="h-3 w-3" /></span>
+                    </TableHead>
+                    <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("saldo")}>
+                      <span className="flex items-center justify-end gap-1">Saldo<ArrowUpDown className="h-3 w-3" /></span>
+                    </TableHead>
+                    <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("saldo_acumulado")}>
+                      <span className="flex items-center justify-end gap-1">Saldo Acum.<ArrowUpDown className="h-3 w-3" /></span>
+                    </TableHead>
+                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("razon_social")}>
+                      <span className="flex items-center gap-1">Razon Social<ArrowUpDown className="h-3 w-3" /></span>
+                    </TableHead>
+                    <TableHead className="text-center w-[80px]">Acciones</TableHead>
                   </TableRow>
-                ) : (
-                  filteredCobranzas.map((c) => (
-                    <TableRow key={c.id}>
-                      <TableCell className="font-medium">
-                        {c.cliente_nombre}
-                      </TableCell>
-                      <TableCell>{c.comprobante}</TableCell>
-                      <TableCell>
-                        {c.fecha_comprobante
-                          ? new Date(
-                              c.fecha_comprobante + "T00:00:00"
-                            ).toLocaleDateString("es-AR")
-                          : "-"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(c.total ?? 0)}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {formatCurrency(c.saldo ?? 0)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {formatCurrency(c.saldo_acumulado ?? 0)}
-                      </TableCell>
-                      <TableCell>{c.razon_social || "-"}</TableCell>
+                </TableHeader>
+                <TableBody>
+                  {filteredCobranzas.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No se encontraron comprobantes</TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ) : (
+                    filteredCobranzas.map((c) => (
+                      <TableRow key={c.id}>
+                        <TableCell className="font-medium">{c.cliente_nombre}</TableCell>
+                        <TableCell>{c.comprobante}</TableCell>
+                        <TableCell>
+                          {c.fecha_comprobante
+                            ? new Date(c.fecha_comprobante + "T00:00:00").toLocaleDateString("es-AR")
+                            : "-"}
+                        </TableCell>
+                        <TableCell className="text-right">{formatCurrency(c.total ?? 0)}</TableCell>
+                        <TableCell className="text-right font-semibold">{formatCurrency(c.saldo ?? 0)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(c.saldo_acumulado ?? 0)}</TableCell>
+                        <TableCell>{c.razon_social || "-"}</TableCell>
+                        <TableCell className="text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button onClick={() => setViewingComprobante(c)} className="p-1 hover:bg-gray-200 rounded" title="Ver detalle">
+                              <Eye className="h-4 w-4 text-gray-600" />
+                            </button>
+                            <button onClick={() => setDeletingComprobante(c)} className="p-1 hover:bg-gray-200 rounded" title="Eliminar">
+                              <Trash2 className="h-4 w-4 text-red-600" />
+                            </button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </div>
       )}
+
+      {/* ========== DIALOGS ========== */}
+
+      {/* View Cliente */}
+      <Dialog open={!!viewingCliente} onOpenChange={(open) => !open && setViewingCliente(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Detalle de Cliente</DialogTitle></DialogHeader>
+          {viewingCliente && (
+            <div className="space-y-2 text-sm">
+              <div><strong>Cliente:</strong> {viewingCliente.business_name || "-"}</div>
+              <div><strong>Razon Social:</strong> {viewingCliente.razon_social || "-"}</div>
+              <div><strong>Zona:</strong> {viewingCliente.zona || "-"}</div>
+              <div><strong>Condicion de pago:</strong> {viewingCliente.condicion_pago || "-"}</div>
+              <div><strong>Canal Facturacion:</strong> {viewingCliente.canal_facturacion || "-"}</div>
+              <div><strong>Observaciones canal:</strong> {viewingCliente.canal_observaciones || "-"}</div>
+              <div><strong>Telefono:</strong> {viewingCliente.telefono || "-"}</div>
+              <div><strong>Email:</strong> {viewingCliente.email || "-"}</div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* View Comprobante */}
+      <Dialog open={!!viewingComprobante} onOpenChange={(open) => !open && setViewingComprobante(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Detalle de Comprobante</DialogTitle></DialogHeader>
+          {viewingComprobante && (
+            <div className="space-y-2 text-sm">
+              <div><strong>Cliente:</strong> {viewingComprobante.cliente_nombre || "-"}</div>
+              <div><strong>Comprobante:</strong> {viewingComprobante.comprobante || "-"}</div>
+              <div><strong>Fecha:</strong> {viewingComprobante.fecha_comprobante ? new Date(viewingComprobante.fecha_comprobante + "T00:00:00").toLocaleDateString("es-AR") : "-"}</div>
+              <div><strong>Total:</strong> {formatCurrency(viewingComprobante.total ?? 0)}</div>
+              <div><strong>Saldo:</strong> {formatCurrency(viewingComprobante.saldo ?? 0)}</div>
+              <div><strong>Saldo Acumulado:</strong> {formatCurrency(viewingComprobante.saldo_acumulado ?? 0)}</div>
+              <div><strong>Razon Social:</strong> {viewingComprobante.razon_social || "-"}</div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Comprobante */}
+      <Dialog open={!!deletingComprobante} onOpenChange={(open) => !open && setDeletingComprobante(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Confirmar eliminacion</DialogTitle></DialogHeader>
+          <p className="text-sm text-gray-600">Esta seguro que desea eliminar el comprobante <strong>{deletingComprobante?.comprobante}</strong> de {deletingComprobante?.cliente_nombre}?</p>
+          <DialogFooter>
+            <button onClick={() => setDeletingComprobante(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
+            <button onClick={handleDeleteComprobante} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">Eliminar</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Registrar Cobro Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -671,118 +630,46 @@ export default function CobranzasPage() {
           <div className="space-y-4 mt-2">
             <div className="space-y-2">
               <Label htmlFor="cobro-cliente">Cliente</Label>
-              <Select
-                value={cobroForm.clienteId}
-                onValueChange={(v) =>
-                  setCobroForm((f) => ({ ...f, clienteId: v }))
-                }
-              >
-                <SelectTrigger id="cobro-cliente">
-                  <SelectValue placeholder="Seleccionar cliente" />
-                </SelectTrigger>
+              <Select value={cobroForm.clienteId} onValueChange={(v) => setCobroForm((f) => ({ ...f, clienteId: v }))}>
+                <SelectTrigger id="cobro-cliente"><SelectValue placeholder="Seleccionar cliente" /></SelectTrigger>
                 <SelectContent>
                   {clientes.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.business_name}
-                    </SelectItem>
+                    <SelectItem key={c.id} value={c.id}>{c.business_name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-
             <div className="space-y-2">
               <Label htmlFor="cobro-fecha">Fecha</Label>
-              <Input
-                id="cobro-fecha"
-                type="date"
-                value={cobroForm.fecha}
-                onChange={(e) =>
-                  setCobroForm((f) => ({ ...f, fecha: e.target.value }))
-                }
-              />
+              <Input id="cobro-fecha" type="date" value={cobroForm.fecha} onChange={(e) => setCobroForm((f) => ({ ...f, fecha: e.target.value }))} />
             </div>
-
             <div className="space-y-2">
-              <Label htmlFor="cobro-monto">
-                Monto <span className="text-red-500">*</span>
-              </Label>
-              <Input
-                id="cobro-monto"
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={cobroForm.monto}
-                onChange={(e) =>
-                  setCobroForm((f) => ({ ...f, monto: e.target.value }))
-                }
-              />
+              <Label htmlFor="cobro-monto">Monto <span className="text-red-500">*</span></Label>
+              <Input id="cobro-monto" type="number" step="0.01" min="0" placeholder="0.00" value={cobroForm.monto} onChange={(e) => setCobroForm((f) => ({ ...f, monto: e.target.value }))} />
             </div>
-
             <div className="space-y-2">
-              <Label htmlFor="cobro-medio">
-                Medio de pago <span className="text-red-500">*</span>
-              </Label>
-              <Select
-                value={cobroForm.medioPago}
-                onValueChange={(v) =>
-                  setCobroForm((f) => ({ ...f, medioPago: v }))
-                }
-              >
-                <SelectTrigger id="cobro-medio">
-                  <SelectValue placeholder="Seleccionar medio" />
-                </SelectTrigger>
+              <Label htmlFor="cobro-medio">Medio de pago <span className="text-red-500">*</span></Label>
+              <Select value={cobroForm.medioPago} onValueChange={(v) => setCobroForm((f) => ({ ...f, medioPago: v }))}>
+                <SelectTrigger id="cobro-medio"><SelectValue placeholder="Seleccionar medio" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Efectivo">Efectivo</SelectItem>
                   <SelectItem value="Transferencia">Transferencia</SelectItem>
                   <SelectItem value="Cheque">Cheque</SelectItem>
-                  <SelectItem value="Cuenta Corriente">
-                    Cuenta Corriente
-                  </SelectItem>
+                  <SelectItem value="Cuenta Corriente">Cuenta Corriente</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-
             <div className="space-y-2">
               <Label htmlFor="cobro-referencia">Referencia</Label>
-              <Input
-                id="cobro-referencia"
-                placeholder="Nro. de transferencia, cheque, etc."
-                value={cobroForm.referencia}
-                onChange={(e) =>
-                  setCobroForm((f) => ({
-                    ...f,
-                    referencia: e.target.value,
-                  }))
-                }
-              />
+              <Input id="cobro-referencia" placeholder="Nro. de transferencia, cheque, etc." value={cobroForm.referencia} onChange={(e) => setCobroForm((f) => ({ ...f, referencia: e.target.value }))} />
             </div>
-
             <div className="space-y-2">
               <Label htmlFor="cobro-notas">Notas</Label>
-              <Textarea
-                id="cobro-notas"
-                placeholder="Observaciones adicionales..."
-                rows={3}
-                value={cobroForm.notas}
-                onChange={(e) =>
-                  setCobroForm((f) => ({ ...f, notas: e.target.value }))
-                }
-              />
+              <Textarea id="cobro-notas" placeholder="Observaciones adicionales..." rows={3} value={cobroForm.notas} onChange={(e) => setCobroForm((f) => ({ ...f, notas: e.target.value }))} />
             </div>
-
             <div className="flex justify-end gap-2 pt-2">
-              <Button
-                variant="outline"
-                onClick={() => setDialogOpen(false)}
-                disabled={submitting}
-              >
-                Cancelar
-              </Button>
-              <Button
-                onClick={handleSubmitCobro}
-                disabled={submitting || !cobroForm.monto || !cobroForm.medioPago}
-              >
+              <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={submitting}>Cancelar</Button>
+              <Button onClick={handleSubmitCobro} disabled={submitting || !cobroForm.monto || !cobroForm.medioPago}>
                 {submitting ? "Registrando..." : "Registrar Cobro"}
               </Button>
             </div>

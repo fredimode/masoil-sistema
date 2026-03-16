@@ -3,10 +3,26 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
-import { formatCurrency, formatDate } from "@/lib/utils"
-import { fetchCompras, fetchOrdenesCompra } from "@/lib/supabase/queries"
+import { formatCurrency, formatDate, normalizeSearch } from "@/lib/utils"
+import {
+  fetchCompras,
+  fetchComprasCount,
+  fetchOrdenesCompra,
+  deleteCompra,
+  updateCompra,
+  deleteOrdenCompra,
+  updateOrdenCompra,
+} from "@/lib/supabase/queries"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Eye, Pencil, Trash2 } from "lucide-react"
 
 function estadoBadge(estado: string) {
   const lower = (estado || "").toLowerCase()
@@ -21,15 +37,11 @@ function estadoBadge(estado: string) {
   return <Badge variant="outline">{estado || "-"}</Badge>
 }
 
-function truncate(text: string | null, max: number) {
-  if (!text) return "-"
-  return text.length > max ? text.slice(0, max) + "..." : text
-}
-
 export default function ComprasPage() {
   const [loading, setLoading] = useState(true)
   const [compras, setCompras] = useState<any[]>([])
   const [ordenes, setOrdenes] = useState<any[]>([])
+  const [totalComprasCount, setTotalComprasCount] = useState(0)
 
   // Filters - Compras
   const [busquedaCompras, setBusquedaCompras] = useState("")
@@ -41,19 +53,37 @@ export default function ComprasPage() {
   const [razonSocialOrdenes, setRazonSocialOrdenes] = useState("")
   const [estadoOrdenes, setEstadoOrdenes] = useState("")
 
-  useEffect(() => {
-    async function loadData() {
-      setLoading(true)
-      try {
-        const [c, o] = await Promise.all([fetchCompras(), fetchOrdenesCompra()])
-        setCompras(c)
-        setOrdenes(o)
-      } catch (err) {
-        console.error("Error cargando compras:", err)
-      } finally {
-        setLoading(false)
-      }
+  // Action dialogs - Compras
+  const [viewingCompra, setViewingCompra] = useState<any | null>(null)
+  const [editingCompra, setEditingCompra] = useState<any | null>(null)
+  const [editCompraForm, setEditCompraForm] = useState<any>({})
+  const [deletingCompra, setDeletingCompra] = useState<any | null>(null)
+
+  // Action dialogs - Ordenes
+  const [viewingOrden, setViewingOrden] = useState<any | null>(null)
+  const [editingOrden, setEditingOrden] = useState<any | null>(null)
+  const [editOrdenForm, setEditOrdenForm] = useState<any>({})
+  const [deletingOrden, setDeletingOrden] = useState<any | null>(null)
+
+  async function loadData() {
+    setLoading(true)
+    try {
+      const [c, o, count] = await Promise.all([
+        fetchCompras(),
+        fetchOrdenesCompra(),
+        fetchComprasCount(),
+      ])
+      setCompras(c)
+      setOrdenes(o)
+      setTotalComprasCount(count)
+    } catch (err) {
+      console.error("Error cargando compras:", err)
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     loadData()
   }, [])
 
@@ -64,21 +94,20 @@ export default function ComprasPage() {
   const comprasFiltradas = compras.filter((c) => {
     const matchBusqueda =
       !busquedaCompras ||
-      (c.proveedor_nombre || "").toLowerCase().includes(busquedaCompras.toLowerCase()) ||
-      (c.articulo || "").toLowerCase().includes(busquedaCompras.toLowerCase())
+      normalizeSearch(c.proveedor_nombre || "").includes(normalizeSearch(busquedaCompras)) ||
+      normalizeSearch(c.articulo || "").includes(normalizeSearch(busquedaCompras))
     const matchEstado = !estadoCompras || c.estado === estadoCompras
     const matchVendedor = !vendedorCompras || c.vendedor === vendedorCompras
     return matchBusqueda && matchEstado && matchVendedor
   })
 
-  const totalCompras = compras.length
   const pendientesCompras = compras.filter((c) =>
     (c.estado || "").toLowerCase().includes("pendiente")
   ).length
   const recibidasCompras = compras.filter((c) =>
     (c.estado || "").toLowerCase().includes("recibid")
   ).length
-  const otrasCompras = totalCompras - pendientesCompras - recibidasCompras
+  const otrasCompras = totalComprasCount - pendientesCompras - recibidasCompras
 
   // --- Ordenes derived data ---
   const estadosOrdenes = [...new Set(ordenes.map((o) => o.estado).filter(Boolean))]
@@ -87,8 +116,8 @@ export default function ComprasPage() {
   const ordenesFiltradas = ordenes.filter((o) => {
     const matchBusqueda =
       !busquedaOrdenes ||
-      (o.proveedor_nombre || "").toLowerCase().includes(busquedaOrdenes.toLowerCase()) ||
-      (o.nro_oc || "").toLowerCase().includes(busquedaOrdenes.toLowerCase())
+      normalizeSearch(o.proveedor_nombre || "").includes(normalizeSearch(busquedaOrdenes)) ||
+      normalizeSearch(o.nro_oc || "").includes(normalizeSearch(busquedaOrdenes))
     const matchRazon = !razonSocialOrdenes || o.razon_social === razonSocialOrdenes
     const matchEstado = !estadoOrdenes || o.estado === estadoOrdenes
     return matchBusqueda && matchRazon && matchEstado
@@ -101,6 +130,51 @@ export default function ComprasPage() {
     const key = o.razon_social || "Sin razon social"
     montosPorRazon[key] = (montosPorRazon[key] || 0) + (Number(o.importe_total) || 0)
   })
+
+  // --- Actions ---
+  async function handleDeleteCompra() {
+    if (!deletingCompra) return
+    try {
+      await deleteCompra(deletingCompra.id)
+      setDeletingCompra(null)
+      await loadData()
+    } catch (err) {
+      console.error("Error eliminando compra:", err)
+    }
+  }
+
+  async function handleEditCompra() {
+    if (!editingCompra) return
+    try {
+      await updateCompra(editingCompra.id, editCompraForm)
+      setEditingCompra(null)
+      await loadData()
+    } catch (err) {
+      console.error("Error actualizando compra:", err)
+    }
+  }
+
+  async function handleDeleteOrden() {
+    if (!deletingOrden) return
+    try {
+      await deleteOrdenCompra(deletingOrden.id)
+      setDeletingOrden(null)
+      await loadData()
+    } catch (err) {
+      console.error("Error eliminando orden:", err)
+    }
+  }
+
+  async function handleEditOrden() {
+    if (!editingOrden) return
+    try {
+      await updateOrdenCompra(editingOrden.id, editOrdenForm)
+      setEditingOrden(null)
+      await loadData()
+    } catch (err) {
+      console.error("Error actualizando orden:", err)
+    }
+  }
 
   // --- Export ---
   function exportComprasXLSX() {
@@ -171,10 +245,10 @@ export default function ComprasPage() {
         {/* ===================== TAB: COMPRAS ===================== */}
         <TabsContent value="compras">
           {/* Stats */}
-          <div className="grid grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             <div className="bg-white rounded-xl p-4 border shadow-sm">
               <p className="text-sm text-gray-500">Total Compras</p>
-              <p className="text-2xl font-bold text-gray-900">{totalCompras}</p>
+              <p className="text-2xl font-bold text-gray-900">{totalComprasCount}</p>
             </div>
             <div className="bg-amber-50 rounded-xl p-4 border border-amber-200 shadow-sm">
               <p className="text-sm text-amber-600">Pendientes</p>
@@ -206,9 +280,7 @@ export default function ComprasPage() {
             >
               <option value="">Todos los estados</option>
               {estadosCompras.map((e) => (
-                <option key={e} value={e}>
-                  {e}
-                </option>
+                <option key={e} value={e}>{e}</option>
               ))}
             </select>
             <select
@@ -218,9 +290,7 @@ export default function ComprasPage() {
             >
               <option value="">Todos los vendedores</option>
               {vendedoresUnicos.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
+                <option key={v} value={v}>{v}</option>
               ))}
             </select>
             <button
@@ -239,32 +309,74 @@ export default function ComprasPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm table-fixed">
                   <thead className="bg-gray-100">
                     <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Fecha</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Proveedor</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Articulo</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Vendedor</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Estado</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Nro Cotizacion</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Nro Nota Pedido</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[90px]">Fecha</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[160px]">Proveedor</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Articulo</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[100px]">Vendedor</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[120px]">Estado</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[100px]">Nro Cotiz.</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[100px]">Nro NP</th>
+                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[100px]">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     {comprasFiltradas.map((c, idx) => (
                       <tr key={c.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                        <td className="px-4 py-3 text-gray-600">
+                        <td className="px-3 py-3 text-gray-600">
                           {c.fecha ? formatDate(new Date(c.fecha)) : "-"}
                         </td>
-                        <td className="px-4 py-3 font-medium text-gray-900">{c.proveedor_nombre || "-"}</td>
-                        <td className="px-4 py-3 text-gray-600" title={c.articulo || ""}>
-                          {truncate(c.articulo, 50)}
+                        <td className="px-3 py-3 font-medium text-gray-900 truncate" title={c.proveedor_nombre || ""}>
+                          {c.proveedor_nombre || "-"}
                         </td>
-                        <td className="px-4 py-3 text-gray-600">{c.vendedor || "-"}</td>
-                        <td className="px-4 py-3">{estadoBadge(c.estado)}</td>
-                        <td className="px-4 py-3 text-gray-600">{c.nro_cotizacion || "-"}</td>
-                        <td className="px-4 py-3 text-gray-600">{c.nro_nota_pedido || "-"}</td>
+                        <td className="px-3 py-3 text-gray-600 truncate" title={c.articulo || ""}>
+                          {c.articulo || "-"}
+                        </td>
+                        <td className="px-3 py-3 text-gray-600 truncate" title={c.vendedor || ""}>
+                          {c.vendedor || "-"}
+                        </td>
+                        <td className="px-3 py-3" title={c.estado || ""}>
+                          <div className="max-w-[120px] truncate">{estadoBadge(c.estado)}</div>
+                        </td>
+                        <td className="px-3 py-3 text-gray-600 truncate">{c.nro_cotizacion || "-"}</td>
+                        <td className="px-3 py-3 text-gray-600 truncate">{c.nro_nota_pedido || "-"}</td>
+                        <td className="px-3 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => setViewingCompra(c)}
+                              className="p-1 hover:bg-gray-200 rounded"
+                              title="Ver detalle"
+                            >
+                              <Eye className="h-4 w-4 text-gray-600" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingCompra(c)
+                                setEditCompraForm({
+                                  proveedor_nombre: c.proveedor_nombre || "",
+                                  articulo: c.articulo || "",
+                                  vendedor: c.vendedor || "",
+                                  estado: c.estado || "",
+                                  nro_cotizacion: c.nro_cotizacion || "",
+                                  nro_nota_pedido: c.nro_nota_pedido || "",
+                                })
+                              }}
+                              className="p-1 hover:bg-gray-200 rounded"
+                              title="Editar"
+                            >
+                              <Pencil className="h-4 w-4 text-blue-600" />
+                            </button>
+                            <button
+                              onClick={() => setDeletingCompra(c)}
+                              className="p-1 hover:bg-gray-200 rounded"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="h-4 w-4 text-red-600" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -290,9 +402,7 @@ export default function ComprasPage() {
               .slice(0, 2)
               .map(([razon, monto]) => (
                 <div key={razon} className="bg-white rounded-xl p-4 border shadow-sm">
-                  <p className="text-sm text-gray-500 truncate" title={razon}>
-                    {razon}
-                  </p>
+                  <p className="text-sm text-gray-500 truncate" title={razon}>{razon}</p>
                   <p className="text-2xl font-bold text-gray-900">{formatCurrency(monto)}</p>
                 </div>
               ))}
@@ -314,9 +424,7 @@ export default function ComprasPage() {
             >
               <option value="">Todas las razones sociales</option>
               {razonesSociales.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
+                <option key={r} value={r}>{r}</option>
               ))}
             </select>
             <select
@@ -326,9 +434,7 @@ export default function ComprasPage() {
             >
               <option value="">Todos los estados</option>
               {estadosOrdenes.map((e) => (
-                <option key={e} value={e}>
-                  {e}
-                </option>
+                <option key={e} value={e}>{e}</option>
               ))}
             </select>
             <button
@@ -347,32 +453,72 @@ export default function ComprasPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm table-fixed">
                   <thead className="bg-gray-100">
                     <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Fecha</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Proveedor</th>
-                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Importe Total</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Estado</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Nro OC</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Razon Social</th>
-                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Ubicacion</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[90px]">Fecha</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[160px]">Proveedor</th>
+                      <th className="px-3 py-3 text-right font-semibold text-gray-700 w-[110px]">Importe Total</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[120px]">Estado</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[90px]">Nro OC</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[140px]">Razon Social</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Ubicacion</th>
+                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[100px]">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     {ordenesFiltradas.map((o, idx) => (
                       <tr key={o.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                        <td className="px-4 py-3 text-gray-600">
+                        <td className="px-3 py-3 text-gray-600">
                           {o.fecha ? formatDate(new Date(o.fecha)) : "-"}
                         </td>
-                        <td className="px-4 py-3 font-medium text-gray-900">{o.proveedor_nombre || "-"}</td>
-                        <td className="px-4 py-3 text-right font-bold text-gray-900">
+                        <td className="px-3 py-3 font-medium text-gray-900 truncate" title={o.proveedor_nombre || ""}>
+                          {o.proveedor_nombre || "-"}
+                        </td>
+                        <td className="px-3 py-3 text-right font-bold text-gray-900">
                           {formatCurrency(Number(o.importe_total) || 0)}
                         </td>
-                        <td className="px-4 py-3">{estadoBadge(o.estado)}</td>
-                        <td className="px-4 py-3 text-gray-600">{o.nro_oc || "-"}</td>
-                        <td className="px-4 py-3 text-gray-600">{o.razon_social || "-"}</td>
-                        <td className="px-4 py-3 text-gray-600">{o.ubicacion_oc || "-"}</td>
+                        <td className="px-3 py-3" title={o.estado || ""}>
+                          <div className="max-w-[120px] truncate">{estadoBadge(o.estado)}</div>
+                        </td>
+                        <td className="px-3 py-3 text-gray-600 truncate">{o.nro_oc || "-"}</td>
+                        <td className="px-3 py-3 text-gray-600 truncate" title={o.razon_social || ""}>{o.razon_social || "-"}</td>
+                        <td className="px-3 py-3 text-gray-600 truncate" title={o.ubicacion_oc || ""}>{o.ubicacion_oc || "-"}</td>
+                        <td className="px-3 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => setViewingOrden(o)}
+                              className="p-1 hover:bg-gray-200 rounded"
+                              title="Ver detalle"
+                            >
+                              <Eye className="h-4 w-4 text-gray-600" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setEditingOrden(o)
+                                setEditOrdenForm({
+                                  proveedor_nombre: o.proveedor_nombre || "",
+                                  estado: o.estado || "",
+                                  nro_oc: o.nro_oc || "",
+                                  razon_social: o.razon_social || "",
+                                  importe_total: o.importe_total || 0,
+                                  ubicacion_oc: o.ubicacion_oc || "",
+                                })
+                              }}
+                              className="p-1 hover:bg-gray-200 rounded"
+                              title="Editar"
+                            >
+                              <Pencil className="h-4 w-4 text-blue-600" />
+                            </button>
+                            <button
+                              onClick={() => setDeletingOrden(o)}
+                              className="p-1 hover:bg-gray-200 rounded"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="h-4 w-4 text-red-600" />
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -382,6 +528,160 @@ export default function ComprasPage() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* ========== DIALOGS - COMPRAS ========== */}
+
+      {/* View Compra */}
+      <Dialog open={!!viewingCompra} onOpenChange={(open) => !open && setViewingCompra(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Detalle de Compra</DialogTitle>
+          </DialogHeader>
+          {viewingCompra && (
+            <div className="space-y-2 text-sm">
+              <div><strong>Fecha:</strong> {viewingCompra.fecha ? formatDate(new Date(viewingCompra.fecha)) : "-"}</div>
+              <div><strong>Proveedor:</strong> {viewingCompra.proveedor_nombre || "-"}</div>
+              <div><strong>Articulo:</strong> {viewingCompra.articulo || "-"}</div>
+              <div><strong>Vendedor:</strong> {viewingCompra.vendedor || "-"}</div>
+              <div><strong>Estado:</strong> {viewingCompra.estado || "-"}</div>
+              <div><strong>Nro Cotizacion:</strong> {viewingCompra.nro_cotizacion || "-"}</div>
+              <div><strong>Nro Nota Pedido:</strong> {viewingCompra.nro_nota_pedido || "-"}</div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Compra */}
+      <Dialog open={!!editingCompra} onOpenChange={(open) => !open && setEditingCompra(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar Compra</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Proveedor</label>
+              <input type="text" value={editCompraForm.proveedor_nombre || ""} onChange={(e) => setEditCompraForm((f: any) => ({ ...f, proveedor_nombre: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Articulo</label>
+              <input type="text" value={editCompraForm.articulo || ""} onChange={(e) => setEditCompraForm((f: any) => ({ ...f, articulo: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Vendedor</label>
+              <input type="text" value={editCompraForm.vendedor || ""} onChange={(e) => setEditCompraForm((f: any) => ({ ...f, vendedor: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Estado</label>
+              <input type="text" value={editCompraForm.estado || ""} onChange={(e) => setEditCompraForm((f: any) => ({ ...f, estado: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Nro Cotizacion</label>
+              <input type="text" value={editCompraForm.nro_cotizacion || ""} onChange={(e) => setEditCompraForm((f: any) => ({ ...f, nro_cotizacion: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Nro Nota Pedido</label>
+              <input type="text" value={editCompraForm.nro_nota_pedido || ""} onChange={(e) => setEditCompraForm((f: any) => ({ ...f, nro_nota_pedido: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+          </div>
+          <DialogFooter>
+            <button onClick={() => setEditingCompra(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
+            <button onClick={handleEditCompra} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm">Guardar</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Compra */}
+      <Dialog open={!!deletingCompra} onOpenChange={(open) => !open && setDeletingCompra(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirmar eliminacion</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            Esta seguro que desea eliminar la compra de <strong>{deletingCompra?.proveedor_nombre}</strong> - {deletingCompra?.articulo}?
+          </p>
+          <DialogFooter>
+            <button onClick={() => setDeletingCompra(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
+            <button onClick={handleDeleteCompra} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">Eliminar</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========== DIALOGS - ORDENES ========== */}
+
+      {/* View Orden */}
+      <Dialog open={!!viewingOrden} onOpenChange={(open) => !open && setViewingOrden(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Detalle de Orden de Compra</DialogTitle>
+          </DialogHeader>
+          {viewingOrden && (
+            <div className="space-y-2 text-sm">
+              <div><strong>Fecha:</strong> {viewingOrden.fecha ? formatDate(new Date(viewingOrden.fecha)) : "-"}</div>
+              <div><strong>Proveedor:</strong> {viewingOrden.proveedor_nombre || "-"}</div>
+              <div><strong>Importe Total:</strong> {formatCurrency(Number(viewingOrden.importe_total) || 0)}</div>
+              <div><strong>Estado:</strong> {viewingOrden.estado || "-"}</div>
+              <div><strong>Nro OC:</strong> {viewingOrden.nro_oc || "-"}</div>
+              <div><strong>Razon Social:</strong> {viewingOrden.razon_social || "-"}</div>
+              <div><strong>Ubicacion:</strong> {viewingOrden.ubicacion_oc || "-"}</div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Orden */}
+      <Dialog open={!!editingOrden} onOpenChange={(open) => !open && setEditingOrden(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar Orden de Compra</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Proveedor</label>
+              <input type="text" value={editOrdenForm.proveedor_nombre || ""} onChange={(e) => setEditOrdenForm((f: any) => ({ ...f, proveedor_nombre: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Importe Total</label>
+              <input type="number" value={editOrdenForm.importe_total || 0} onChange={(e) => setEditOrdenForm((f: any) => ({ ...f, importe_total: Number(e.target.value) }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Estado</label>
+              <input type="text" value={editOrdenForm.estado || ""} onChange={(e) => setEditOrdenForm((f: any) => ({ ...f, estado: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Nro OC</label>
+              <input type="text" value={editOrdenForm.nro_oc || ""} onChange={(e) => setEditOrdenForm((f: any) => ({ ...f, nro_oc: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Razon Social</label>
+              <input type="text" value={editOrdenForm.razon_social || ""} onChange={(e) => setEditOrdenForm((f: any) => ({ ...f, razon_social: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Ubicacion</label>
+              <input type="text" value={editOrdenForm.ubicacion_oc || ""} onChange={(e) => setEditOrdenForm((f: any) => ({ ...f, ubicacion_oc: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+          </div>
+          <DialogFooter>
+            <button onClick={() => setEditingOrden(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
+            <button onClick={handleEditOrden} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm">Guardar</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Orden */}
+      <Dialog open={!!deletingOrden} onOpenChange={(open) => !open && setDeletingOrden(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirmar eliminacion</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            Esta seguro que desea eliminar la orden de compra <strong>{deletingOrden?.nro_oc}</strong> de {deletingOrden?.proveedor_nombre}?
+          </p>
+          <DialogFooter>
+            <button onClick={() => setDeletingOrden(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
+            <button onClick={handleDeleteOrden} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">Eliminar</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

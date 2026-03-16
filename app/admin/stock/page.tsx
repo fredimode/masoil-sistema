@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { fetchProducts, updateProduct, deleteProduct } from "@/lib/supabase/queries"
+import { normalizeSearch } from "@/lib/utils"
 import type { Product } from "@/lib/types"
 import { Search, Plus, Download, Upload } from "lucide-react"
 import Link from "next/link"
@@ -118,10 +119,11 @@ export default function AdminStockPage() {
   }
 
   if (searchTerm) {
+    const q = normalizeSearch(searchTerm)
     filteredProducts = filteredProducts.filter(
       (p) =>
-        p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.code.toLowerCase().includes(searchTerm.toLowerCase()),
+        normalizeSearch(p.name).includes(q) ||
+        normalizeSearch(p.code).includes(q),
     )
   }
 

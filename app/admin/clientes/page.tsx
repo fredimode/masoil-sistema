@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card } from "@/components/ui/card"
 import { fetchClients, fetchVendedores } from "@/lib/supabase/queries"
+import { normalizeSearch } from "@/lib/utils"
 import type { Client, Vendedor } from "@/lib/types"
 import { Search, Plus, Download, Users, MapPin, TrendingUp } from "lucide-react"
 import Link from "next/link"
@@ -54,11 +55,12 @@ export default function AdminClientesPage() {
   }
 
   if (searchTerm) {
+    const q = normalizeSearch(searchTerm)
     filteredClients = filteredClients.filter(
       (c) =>
-        c.businessName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.contactName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.email.toLowerCase().includes(searchTerm.toLowerCase()),
+        normalizeSearch(c.businessName).includes(q) ||
+        normalizeSearch(c.contactName).includes(q) ||
+        normalizeSearch(c.email).includes(q),
     )
   }
 
