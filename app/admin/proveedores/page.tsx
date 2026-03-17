@@ -22,7 +22,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
-import { fetchProveedores, updateProveedor, deleteProveedor } from "@/lib/supabase/queries"
+import { fetchProveedores, fetchProveedoresCount, updateProveedor, deleteProveedor } from "@/lib/supabase/queries"
 import { normalizeSearch, formatCurrency } from "@/lib/utils"
 import { Search, Plus, Download, Users, Building2, CreditCard, Eye, Pencil, Trash2 } from "lucide-react"
 import Link from "next/link"
@@ -34,6 +34,7 @@ export default function AdminProveedoresPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [empresaFilter, setEmpresaFilter] = useState<string>("todos")
   const [page, setPage] = useState(1)
+  const [totalProveedoresCount, setTotalProveedoresCount] = useState(0)
 
   // Action dialogs
   const [editingItem, setEditingItem] = useState<any | null>(null)
@@ -42,8 +43,9 @@ export default function AdminProveedoresPage() {
 
   async function loadData() {
     try {
-      const data = await fetchProveedores()
+      const [data, count] = await Promise.all([fetchProveedores(), fetchProveedoresCount()])
       setProveedores(data)
+      setTotalProveedoresCount(count)
     } catch (err) {
       console.error("Error loading proveedores:", err)
     } finally {
@@ -64,7 +66,7 @@ export default function AdminProveedoresPage() {
   }
 
   // Stats
-  const totalProveedores = proveedores.length
+  const totalProveedores = totalProveedoresCount || proveedores.length
   const countByEmpresa = (empresa: string) =>
     proveedores.filter((p) => p.empresa === empresa).length
   const conCbu = proveedores.filter((p) => !!p.cbu).length

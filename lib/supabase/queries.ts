@@ -111,6 +111,7 @@ export async function fetchOrders(): Promise<Order[]> {
     .from("orders")
     .select("*, order_items(*), order_status_history(*)")
     .order("created_at", { ascending: false })
+    .limit(50000)
 
   if (error) throw error
   return (data || []).map(mapOrder)
@@ -135,6 +136,7 @@ export async function fetchOrdersByVendedor(vendedorId: string): Promise<Order[]
     .select("*, order_items(*), order_status_history(*)")
     .eq("vendedor_id", vendedorId)
     .order("created_at", { ascending: false })
+    .limit(50000)
 
   if (error) throw error
   return (data || []).map(mapOrder)
@@ -321,6 +323,7 @@ export async function fetchClientsByVendedor(vendedorId: string): Promise<Client
     .select("*")
     .eq("vendedor_id", vendedorId)
     .order("business_name")
+    .limit(50000)
 
   if (error) throw error
   return (data || []).map(mapClient)
@@ -357,6 +360,7 @@ export async function fetchVendedores(): Promise<Vendedor[]> {
     .from("vendedores")
     .select("*, vendedor_zonas(zona)")
     .order("name")
+    .limit(50000)
 
   if (error) throw error
   return (data || []).map(mapVendedor)
@@ -375,6 +379,15 @@ export async function fetchProveedores(): Promise<any[]> {
     .limit(50000)
   if (error) throw error
   return data || []
+}
+
+export async function fetchProveedoresCount(): Promise<number> {
+  const supabase = createSupabaseClient()
+  const { count, error } = await supabase
+    .from("proveedores")
+    .select("*", { count: "exact", head: true })
+  if (error) throw error
+  return count || 0
 }
 
 export async function fetchProveedorById(id: string): Promise<any | null> {
@@ -601,6 +614,15 @@ export async function fetchFacturasGestionpro(): Promise<any[]> {
   return data || []
 }
 
+export async function fetchFacturasGestionproCount(): Promise<number> {
+  const supabase = createSupabaseClient()
+  const { count, error } = await supabase
+    .from("facturas_gestionpro")
+    .select("*", { count: "exact", head: true })
+  if (error) throw error
+  return count || 0
+}
+
 // ---------------------------------------------------------------------------
 // Recibos
 // ---------------------------------------------------------------------------
@@ -626,6 +648,7 @@ export async function fetchServiciosFijos(): Promise<any[]> {
     .from("servicios_fijos")
     .select("*")
     .order("servicio")
+    .limit(50000)
   if (error) throw error
   return data || []
 }
