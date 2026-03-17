@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
 import { formatCurrency, formatDateStr, normalizeSearch } from "@/lib/utils"
+import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import {
   fetchPagosProveedores,
   fetchReclamos,
@@ -31,6 +32,10 @@ export default function PagosPage() {
   const [loading, setLoading] = useState(true)
   const [pagos, setPagos] = useState<any[]>([])
   const [reclamos, setReclamos] = useState<any[]>([])
+
+  // Pagination
+  const [pagosPage, setPagosPage] = useState(1)
+  const [reclamosPage, setReclamosPage] = useState(1)
 
   // Filtros pagos
   const [busquedaPagos, setBusquedaPagos] = useState("")
@@ -194,6 +199,16 @@ export default function PagosPage() {
     })
   }, [reclamos, busquedaReclamos, filtroEmpresaReclamos])
 
+  // Pagination - Pagos
+  const { totalPages: pagosTotalPages, totalItems: pagosTotalItems, pageSize: pagosPageSize, getPage: getPagosPage } = usePagination(pagosFiltrados, 50)
+  const pagosCurrentPage = Math.min(pagosPage, pagosTotalPages)
+  const paginatedPagos = getPagosPage(pagosCurrentPage)
+
+  // Pagination - Reclamos
+  const { totalPages: reclamosTotalPages, totalItems: reclamosTotalItems, pageSize: reclamosPageSize, getPage: getReclamosPage } = usePagination(reclamosFiltrados, 50)
+  const reclamosCurrentPage = Math.min(reclamosPage, reclamosTotalPages)
+  const paginatedReclamos = getReclamosPage(reclamosCurrentPage)
+
   // Stats
   const totalAPagar = pagos
     .filter((p) => p.estado_pago !== "PAGADO")
@@ -298,21 +313,21 @@ export default function PagosPage() {
                 type="text"
                 placeholder="Buscar proveedor, CUIT, nro FC..."
                 value={busquedaPagos}
-                onChange={(e) => setBusquedaPagos(e.target.value)}
+                onChange={(e) => { setBusquedaPagos(e.target.value); setPagosPage(1) }}
                 className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm flex-1 min-w-[200px]"
               />
-              <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm">
+              <select value={filtroEstado} onChange={(e) => { setFiltroEstado(e.target.value); setPagosPage(1) }} className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm">
                 <option value="Todos">Estado: Todos</option>
                 <option value="PAGADO">PAGADO</option>
                 <option value="PENDIENTE">PENDIENTE</option>
               </select>
-              <select value={filtroEmpresaPagos} onChange={(e) => setFiltroEmpresaPagos(e.target.value)} className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm">
+              <select value={filtroEmpresaPagos} onChange={(e) => { setFiltroEmpresaPagos(e.target.value); setPagosPage(1) }} className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm">
                 <option value="Todos">Empresa: Todas</option>
                 {empresasPagos.map((e) => (
                   <option key={e} value={e}>{e}</option>
                 ))}
               </select>
-              <select value={filtroFormaPago} onChange={(e) => setFiltroFormaPago(e.target.value)} className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm">
+              <select value={filtroFormaPago} onChange={(e) => { setFiltroFormaPago(e.target.value); setPagosPage(1) }} className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm">
                 <option value="Todos">Forma pago: Todas</option>
                 {formasPago.map((f) => (
                   <option key={f} value={f}>{f}</option>
@@ -347,7 +362,7 @@ export default function PagosPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {pagosFiltrados.map((p, idx) => (
+                    {paginatedPagos.map((p, idx) => (
                       <tr key={p.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                         <td className="px-3 py-3 font-medium text-gray-900 truncate" title={p.proveedor_nombre || ""}>{p.proveedor_nombre}</td>
                         <td className="px-3 py-3 text-gray-600 truncate">{p.cuit || "-"}</td>
@@ -396,6 +411,7 @@ export default function PagosPage() {
                 </table>
               </div>
             )}
+            <TablePagination currentPage={pagosCurrentPage} totalPages={pagosTotalPages} totalItems={pagosTotalItems} pageSize={pagosPageSize} onPageChange={setPagosPage} />
           </div>
         </TabsContent>
 
@@ -408,10 +424,10 @@ export default function PagosPage() {
                 type="text"
                 placeholder="Buscar proveedor, observaciones..."
                 value={busquedaReclamos}
-                onChange={(e) => setBusquedaReclamos(e.target.value)}
+                onChange={(e) => { setBusquedaReclamos(e.target.value); setReclamosPage(1) }}
                 className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm flex-1 min-w-[200px]"
               />
-              <select value={filtroEmpresaReclamos} onChange={(e) => setFiltroEmpresaReclamos(e.target.value)} className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm">
+              <select value={filtroEmpresaReclamos} onChange={(e) => { setFiltroEmpresaReclamos(e.target.value); setReclamosPage(1) }} className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm">
                 <option value="Todos">Empresa: Todas</option>
                 {empresasReclamos.map((e) => (
                   <option key={e} value={e}>{e}</option>
@@ -497,7 +513,7 @@ export default function PagosPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {reclamosFiltrados.map((r, idx) => (
+                    {paginatedReclamos.map((r, idx) => (
                       <tr key={r.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                         <td className="px-3 py-3 font-medium text-gray-900 truncate" title={r.proveedor_nombre || ""}>{r.proveedor_nombre}</td>
                         <td className="px-3 py-3 text-gray-600 truncate">{r.empresa || "-"}</td>
@@ -540,6 +556,7 @@ export default function PagosPage() {
                 </table>
               </div>
             )}
+            <TablePagination currentPage={reclamosCurrentPage} totalPages={reclamosTotalPages} totalItems={reclamosTotalItems} pageSize={reclamosPageSize} onPageChange={setReclamosPage} />
           </div>
         </TabsContent>
       </Tabs>

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
 import { formatCurrency, formatDate, normalizeSearch } from "@/lib/utils"
+import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import {
   fetchCompras,
   fetchComprasCount,
@@ -42,6 +43,10 @@ export default function ComprasPage() {
   const [compras, setCompras] = useState<any[]>([])
   const [ordenes, setOrdenes] = useState<any[]>([])
   const [totalComprasCount, setTotalComprasCount] = useState(0)
+
+  // Pagination
+  const [comprasPage, setComprasPage] = useState(1)
+  const [ordenesPage, setOrdenesPage] = useState(1)
 
   // Filters - Compras
   const [busquedaCompras, setBusquedaCompras] = useState("")
@@ -101,6 +106,11 @@ export default function ComprasPage() {
     return matchBusqueda && matchEstado && matchVendedor
   })
 
+  // Pagination - Compras
+  const { totalPages: comprasTotalPages, totalItems: comprasTotalItems, pageSize: comprasPageSize, getPage: getComprasPage } = usePagination(comprasFiltradas, 50)
+  const comprasCurrentPage = Math.min(comprasPage, comprasTotalPages)
+  const paginatedCompras = getComprasPage(comprasCurrentPage)
+
   const pendientesCompras = compras.filter((c) =>
     (c.estado || "").toLowerCase().includes("pendiente")
   ).length
@@ -125,6 +135,11 @@ export default function ComprasPage() {
 
   const totalOC = ordenes.length
   const montoTotalOC = ordenes.reduce((sum, o) => sum + (Number(o.importe_total) || 0), 0)
+  // Pagination - Ordenes
+  const { totalPages: ordenesTotalPages, totalItems: ordenesTotalItems, pageSize: ordenesPageSize, getPage: getOrdenesPage } = usePagination(ordenesFiltradas, 50)
+  const ordenesCurrentPage = Math.min(ordenesPage, ordenesTotalPages)
+  const paginatedOrdenes = getOrdenesPage(ordenesCurrentPage)
+
   const montosPorRazon: Record<string, number> = {}
   ordenes.forEach((o) => {
     const key = o.razon_social || "Sin razon social"
@@ -270,12 +285,12 @@ export default function ComprasPage() {
               type="text"
               placeholder="Buscar proveedor o articulo..."
               value={busquedaCompras}
-              onChange={(e) => setBusquedaCompras(e.target.value)}
+              onChange={(e) => { setBusquedaCompras(e.target.value); setComprasPage(1) }}
               className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm flex-1 min-w-[200px]"
             />
             <select
               value={estadoCompras}
-              onChange={(e) => setEstadoCompras(e.target.value)}
+              onChange={(e) => { setEstadoCompras(e.target.value); setComprasPage(1) }}
               className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
             >
               <option value="">Todos los estados</option>
@@ -285,7 +300,7 @@ export default function ComprasPage() {
             </select>
             <select
               value={vendedorCompras}
-              onChange={(e) => setVendedorCompras(e.target.value)}
+              onChange={(e) => { setVendedorCompras(e.target.value); setComprasPage(1) }}
               className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
             >
               <option value="">Todos los vendedores</option>
@@ -323,7 +338,7 @@ export default function ComprasPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {comprasFiltradas.map((c, idx) => (
+                    {paginatedCompras.map((c, idx) => (
                       <tr key={c.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                         <td className="px-3 py-3 text-gray-600">
                           {c.fecha ? formatDate(new Date(c.fecha)) : "-"}
@@ -383,6 +398,7 @@ export default function ComprasPage() {
                 </table>
               </div>
             )}
+            <TablePagination currentPage={comprasCurrentPage} totalPages={comprasTotalPages} totalItems={comprasTotalItems} pageSize={comprasPageSize} onPageChange={setComprasPage} />
           </div>
         </TabsContent>
 
@@ -414,12 +430,12 @@ export default function ComprasPage() {
               type="text"
               placeholder="Buscar proveedor o nro OC..."
               value={busquedaOrdenes}
-              onChange={(e) => setBusquedaOrdenes(e.target.value)}
+              onChange={(e) => { setBusquedaOrdenes(e.target.value); setOrdenesPage(1) }}
               className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm flex-1 min-w-[200px]"
             />
             <select
               value={razonSocialOrdenes}
-              onChange={(e) => setRazonSocialOrdenes(e.target.value)}
+              onChange={(e) => { setRazonSocialOrdenes(e.target.value); setOrdenesPage(1) }}
               className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
             >
               <option value="">Todas las razones sociales</option>
@@ -429,7 +445,7 @@ export default function ComprasPage() {
             </select>
             <select
               value={estadoOrdenes}
-              onChange={(e) => setEstadoOrdenes(e.target.value)}
+              onChange={(e) => { setEstadoOrdenes(e.target.value); setOrdenesPage(1) }}
               className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
             >
               <option value="">Todos los estados</option>
@@ -467,7 +483,7 @@ export default function ComprasPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {ordenesFiltradas.map((o, idx) => (
+                    {paginatedOrdenes.map((o, idx) => (
                       <tr key={o.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                         <td className="px-3 py-3 text-gray-600">
                           {o.fecha ? formatDate(new Date(o.fecha)) : "-"}
@@ -525,6 +541,7 @@ export default function ComprasPage() {
                 </table>
               </div>
             )}
+            <TablePagination currentPage={ordenesCurrentPage} totalPages={ordenesTotalPages} totalItems={ordenesTotalItems} pageSize={ordenesPageSize} onPageChange={setOrdenesPage} />
           </div>
         </TabsContent>
       </Tabs>

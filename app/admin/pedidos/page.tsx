@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { OrderTable } from "@/components/admin/order-table"
+import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -16,6 +17,7 @@ export default function AdminPedidosPage() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState<string>("todos")
   const [zonaFilter, setZonaFilter] = useState<string>("todas")
 
@@ -25,8 +27,6 @@ export default function AdminPedidosPage() {
       .catch((err) => console.error("Error fetching orders:", err))
       .finally(() => setLoading(false))
   }, [])
-
-  if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
 
   // Filter orders
   let filteredOrders = [...orders]
@@ -54,6 +54,12 @@ export default function AdminPedidosPage() {
         normalizeSearch(o.vendedorName).includes(q),
     )
   }
+
+  const { totalPages, totalItems, pageSize, getPage } = usePagination(filteredOrders, 50)
+  const currentPage = Math.min(page, totalPages)
+  const paginatedOrders = getPage(currentPage)
+
+  if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
 
   return (
     <div className="p-8 space-y-6">
@@ -99,11 +105,11 @@ export default function AdminPedidosPage() {
           <Input
             placeholder="Buscar por cliente, pedido o vendedor..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => { setSearchTerm(e.target.value); setPage(1) }}
             className="pl-10"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1) }}>
           <SelectTrigger className="w-48">
             <SelectValue placeholder="Estado" />
           </SelectTrigger>
@@ -119,7 +125,7 @@ export default function AdminPedidosPage() {
             <SelectItem value="ENTREGADO">Entregado</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={zonaFilter} onValueChange={setZonaFilter}>
+        <Select value={zonaFilter} onValueChange={(v) => { setZonaFilter(v); setPage(1) }}>
           <SelectTrigger className="w-48">
             <SelectValue placeholder="Zona" />
           </SelectTrigger>
@@ -136,7 +142,10 @@ export default function AdminPedidosPage() {
 
       {/* Orders Table */}
       {filteredOrders.length > 0 ? (
-        <OrderTable orders={filteredOrders} />
+        <>
+          <OrderTable orders={paginatedOrders} />
+          <TablePagination currentPage={currentPage} totalPages={totalPages} totalItems={totalItems} pageSize={pageSize} onPageChange={setPage} />
+        </>
       ) : (
         <div className="text-center py-12 text-muted-foreground border rounded-lg">
           <p>No se encontraron pedidos</p>
