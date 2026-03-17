@@ -3,7 +3,6 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { formatCurrency, formatDate } from "@/lib/utils"
 import type { Client } from "@/lib/types"
 import Link from "next/link"
 import { Eye, Edit, MessageCircle } from "lucide-react"
@@ -18,13 +17,13 @@ export function ClientTable({ clients }: ClientTableProps) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Razón Social</TableHead>
-            <TableHead>Contacto</TableHead>
+            <TableHead>Razon Social</TableHead>
+            <TableHead>Localidad</TableHead>
             <TableHead className="w-24">Zona</TableHead>
             <TableHead>Vendedor</TableHead>
-            <TableHead>Último Pedido</TableHead>
             <TableHead className="w-28 text-right">Total Pedidos</TableHead>
-            <TableHead className="w-32 text-right">Límite Crédito</TableHead>
+            <TableHead>Cond. IVA</TableHead>
+            <TableHead>Cond. Pago</TableHead>
             <TableHead className="w-32 text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
@@ -32,27 +31,22 @@ export function ClientTable({ clients }: ClientTableProps) {
           {clients.map((client) => (
             <TableRow key={client.id}>
               <TableCell className="font-medium">{client.businessName}</TableCell>
-              <TableCell>
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">{client.contactName}</p>
-                  <p className="text-xs text-muted-foreground">{client.whatsapp}</p>
-                </div>
-              </TableCell>
+              <TableCell className="text-sm">{client.localidad || "-"}</TableCell>
               <TableCell>
                 <Badge variant="outline" className="text-xs">
                   {client.zona}
                 </Badge>
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
-                {client.vendedorId === "v1" && "Carlos F."}
-                {client.vendedorId === "v2" && "María G."}
-                {client.vendedorId === "v3" && "Jorge R."}
-                {client.vendedorId === "v4" && "Laura S."}
-                {client.vendedorId === "v5" && "Roberto D."}
+                {client.vendedorGp || client.vendedorId || "-"}
               </TableCell>
-              <TableCell className="text-sm">{client.lastOrderDate ? formatDate(client.lastOrderDate) : "-"}</TableCell>
               <TableCell className="text-right font-semibold">{client.totalOrders}</TableCell>
-              <TableCell className="text-right font-medium">{formatCurrency(client.creditLimit)}</TableCell>
+              <TableCell className="max-w-[100px] truncate text-sm" title={client.condicionIva || ""}>
+                {client.condicionIva || "-"}
+              </TableCell>
+              <TableCell className="max-w-[120px] truncate text-sm" title={client.condicionPago || ""}>
+                {client.condicionPago || "-"}
+              </TableCell>
               <TableCell className="text-right">
                 <div className="flex items-center justify-end gap-1">
                   <Button asChild size="sm" variant="ghost">

@@ -22,13 +22,17 @@ export interface Product {
   id: string
   code: string
   name: string
-  category: ProductCategory
+  category: ProductCategory | null
   stock: number
   price: number
   isCustomizable: boolean
   customLeadTime: number // days
   lowStockThreshold: number
   criticalStockThreshold: number
+  // GestionPro fields
+  costoNeto?: number | null
+  grupoRubro?: string | null
+  ubicacion?: string | null
 }
 
 export interface OrderProduct {
@@ -80,6 +84,12 @@ export interface Client {
   notes: string
   lastOrderDate?: Date
   totalOrders: number
+  // GestionPro fields
+  condicionIva?: string | null
+  condicionPago?: string | null
+  localidad?: string | null
+  vendedorGp?: string | null
+  telefono?: string | null
 }
 
 export interface Vendedor {

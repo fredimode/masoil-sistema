@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card } from "@/components/ui/card"
+import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { fetchClients, fetchVendedores } from "@/lib/supabase/queries"
 import { normalizeSearch } from "@/lib/utils"
 import type { Client, Vendedor } from "@/lib/types"
@@ -20,6 +21,7 @@ export default function AdminClientesPage() {
   const [clients, setClients] = useState<Client[]>([])
   const [vendedores, setVendedores] = useState<Vendedor[]>([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
 
   useEffect(() => {
     async function load() {
@@ -62,25 +64,30 @@ export default function AdminClientesPage() {
     )
   }
 
+  // Pagination
+  const { totalPages, totalItems, pageSize, getPage } = usePagination(filteredClients, 50)
+  const currentPage = Math.min(page, totalPages)
+  const paginatedClients = getPage(currentPage)
+
   return (
     <div className="p-8 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold mb-2">Gestión de Clientes</h1>
+          <h1 className="text-3xl font-bold mb-2">Gestion de Clientes</h1>
           <p className="text-muted-foreground">Administra la base de datos de clientes</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => {
             const data = filteredClients.map((c) => ({
-              "Razón Social": c.businessName,
+              "Razon Social": c.businessName,
               Contacto: c.contactName,
               WhatsApp: c.whatsapp,
               Email: c.email,
               Zona: c.zona,
               "Total Pedidos": c.totalOrders,
-              "Límite Crédito": c.creditLimit,
-              Dirección: c.address,
+              "Limite Credito": c.creditLimit,
+              Direccion: c.address,
             }))
             const ws = XLSX.utils.json_to_sheet(data)
             const wb = XLSX.utils.book_new()
@@ -131,13 +138,13 @@ export default function AdminClientesPage() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por razón social, contacto o email..."
+            placeholder="Buscar por razon social, contacto o email..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => { setSearchTerm(e.target.value); setPage(1) }}
             className="pl-10"
           />
         </div>
-        <Select value={zonaFilter} onValueChange={setZonaFilter}>
+        <Select value={zonaFilter} onValueChange={(v) => { setZonaFilter(v); setPage(1) }}>
           <SelectTrigger className="w-48">
             <SelectValue placeholder="Zona" />
           </SelectTrigger>
@@ -150,7 +157,7 @@ export default function AdminClientesPage() {
             <SelectItem value="GBA">GBA</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={vendedorFilter} onValueChange={setVendedorFilter}>
+        <Select value={vendedorFilter} onValueChange={(v) => { setVendedorFilter(v); setPage(1) }}>
           <SelectTrigger className="w-48">
             <SelectValue placeholder="Vendedor" />
           </SelectTrigger>
@@ -168,8 +175,17 @@ export default function AdminClientesPage() {
       </div>
 
       {/* Clients Table */}
-      {filteredClients.length > 0 ? (
-        <ClientTable clients={filteredClients} />
+      {paginatedClients.length > 0 ? (
+        <>
+          <ClientTable clients={paginatedClients} />
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            pageSize={pageSize}
+            onPageChange={setPage}
+          />
+        </>
       ) : (
         <div className="text-center py-12 text-muted-foreground border rounded-lg">
           <p>No se encontraron clientes</p>

@@ -48,9 +48,12 @@ export function ProductTable({ products, onUpdate, onDelete }: ProductTableProps
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-32">Código</TableHead>
+              <TableHead className="w-32">Codigo</TableHead>
               <TableHead>Nombre</TableHead>
-              <TableHead>Categoría</TableHead>
+              <TableHead>Categoria</TableHead>
+              <TableHead className="text-right">Costo Neto</TableHead>
+              <TableHead>Grupo/Rubro</TableHead>
+              <TableHead>Ubicacion</TableHead>
               <TableHead className="w-32">Stock</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead className="w-32 text-right">Precio</TableHead>
@@ -75,9 +78,22 @@ export function ProductTable({ products, onUpdate, onDelete }: ProductTableProps
                   <TableCell className="font-mono text-sm font-medium">{product.code}</TableCell>
                   <TableCell className="font-medium">{product.name}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="text-xs">
-                      {product.category}
-                    </Badge>
+                    {product.category ? (
+                      <Badge variant="outline" className="text-xs">
+                        {product.category}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Sin cat.</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {product.costoNeto != null ? formatCurrency(product.costoNeto) : "-"}
+                  </TableCell>
+                  <TableCell className="max-w-[120px] truncate" title={product.grupoRubro || ""}>
+                    {product.grupoRubro || "-"}
+                  </TableCell>
+                  <TableCell className="max-w-[100px] truncate" title={product.ubicacion || ""}>
+                    {product.ubicacion || "-"}
                   </TableCell>
                   <TableCell className="font-semibold text-lg">{product.stock}</TableCell>
                   <TableCell>
@@ -143,8 +159,8 @@ export function ProductTable({ products, onUpdate, onDelete }: ProductTableProps
           <DialogHeader>
             <DialogTitle>Eliminar Producto</DialogTitle>
             <DialogDescription>
-              ¿Estás seguro de eliminar <strong>{deleteProduct?.name}</strong> ({deleteProduct?.code})?
-              Esta acción no se puede deshacer.
+              Estas seguro de eliminar <strong>{deleteProduct?.name}</strong> ({deleteProduct?.code})?
+              Esta accion no se puede deshacer.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

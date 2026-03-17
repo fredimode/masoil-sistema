@@ -21,8 +21,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
+import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { fetchProveedores, updateProveedor, deleteProveedor } from "@/lib/supabase/queries"
-import { normalizeSearch } from "@/lib/utils"
+import { normalizeSearch, formatCurrency } from "@/lib/utils"
 import { Search, Plus, Download, Users, Building2, CreditCard, Eye, Pencil, Trash2 } from "lucide-react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
@@ -32,6 +33,7 @@ export default function AdminProveedoresPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [empresaFilter, setEmpresaFilter] = useState<string>("todos")
+  const [page, setPage] = useState(1)
 
   // Action dialogs
   const [editingItem, setEditingItem] = useState<any | null>(null)
@@ -83,14 +85,22 @@ export default function AdminProveedoresPage() {
     )
   }
 
+  // Pagination
+  const { totalPages, totalItems, pageSize, getPage } = usePagination(filtered, 50)
+  const currentPage = Math.min(page, totalPages)
+  const paginatedProveedores = getPage(currentPage)
+
   const handleExport = () => {
     const data = filtered.map((p) => ({
       Nombre: p.nombre,
       CUIT: p.cuit || "",
       Empresa: p.empresa || "",
       "Condicion de Pago": p.condicion_pago || "",
-      CBU: p.cbu || "",
-      Contactos: p.contactos || "",
+      Telefono: p.telefono || "",
+      Email: p.email || "",
+      Categoria: p.categoria || "",
+      Saldo: p.saldo || 0,
+      "Condicion IVA": p.condicion_iva || "",
       Observaciones: p.observaciones || "",
     }))
     const ws = XLSX.utils.json_to_sheet(data)
@@ -205,11 +215,11 @@ export default function AdminProveedoresPage() {
           <Input
             placeholder="Buscar por nombre o CUIT..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => { setSearchTerm(e.target.value); setPage(1) }}
             className="pl-10"
           />
         </div>
-        <Select value={empresaFilter} onValueChange={setEmpresaFilter}>
+        <Select value={empresaFilter} onValueChange={(v) => { setEmpresaFilter(v); setPage(1) }}>
           <SelectTrigger className="w-48">
             <SelectValue placeholder="Empresa" />
           </SelectTrigger>
@@ -223,88 +233,107 @@ export default function AdminProveedoresPage() {
       </div>
 
       {/* Table */}
-      {filtered.length > 0 ? (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>CUIT</TableHead>
-                  <TableHead>Empresa</TableHead>
-                  <TableHead className="w-[150px]">Condicion de pago</TableHead>
-                  <TableHead>CBU</TableHead>
-                  <TableHead className="w-[180px]">Contactos</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.nombre}</TableCell>
-                    <TableCell>{p.cuit || "-"}</TableCell>
-                    <TableCell>
-                      {p.empresa ? (
-                        <Badge variant="outline">{p.empresa}</Badge>
-                      ) : (
-                        "-"
-                      )}
-                    </TableCell>
-                    <TableCell className="max-w-[150px] truncate" title={p.condicion_pago || ""}>
-                      {p.condicion_pago || "-"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={p.cbu ? "default" : "secondary"}>
-                        {p.cbu ? "Si" : "No"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="max-w-[180px] truncate" title={p.contactos || ""}>
-                      {p.contactos || "-"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button asChild size="sm" variant="ghost" className="h-8 w-8 p-0">
-                          <Link href={`/admin/proveedores/${p.id}`} title="Ver">
-                            <Eye className="h-4 w-4" />
-                          </Link>
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 w-8 p-0"
-                          title="Editar"
-                          onClick={() => {
-                            setEditingItem(p)
-                            setEditForm({
-                              nombre: p.nombre || "",
-                              cuit: p.cuit || "",
-                              empresa: p.empresa || "",
-                              condicion_pago: p.condicion_pago || "",
-                              cbu: p.cbu || "",
-                              contactos: p.contactos || "",
-                              observaciones: p.observaciones || "",
-                            })
-                          }}
-                        >
-                          <Pencil className="h-4 w-4 text-blue-600" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 w-8 p-0"
-                          title="Eliminar"
-                          onClick={() => setDeletingItem(p)}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-600" />
-                        </Button>
-                      </div>
-                    </TableCell>
+      {paginatedProveedores.length > 0 ? (
+        <>
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>CUIT</TableHead>
+                    <TableHead>Empresa</TableHead>
+                    <TableHead className="w-[150px]">Condicion de pago</TableHead>
+                    <TableHead>Telefono</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Categoria</TableHead>
+                    <TableHead className="text-right">Saldo</TableHead>
+                    <TableHead>Cond. IVA</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
+                </TableHeader>
+                <TableBody>
+                  {paginatedProveedores.map((p) => (
+                    <TableRow key={p.id}>
+                      <TableCell className="font-medium">{p.nombre}</TableCell>
+                      <TableCell>{p.cuit || "-"}</TableCell>
+                      <TableCell>
+                        {p.empresa ? (
+                          <Badge variant="outline">{p.empresa}</Badge>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell className="max-w-[150px] truncate" title={p.condicion_pago || ""}>
+                        {p.condicion_pago || "-"}
+                      </TableCell>
+                      <TableCell className="max-w-[120px] truncate" title={p.telefono || ""}>
+                        {p.telefono || "-"}
+                      </TableCell>
+                      <TableCell className="max-w-[150px] truncate" title={p.email || ""}>
+                        {p.email || "-"}
+                      </TableCell>
+                      <TableCell className="max-w-[100px] truncate" title={p.categoria || ""}>
+                        {p.categoria || "-"}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {p.saldo != null ? formatCurrency(p.saldo) : "-"}
+                      </TableCell>
+                      <TableCell className="max-w-[120px] truncate text-sm" title={p.condicion_iva || ""}>
+                        {p.condicion_iva || "-"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button asChild size="sm" variant="ghost" className="h-8 w-8 p-0">
+                            <Link href={`/admin/proveedores/${p.id}`} title="Ver">
+                              <Eye className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0"
+                            title="Editar"
+                            onClick={() => {
+                              setEditingItem(p)
+                              setEditForm({
+                                nombre: p.nombre || "",
+                                cuit: p.cuit || "",
+                                empresa: p.empresa || "",
+                                condicion_pago: p.condicion_pago || "",
+                                cbu: p.cbu || "",
+                                contactos: p.contactos || "",
+                                observaciones: p.observaciones || "",
+                              })
+                            }}
+                          >
+                            <Pencil className="h-4 w-4 text-blue-600" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0"
+                            title="Eliminar"
+                            onClick={() => setDeletingItem(p)}
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Card>
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            pageSize={pageSize}
+            onPageChange={setPage}
+          />
+        </>
       ) : (
         <div className="text-center py-12 text-muted-foreground border rounded-lg">
           <p>No se encontraron proveedores</p>

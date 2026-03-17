@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
+import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { fetchProducts, updateProduct, deleteProduct } from "@/lib/supabase/queries"
 import { normalizeSearch } from "@/lib/utils"
 import type { Product } from "@/lib/types"
@@ -18,9 +19,11 @@ export default function AdminStockPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [categoryFilter, setCategoryFilter] = useState<string>("todas")
   const [stockFilter, setStockFilter] = useState<string>("todos")
+  const [grupoRubroFilter, setGrupoRubroFilter] = useState<string>("todos")
   const [csvPreview, setCsvPreview] = useState<Record<string, string>[] | null>(null)
   const [localProducts, setLocalProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -52,12 +55,12 @@ export default function AdminStockPage() {
 
   function handleExportXlsx() {
     const data = localProducts.map((p) => ({
-      Código: p.code,
+      Codigo: p.code,
       Nombre: p.name,
-      Categoría: p.category,
+      Categoria: p.category,
       Stock: p.stock,
       "Stock Bajo": p.lowStockThreshold,
-      "Stock Crítico": p.criticalStockThreshold,
+      "Stock Critico": p.criticalStockThreshold,
       Precio: p.price,
     }))
     const ws = XLSX.utils.json_to_sheet(data)
@@ -95,11 +98,23 @@ export default function AdminStockPage() {
   const criticalStock = localProducts.filter((p) => p.stock < p.criticalStockThreshold && p.stock > 0).length
   const outOfStock = localProducts.filter((p) => p.stock === 0 && !p.isCustomizable).length
 
+  // Compute unique categories and grupo_rubro values
+  const uniqueCategories = [...new Set(localProducts.map((p) => p.category).filter(Boolean))].sort() as string[]
+  const uniqueGrupoRubro = [...new Set(localProducts.map((p) => p.grupoRubro).filter(Boolean))].sort() as string[]
+
   // Filter products
   let filteredProducts = [...localProducts]
 
   if (categoryFilter !== "todas") {
-    filteredProducts = filteredProducts.filter((p) => p.category === categoryFilter)
+    if (categoryFilter === "sin_categoria") {
+      filteredProducts = filteredProducts.filter((p) => p.category === null || p.category === undefined)
+    } else {
+      filteredProducts = filteredProducts.filter((p) => p.category === categoryFilter)
+    }
+  }
+
+  if (grupoRubroFilter !== "todos") {
+    filteredProducts = filteredProducts.filter((p) => p.grupoRubro === grupoRubroFilter)
   }
 
   if (stockFilter !== "todos") {
@@ -126,6 +141,11 @@ export default function AdminStockPage() {
         normalizeSearch(p.code).includes(q),
     )
   }
+
+  // Pagination
+  const { totalPages, totalItems, pageSize, getPage } = usePagination(filteredProducts, 50)
+  const currentPage = Math.min(page, totalPages)
+  const paginatedProducts = getPage(currentPage)
 
   return (
     <div className="p-8 space-y-6">
@@ -165,7 +185,7 @@ export default function AdminStockPage() {
           <p className="text-2xl font-bold text-yellow-700">{lowStock}</p>
         </Card>
         <Card className="p-4 border-red-200 bg-red-50">
-          <p className="text-sm text-muted-foreground mb-1">Stock Crítico</p>
+          <p className="text-sm text-muted-foreground mb-1">Stock Critico</p>
           <p className="text-2xl font-bold text-red-700">{criticalStock}</p>
         </Card>
         <Card className="p-4 border-gray-200 bg-gray-50">
@@ -175,30 +195,40 @@ export default function AdminStockPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-4">
+      <div className="flex gap-4 flex-wrap">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nombre o código..."
+            placeholder="Buscar por nombre o codigo..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => { setSearchTerm(e.target.value); setPage(1) }}
             className="pl-10"
           />
         </div>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+        <Select value={categoryFilter} onValueChange={(v) => { setCategoryFilter(v); setPage(1) }}>
           <SelectTrigger className="w-48">
-            <SelectValue placeholder="Categoría" />
+            <SelectValue placeholder="Categoria" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="todas">Todas las categorías</SelectItem>
-            <SelectItem value="Limpiadores">Limpiadores</SelectItem>
-            <SelectItem value="Lubricantes">Lubricantes</SelectItem>
-            <SelectItem value="Selladores">Selladores</SelectItem>
-            <SelectItem value="Belleza">Belleza</SelectItem>
-            <SelectItem value="Higiene">Higiene</SelectItem>
+            <SelectItem value="todas">Todas las categorias</SelectItem>
+            <SelectItem value="sin_categoria">(Sin categoria)</SelectItem>
+            {uniqueCategories.map((cat) => (
+              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
-        <Select value={stockFilter} onValueChange={setStockFilter}>
+        <Select value={grupoRubroFilter} onValueChange={(v) => { setGrupoRubroFilter(v); setPage(1) }}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="Grupo/Rubro" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todos">Todos los rubros</SelectItem>
+            {uniqueGrupoRubro.map((gr) => (
+              <SelectItem key={gr} value={gr}>{gr}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={stockFilter} onValueChange={(v) => { setStockFilter(v); setPage(1) }}>
           <SelectTrigger className="w-48">
             <SelectValue placeholder="Estado de Stock" />
           </SelectTrigger>
@@ -206,7 +236,7 @@ export default function AdminStockPage() {
             <SelectItem value="todos">Todos</SelectItem>
             <SelectItem value="disponible">Disponible</SelectItem>
             <SelectItem value="bajo">Stock Bajo</SelectItem>
-            <SelectItem value="critico">Stock Crítico</SelectItem>
+            <SelectItem value="critico">Stock Critico</SelectItem>
             <SelectItem value="agotado">Agotado</SelectItem>
             <SelectItem value="customizable">Customizable</SelectItem>
           </SelectContent>
@@ -214,8 +244,17 @@ export default function AdminStockPage() {
       </div>
 
       {/* Products Table */}
-      {filteredProducts.length > 0 ? (
-        <ProductTable products={filteredProducts} onUpdate={handleUpdateProduct} onDelete={handleDeleteProduct} />
+      {paginatedProducts.length > 0 ? (
+        <>
+          <ProductTable products={paginatedProducts} onUpdate={handleUpdateProduct} onDelete={handleDeleteProduct} />
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={totalItems}
+            pageSize={pageSize}
+            onPageChange={setPage}
+          />
+        </>
       ) : (
         <div className="text-center py-12 text-muted-foreground border rounded-lg">
           <p>No se encontraron productos</p>
@@ -254,7 +293,7 @@ export default function AdminStockPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setCsvPreview(null)}>Cerrar</Button>
             <Button onClick={() => {
-              alert("Importación de CSV pendiente de integración con Supabase")
+              alert("Importacion de CSV pendiente de integracion con Supabase")
               setCsvPreview(null)
             }}>Importar</Button>
           </DialogFooter>

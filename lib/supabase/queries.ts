@@ -53,13 +53,16 @@ function mapProduct(row: any): Product {
     id: row.id,
     code: row.code,
     name: row.name,
-    category: row.category,
+    category: row.category || null,
     stock: row.stock,
     price: Number(row.price),
     isCustomizable: row.is_customizable,
     customLeadTime: row.custom_lead_time,
     lowStockThreshold: row.low_stock_threshold,
     criticalStockThreshold: row.critical_stock_threshold,
+    costoNeto: row.costo_neto ? Number(row.costo_neto) : null,
+    grupoRubro: row.grupo_rubro || null,
+    ubicacion: row.ubicacion || null,
   }
 }
 
@@ -78,6 +81,11 @@ function mapClient(row: any): Client {
     notes: row.notes || "",
     lastOrderDate: row.last_order_date ? new Date(row.last_order_date) : undefined,
     totalOrders: row.total_orders || 0,
+    condicionIva: row.condicion_iva || null,
+    condicionPago: row.condicion_pago || null,
+    localidad: row.localidad || null,
+    vendedorGp: row.contacto || null,
+    telefono: row.telefono || null,
   }
 }
 
@@ -559,5 +567,82 @@ export async function deleteCobranzaPendiente(id: string): Promise<void> {
 export async function deleteProveedor(id: string): Promise<void> {
   const supabase = createSupabaseClient()
   const { error } = await supabase.from("proveedores").delete().eq("id", id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
+// Facturas GestionPro
+// ---------------------------------------------------------------------------
+
+export async function fetchFacturasGestionpro(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("facturas_gestionpro")
+    .select("*")
+    .order("fecha", { ascending: false })
+    .limit(50000)
+  if (error) throw error
+  return data || []
+}
+
+// ---------------------------------------------------------------------------
+// Recibos
+// ---------------------------------------------------------------------------
+
+export async function fetchRecibos(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("recibos")
+    .select("*")
+    .order("fecha", { ascending: false })
+    .limit(50000)
+  if (error) throw error
+  return data || []
+}
+
+// ---------------------------------------------------------------------------
+// Servicios Fijos
+// ---------------------------------------------------------------------------
+
+export async function fetchServiciosFijos(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("servicios_fijos")
+    .select("*")
+    .order("servicio")
+  if (error) throw error
+  return data || []
+}
+
+export async function createServicioFijo(servicio: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("servicios_fijos").insert(servicio)
+  if (error) throw error
+}
+
+export async function updateServicioFijo(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("servicios_fijos").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
+// Movimientos Caja Chica
+// ---------------------------------------------------------------------------
+
+export async function fetchMovimientosCajaChica(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("movimientos_caja_chica")
+    .select("*")
+    .order("fecha", { ascending: false })
+    .limit(50000)
+  if (error) throw error
+  return data || []
+}
+
+export async function createMovimientoCajaChica(mov: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("movimientos_caja_chica").insert(mov)
   if (error) throw error
 }
