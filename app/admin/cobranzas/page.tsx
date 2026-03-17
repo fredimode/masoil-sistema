@@ -34,8 +34,10 @@ import {
   fetchClientesConCobranza,
   createCobro,
   deleteCobranzaPendiente,
+  fetchRecibos,
 } from "@/lib/supabase/queries"
-import { formatCurrency, normalizeSearch } from "@/lib/utils"
+import { formatCurrency, normalizeSearch, formatDateStr } from "@/lib/utils"
+import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import {
   Search,
   Download,
@@ -47,6 +49,7 @@ import {
   AlertCircle,
   Eye,
   Trash2,
+  FileText,
 } from "lucide-react"
 import * as XLSX from "xlsx"
 
@@ -74,6 +77,18 @@ interface ClienteCobranza {
   email: string
 }
 
+interface Recibo {
+  id: string
+  fecha: string
+  sucursal: string
+  nro_comprobante: string
+  cod_cliente: string
+  razon_social: string
+  documento: string
+  vendedor: string
+  importe: number
+}
+
 type SortField =
   | "cliente_nombre"
   | "comprobante"
@@ -88,6 +103,10 @@ export default function CobranzasPage() {
   const [loading, setLoading] = useState(true)
   const [cobranzas, setCobranzas] = useState<CobranzaPendiente[]>([])
   const [clientes, setClientes] = useState<ClienteCobranza[]>([])
+  const [recibos, setRecibos] = useState<Recibo[]>([])
+
+  // Active tab
+  const [activeTab, setActiveTab] = useState<"cobranzas" | "recibos">("cobranzas")
 
   // Filters - clients table
   const [searchTerm, setSearchTerm] = useState("")
@@ -100,6 +119,11 @@ export default function CobranzasPage() {
   const [comprobantesRazonFilter, setComprobantesRazonFilter] = useState("todas")
   const [sortField, setSortField] = useState<SortField>("fecha_comprobante")
   const [sortDir, setSortDir] = useState<SortDir>("desc")
+
+  // Filters - recibos tab
+  const [recibosSearch, setRecibosSearch] = useState("")
+  const [recibosVendedorFilter, setRecibosVendedorFilter] = useState("todos")
+  const [recibosPage, setRecibosPage] = useState(1)
 
   // Dialog - registrar cobro
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -123,12 +147,14 @@ export default function CobranzasPage() {
 
   async function loadAllData() {
     try {
-      const [cob, cli] = await Promise.all([
+      const [cob, cli, rec] = await Promise.all([
         fetchCobranzasPendientes(),
         fetchClientesConCobranza(),
+        fetchRecibos(),
       ])
       setCobranzas(cob ?? [])
       setClientes(cli ?? [])
+      setRecibos(rec ?? [])
     } catch (err) {
       console.error("Error loading cobranzas:", err)
     } finally {
@@ -221,7 +247,7 @@ export default function CobranzasPage() {
     }
   }
 
-  // --- Export XLSX ---
+  // --- Export XLSX (clients) ---
   function exportClients() {
     const data = filteredClients.map((c) => ({
       Cliente: c.business_name,
@@ -299,6 +325,48 @@ export default function CobranzasPage() {
 
   const hasCobranzas = cobranzas.length > 0
 
+  // --- Recibos: stats, filters, pagination ---
+  const recibosTotal = recibos.length
+  const recibosMontoCobrado = recibos.reduce((sum, r) => sum + (r.importe ?? 0), 0)
+  const recibosVendedorTotals = recibos.reduce<Record<string, number>>((acc, r) => {
+    const key = r.vendedor || "Sin vendedor"
+    acc[key] = (acc[key] ?? 0) + (r.importe ?? 0)
+    return acc
+  }, {})
+  const recibosTopVendedores = Object.entries(recibosVendedorTotals)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+
+  const uniqueRecibosVendedores = [...new Set(recibos.map((r) => r.vendedor).filter(Boolean))].sort()
+
+  let filteredRecibos = [...recibos]
+  if (recibosSearch) {
+    const q = normalizeSearch(recibosSearch)
+    filteredRecibos = filteredRecibos.filter((r) =>
+      normalizeSearch(r.razon_social ?? "").includes(q)
+    )
+  }
+  if (recibosVendedorFilter !== "todos") {
+    filteredRecibos = filteredRecibos.filter((r) => r.vendedor === recibosVendedorFilter)
+  }
+
+  const recibosPagination = usePagination(filteredRecibos, 50)
+  const recibosPageData = recibosPagination.getPage(recibosPage)
+
+  function exportRecibos() {
+    const data = filteredRecibos.map((r) => ({
+      Fecha: formatDateStr(r.fecha),
+      "Nro Comprobante": r.nro_comprobante,
+      Cliente: r.razon_social,
+      Vendedor: r.vendedor,
+      Importe: r.importe,
+    }))
+    const ws = XLSX.utils.json_to_sheet(data)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Recibos")
+    XLSX.writeFile(wb, `recibos_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
   return (
     <div className="p-8 space-y-6">
       {/* Header */}
@@ -308,14 +376,24 @@ export default function CobranzasPage() {
           <p className="text-muted-foreground">Gestiona cobros pendientes y facturacion de clientes</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={exportClients}>
-            <Download className="h-4 w-4 mr-2" />
-            Exportar
-          </Button>
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Registrar Cobro
-          </Button>
+          {activeTab === "cobranzas" && (
+            <>
+              <Button variant="outline" onClick={exportClients}>
+                <Download className="h-4 w-4 mr-2" />
+                Exportar
+              </Button>
+              <Button onClick={() => setDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Registrar Cobro
+              </Button>
+            </>
+          )}
+          {activeTab === "recibos" && (
+            <Button variant="outline" onClick={exportRecibos}>
+              <Download className="h-4 w-4 mr-2" />
+              Exportar Recibos
+            </Button>
+          )}
         </div>
       </div>
 
@@ -324,178 +402,340 @@ export default function CobranzasPage() {
         <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg">{successMsg}</div>
       )}
 
-      {/* Empty cobranzas notice */}
-      {!hasCobranzas && (
-        <Card className="p-6">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
-            <div>
-              <p className="font-semibold text-lg">Sin datos de cobranzas cargados</p>
-              <p className="text-muted-foreground mt-1">
-                No hay comprobantes pendientes de cobro en el sistema. Cuando se carguen facturas o comprobantes, apareceran aqui con el detalle de saldos pendientes.
-              </p>
+      {/* Tabs */}
+      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-6 w-fit">
+        <button
+          onClick={() => setActiveTab("cobranzas")}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === "cobranzas" ? "bg-primary text-white" : "text-gray-600 hover:bg-gray-200"}`}
+        >
+          Cobranzas
+        </button>
+        <button
+          onClick={() => setActiveTab("recibos")}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === "recibos" ? "bg-primary text-white" : "text-gray-600 hover:bg-gray-200"}`}
+        >
+          Recibos
+        </button>
+      </div>
+
+      {/* ==================== TAB: COBRANZAS ==================== */}
+      {activeTab === "cobranzas" && (
+        <>
+          {/* Empty cobranzas notice */}
+          {!hasCobranzas && (
+            <Card className="p-6">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-semibold text-lg">Sin datos de cobranzas cargados</p>
+                  <p className="text-muted-foreground mt-1">
+                    No hay comprobantes pendientes de cobro en el sistema. Cuando se carguen facturas o comprobantes, apareceran aqui con el detalle de saldos pendientes.
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Stats cards */}
+          {hasCobranzas && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                    <Users className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Clientes con deuda</p>
+                    <p className="text-3xl font-bold">{uniqueClientsWithDebt}</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
+                    <DollarSign className="h-6 w-6 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Monto total pendiente</p>
+                    <p className="text-3xl font-bold">{formatCurrency(totalPendiente)}</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+                    <Building2 className="h-6 w-6 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Deuda por razon social</p>
+                    <div className="space-y-0.5">
+                      {Object.entries(breakdownByRazonSocial).map(([razon, monto]) => (
+                        <div key={razon} className="flex justify-between text-sm gap-4">
+                          <span className="truncate">{razon}</span>
+                          <span className="font-semibold whitespace-nowrap">{formatCurrency(monto)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* Clients Table */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Clientes</h2>
+
+            {/* Filters */}
+            <div className="flex flex-wrap gap-4">
+              <div className="relative flex-1 min-w-[200px] max-w-md">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar por cliente, email, telefono..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Select value={razonSocialFilter} onValueChange={setRazonSocialFilter}>
+                <SelectTrigger className="w-52"><SelectValue placeholder="Razon Social" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas las razones sociales</SelectItem>
+                  {uniqueRazonesSociales.map((r) => (
+                    <SelectItem key={r} value={r}>{r}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={zonaFilter} onValueChange={setZonaFilter}>
+                <SelectTrigger className="w-40"><SelectValue placeholder="Zona" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas las zonas</SelectItem>
+                  {uniqueZonas.map((z) => (
+                    <SelectItem key={z} value={z}>{z}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={canalFilter} onValueChange={setCanalFilter}>
+                <SelectTrigger className="w-48"><SelectValue placeholder="Canal Facturacion" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos los canales</SelectItem>
+                  {uniqueCanales.map((c) => (
+                    <SelectItem key={c} value={c}>{c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Table */}
+            <div className="border rounded-lg overflow-hidden">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Razon Social</TableHead>
+                      <TableHead>Zona</TableHead>
+                      <TableHead>Condicion de pago</TableHead>
+                      <TableHead>Canal Facturacion</TableHead>
+                      <TableHead className="w-[150px]">Telefono</TableHead>
+                      <TableHead className="w-[150px]">Email</TableHead>
+                      <TableHead className="text-center w-[70px]">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredClients.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No se encontraron clientes</TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredClients.map((c) => (
+                        <TableRow key={c.id}>
+                          <TableCell className="font-medium">{c.business_name}</TableCell>
+                          <TableCell>{c.razon_social || "-"}</TableCell>
+                          <TableCell>{c.zona || "-"}</TableCell>
+                          <TableCell>{c.condicion_pago || "-"}</TableCell>
+                          <TableCell>{canalBadge(c.canal_facturacion)}</TableCell>
+                          <TableCell className="max-w-[150px] truncate" title={c.telefono || ""}>{c.telefono || "-"}</TableCell>
+                          <TableCell className="max-w-[150px] truncate" title={c.email || ""}>{c.email || "-"}</TableCell>
+                          <TableCell className="text-center">
+                            <button onClick={() => setViewingCliente(c)} className="p-1 hover:bg-gray-200 rounded" title="Ver detalle">
+                              <Eye className="h-4 w-4 text-gray-600" />
+                            </button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
           </div>
-        </Card>
-      )}
 
-      {/* Stats cards */}
-      {hasCobranzas && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                <Users className="h-6 w-6 text-blue-600" />
+          {/* Comprobantes Pendientes Table */}
+          {hasCobranzas && (
+            <div className="space-y-4">
+              <h2 className="text-xl font-semibold">Comprobantes Pendientes</h2>
+
+              {/* Filters */}
+              <div className="flex flex-wrap gap-4">
+                <div className="relative flex-1 min-w-[200px] max-w-md">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por cliente o comprobante..."
+                    value={comprobantesSearch}
+                    onChange={(e) => setComprobantesSearch(e.target.value)}
+                    className="pl-10"
+                  />
+                </div>
+                <Select value={comprobantesRazonFilter} onValueChange={setComprobantesRazonFilter}>
+                  <SelectTrigger className="w-52"><SelectValue placeholder="Razon Social" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todas">Todas las razones sociales</SelectItem>
+                    {uniqueRazonesCobranzas.map((r) => (
+                      <SelectItem key={r} value={r}>{r}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Clientes con deuda</p>
-                <p className="text-3xl font-bold">{uniqueClientsWithDebt}</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                <DollarSign className="h-6 w-6 text-red-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Monto total pendiente</p>
-                <p className="text-3xl font-bold">{formatCurrency(totalPendiente)}</p>
-              </div>
-            </div>
-          </Card>
-          <Card className="p-6">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                <Building2 className="h-6 w-6 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground mb-1">Deuda por razon social</p>
-                <div className="space-y-0.5">
-                  {Object.entries(breakdownByRazonSocial).map(([razon, monto]) => (
-                    <div key={razon} className="flex justify-between text-sm gap-4">
-                      <span className="truncate">{razon}</span>
-                      <span className="font-semibold whitespace-nowrap">{formatCurrency(monto)}</span>
-                    </div>
-                  ))}
+
+              {/* Table */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("cliente_nombre")}>
+                          <span className="flex items-center gap-1">Cliente<ArrowUpDown className="h-3 w-3" /></span>
+                        </TableHead>
+                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("comprobante")}>
+                          <span className="flex items-center gap-1">Comprobante<ArrowUpDown className="h-3 w-3" /></span>
+                        </TableHead>
+                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("fecha_comprobante")}>
+                          <span className="flex items-center gap-1">Fecha<ArrowUpDown className="h-3 w-3" /></span>
+                        </TableHead>
+                        <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("total")}>
+                          <span className="flex items-center justify-end gap-1">Total<ArrowUpDown className="h-3 w-3" /></span>
+                        </TableHead>
+                        <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("saldo")}>
+                          <span className="flex items-center justify-end gap-1">Saldo<ArrowUpDown className="h-3 w-3" /></span>
+                        </TableHead>
+                        <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("saldo_acumulado")}>
+                          <span className="flex items-center justify-end gap-1">Saldo Acum.<ArrowUpDown className="h-3 w-3" /></span>
+                        </TableHead>
+                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("razon_social")}>
+                          <span className="flex items-center gap-1">Razon Social<ArrowUpDown className="h-3 w-3" /></span>
+                        </TableHead>
+                        <TableHead className="text-center w-[80px]">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredCobranzas.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No se encontraron comprobantes</TableCell>
+                        </TableRow>
+                      ) : (
+                        filteredCobranzas.map((c) => (
+                          <TableRow key={c.id}>
+                            <TableCell className="font-medium">{c.cliente_nombre}</TableCell>
+                            <TableCell>{c.comprobante}</TableCell>
+                            <TableCell>
+                              {c.fecha_comprobante
+                                ? new Date(c.fecha_comprobante + "T00:00:00").toLocaleDateString("es-AR")
+                                : "-"}
+                            </TableCell>
+                            <TableCell className="text-right">{formatCurrency(c.total ?? 0)}</TableCell>
+                            <TableCell className="text-right font-semibold">{formatCurrency(c.saldo ?? 0)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(c.saldo_acumulado ?? 0)}</TableCell>
+                            <TableCell>{c.razon_social || "-"}</TableCell>
+                            <TableCell className="text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <button onClick={() => setViewingComprobante(c)} className="p-1 hover:bg-gray-200 rounded" title="Ver detalle">
+                                  <Eye className="h-4 w-4 text-gray-600" />
+                                </button>
+                                <button onClick={() => setDeletingComprobante(c)} className="p-1 hover:bg-gray-200 rounded" title="Eliminar">
+                                  <Trash2 className="h-4 w-4 text-red-600" />
+                                </button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
             </div>
-          </Card>
-        </div>
+          )}
+        </>
       )}
 
-      {/* Clients Table */}
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Clientes</h2>
-
-        {/* Filters */}
-        <div className="flex flex-wrap gap-4">
-          <div className="relative flex-1 min-w-[200px] max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por cliente, email, telefono..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
+      {/* ==================== TAB: RECIBOS ==================== */}
+      {activeTab === "recibos" && (
+        <>
+          {/* Stats cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card className="p-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                  <FileText className="h-6 w-6 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total recibos</p>
+                  <p className="text-3xl font-bold">{recibosTotal}</p>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                  <DollarSign className="h-6 w-6 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Monto total cobrado</p>
+                  <p className="text-3xl font-bold">{formatCurrency(recibosMontoCobrado)}</p>
+                </div>
+              </div>
+            </Card>
+            <Card className="p-6">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Users className="h-6 w-6 text-purple-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Top vendedores</p>
+                  <div className="space-y-0.5">
+                    {recibosTopVendedores.map(([vendedor, monto]) => (
+                      <div key={vendedor} className="flex justify-between text-sm gap-4">
+                        <span className="truncate">{vendedor}</span>
+                        <span className="font-semibold whitespace-nowrap">{formatCurrency(monto)}</span>
+                      </div>
+                    ))}
+                    {recibosTopVendedores.length === 0 && (
+                      <p className="text-sm text-muted-foreground">Sin datos</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </Card>
           </div>
-          <Select value={razonSocialFilter} onValueChange={setRazonSocialFilter}>
-            <SelectTrigger className="w-52"><SelectValue placeholder="Razon Social" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todas">Todas las razones sociales</SelectItem>
-              {uniqueRazonesSociales.map((r) => (
-                <SelectItem key={r} value={r}>{r}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={zonaFilter} onValueChange={setZonaFilter}>
-            <SelectTrigger className="w-40"><SelectValue placeholder="Zona" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todas">Todas las zonas</SelectItem>
-              {uniqueZonas.map((z) => (
-                <SelectItem key={z} value={z}>{z}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={canalFilter} onValueChange={setCanalFilter}>
-            <SelectTrigger className="w-48"><SelectValue placeholder="Canal Facturacion" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos los canales</SelectItem>
-              {uniqueCanales.map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Table */}
-        <div className="border rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead>Razon Social</TableHead>
-                  <TableHead>Zona</TableHead>
-                  <TableHead>Condicion de pago</TableHead>
-                  <TableHead>Canal Facturacion</TableHead>
-                  <TableHead className="w-[150px]">Telefono</TableHead>
-                  <TableHead className="w-[150px]">Email</TableHead>
-                  <TableHead className="text-center w-[70px]">Acciones</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredClients.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No se encontraron clientes</TableCell>
-                  </TableRow>
-                ) : (
-                  filteredClients.map((c) => (
-                    <TableRow key={c.id}>
-                      <TableCell className="font-medium">{c.business_name}</TableCell>
-                      <TableCell>{c.razon_social || "-"}</TableCell>
-                      <TableCell>{c.zona || "-"}</TableCell>
-                      <TableCell>{c.condicion_pago || "-"}</TableCell>
-                      <TableCell>{canalBadge(c.canal_facturacion)}</TableCell>
-                      <TableCell className="max-w-[150px] truncate" title={c.telefono || ""}>{c.telefono || "-"}</TableCell>
-                      <TableCell className="max-w-[150px] truncate" title={c.email || ""}>{c.email || "-"}</TableCell>
-                      <TableCell className="text-center">
-                        <button onClick={() => setViewingCliente(c)} className="p-1 hover:bg-gray-200 rounded" title="Ver detalle">
-                          <Eye className="h-4 w-4 text-gray-600" />
-                        </button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-      </div>
-
-      {/* Comprobantes Pendientes Table */}
-      {hasCobranzas && (
-        <div className="space-y-4">
-          <h2 className="text-xl font-semibold">Comprobantes Pendientes</h2>
 
           {/* Filters */}
           <div className="flex flex-wrap gap-4">
             <div className="relative flex-1 min-w-[200px] max-w-md">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar por cliente o comprobante..."
-                value={comprobantesSearch}
-                onChange={(e) => setComprobantesSearch(e.target.value)}
+                placeholder="Buscar por razon social..."
+                value={recibosSearch}
+                onChange={(e) => { setRecibosSearch(e.target.value); setRecibosPage(1) }}
                 className="pl-10"
               />
             </div>
-            <Select value={comprobantesRazonFilter} onValueChange={setComprobantesRazonFilter}>
-              <SelectTrigger className="w-52"><SelectValue placeholder="Razon Social" /></SelectTrigger>
+            <Select value={recibosVendedorFilter} onValueChange={(v) => { setRecibosVendedorFilter(v); setRecibosPage(1) }}>
+              <SelectTrigger className="w-52"><SelectValue placeholder="Vendedor" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="todas">Todas las razones sociales</SelectItem>
-                {uniqueRazonesCobranzas.map((r) => (
-                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                <SelectItem value="todos">Todos los vendedores</SelectItem>
+                {uniqueRecibosVendedores.map((v) => (
+                  <SelectItem key={v} value={v}>{v}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -507,59 +747,26 @@ export default function CobranzasPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("cliente_nombre")}>
-                      <span className="flex items-center gap-1">Cliente<ArrowUpDown className="h-3 w-3" /></span>
-                    </TableHead>
-                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("comprobante")}>
-                      <span className="flex items-center gap-1">Comprobante<ArrowUpDown className="h-3 w-3" /></span>
-                    </TableHead>
-                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("fecha_comprobante")}>
-                      <span className="flex items-center gap-1">Fecha<ArrowUpDown className="h-3 w-3" /></span>
-                    </TableHead>
-                    <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("total")}>
-                      <span className="flex items-center justify-end gap-1">Total<ArrowUpDown className="h-3 w-3" /></span>
-                    </TableHead>
-                    <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("saldo")}>
-                      <span className="flex items-center justify-end gap-1">Saldo<ArrowUpDown className="h-3 w-3" /></span>
-                    </TableHead>
-                    <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("saldo_acumulado")}>
-                      <span className="flex items-center justify-end gap-1">Saldo Acum.<ArrowUpDown className="h-3 w-3" /></span>
-                    </TableHead>
-                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("razon_social")}>
-                      <span className="flex items-center gap-1">Razon Social<ArrowUpDown className="h-3 w-3" /></span>
-                    </TableHead>
-                    <TableHead className="text-center w-[80px]">Acciones</TableHead>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Nro Comprobante</TableHead>
+                    <TableHead>Cliente</TableHead>
+                    <TableHead>Vendedor</TableHead>
+                    <TableHead className="text-right">Importe</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCobranzas.length === 0 ? (
+                  {recibosPageData.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No se encontraron comprobantes</TableCell>
+                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No se encontraron recibos</TableCell>
                     </TableRow>
                   ) : (
-                    filteredCobranzas.map((c) => (
-                      <TableRow key={c.id}>
-                        <TableCell className="font-medium">{c.cliente_nombre}</TableCell>
-                        <TableCell>{c.comprobante}</TableCell>
-                        <TableCell>
-                          {c.fecha_comprobante
-                            ? new Date(c.fecha_comprobante + "T00:00:00").toLocaleDateString("es-AR")
-                            : "-"}
-                        </TableCell>
-                        <TableCell className="text-right">{formatCurrency(c.total ?? 0)}</TableCell>
-                        <TableCell className="text-right font-semibold">{formatCurrency(c.saldo ?? 0)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(c.saldo_acumulado ?? 0)}</TableCell>
-                        <TableCell>{c.razon_social || "-"}</TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <button onClick={() => setViewingComprobante(c)} className="p-1 hover:bg-gray-200 rounded" title="Ver detalle">
-                              <Eye className="h-4 w-4 text-gray-600" />
-                            </button>
-                            <button onClick={() => setDeletingComprobante(c)} className="p-1 hover:bg-gray-200 rounded" title="Eliminar">
-                              <Trash2 className="h-4 w-4 text-red-600" />
-                            </button>
-                          </div>
-                        </TableCell>
+                    recibosPageData.map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell>{formatDateStr(r.fecha)}</TableCell>
+                        <TableCell>{r.nro_comprobante || "-"}</TableCell>
+                        <TableCell className="max-w-[200px] truncate" title={r.razon_social || ""}>{r.razon_social || "-"}</TableCell>
+                        <TableCell>{r.vendedor || "-"}</TableCell>
+                        <TableCell className="text-right font-semibold">{formatCurrency(r.importe ?? 0)}</TableCell>
                       </TableRow>
                     ))
                   )}
@@ -567,7 +774,15 @@ export default function CobranzasPage() {
               </Table>
             </div>
           </div>
-        </div>
+
+          <TablePagination
+            currentPage={recibosPage}
+            totalPages={recibosPagination.totalPages}
+            totalItems={recibosPagination.totalItems}
+            pageSize={recibosPagination.pageSize}
+            onPageChange={setRecibosPage}
+          />
+        </>
       )}
 
       {/* ========== DIALOGS ========== */}
