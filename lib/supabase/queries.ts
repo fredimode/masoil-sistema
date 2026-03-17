@@ -237,9 +237,19 @@ export async function fetchProducts(): Promise<Product[]> {
     .from("products")
     .select("*")
     .order("name")
+    .limit(50000)
 
   if (error) throw error
   return (data || []).map(mapProduct)
+}
+
+export async function fetchProductsCount(): Promise<number> {
+  const supabase = createSupabaseClient()
+  const { count, error } = await supabase
+    .from("products")
+    .select("*", { count: "exact", head: true })
+  if (error) throw error
+  return count || 0
 }
 
 export async function createProduct(product: {
@@ -286,6 +296,7 @@ export async function fetchClients(): Promise<Client[]> {
     .from("clients")
     .select("*")
     .order("business_name")
+    .limit(50000)
 
   if (error) throw error
   return (data || []).map(mapClient)
@@ -361,6 +372,7 @@ export async function fetchProveedores(): Promise<any[]> {
     .from("proveedores")
     .select("*")
     .order("nombre")
+    .limit(50000)
   if (error) throw error
   return data || []
 }
@@ -442,6 +454,7 @@ export async function fetchPagosProveedores(): Promise<any[]> {
     .from("pagos_proveedores")
     .select("*")
     .order("created_at", { ascending: false })
+    .limit(50000)
   if (error) throw error
   return data || []
 }
@@ -464,6 +477,7 @@ export async function fetchReclamos(): Promise<any[]> {
     .from("reclamos_pagos_proveedores")
     .select("*")
     .order("created_at", { ascending: false })
+    .limit(50000)
   if (error) throw error
   return data || []
 }
@@ -484,6 +498,7 @@ export async function fetchCobranzasPendientes(): Promise<any[]> {
     .from("cobranzas_pendientes")
     .select("*")
     .order("created_at", { ascending: false })
+    .limit(50000)
   if (error) throw error
   return data || []
 }
@@ -502,6 +517,7 @@ export async function fetchClientesConCobranza(): Promise<any[]> {
     .from("clients")
     .select("id, business_name, razon_social, zona, condicion_pago, canal_facturacion, canal_observaciones, telefono, email")
     .order("business_name")
+    .limit(50000)
   if (error) throw error
   return data || []
 }

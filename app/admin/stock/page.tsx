@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
-import { fetchProducts, updateProduct, deleteProduct } from "@/lib/supabase/queries"
+import { fetchProducts, fetchProductsCount, updateProduct, deleteProduct } from "@/lib/supabase/queries"
 import { normalizeSearch } from "@/lib/utils"
 import type { Product } from "@/lib/types"
 import { Search, Plus, Download, Upload } from "lucide-react"
@@ -24,11 +24,15 @@ export default function AdminStockPage() {
   const [localProducts, setLocalProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
+  const [totalProductsCount, setTotalProductsCount] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    fetchProducts()
-      .then(setLocalProducts)
+    Promise.all([fetchProducts(), fetchProductsCount()])
+      .then(([products, count]) => {
+        setLocalProducts(products)
+        setTotalProductsCount(count)
+      })
       .catch((err) => console.error("Error fetching products:", err))
       .finally(() => setLoading(false))
   }, [])
@@ -93,7 +97,7 @@ export default function AdminStockPage() {
   if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
 
   // Calculate stats
-  const totalProducts = localProducts.length
+  const totalProducts = totalProductsCount || localProducts.length
   const lowStock = localProducts.filter((p) => p.stock < p.lowStockThreshold && p.stock > 0).length
   const criticalStock = localProducts.filter((p) => p.stock < p.criticalStockThreshold && p.stock > 0).length
   const outOfStock = localProducts.filter((p) => p.stock === 0 && !p.isCustomizable).length
