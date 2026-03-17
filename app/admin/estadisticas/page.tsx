@@ -121,15 +121,16 @@ export default function AdminEstadisticasPage() {
   // Sales by category
   const salesByCategory = products.reduce(
     (acc, product) => {
-      if (!acc[product.category]) {
-        acc[product.category] = { name: product.category, value: 0 }
+      const cat = product.category || "Sin categoría"
+      if (!acc[cat]) {
+        acc[cat] = { name: cat, value: 0 }
       }
       currentOrders
         .filter((o) => o.status === "ENTREGADO")
         .forEach((order) => {
           const orderProduct = order.products.find((p) => p.productId === product.id)
           if (orderProduct) {
-            acc[product.category].value += orderProduct.price * orderProduct.quantity
+            acc[cat].value += orderProduct.price * orderProduct.quantity
           }
         })
       return acc
