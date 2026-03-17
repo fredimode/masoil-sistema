@@ -3,6 +3,9 @@
 import { useState, useEffect, useMemo } from "react"
 import { formatMoney, formatDateStr } from "@/lib/utils"
 import * as XLSX from "xlsx"
+import { fetchServiciosFijos, createServicioFijo, updateServicioFijo } from "@/lib/supabase/queries"
+import { fetchMovimientosCajaChica, createMovimientoCajaChica } from "@/lib/supabase/queries"
+import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 
 const CENTROS_DE_COSTO = [
   { id: "logistica", nombre: "Logistica" },
@@ -42,6 +45,26 @@ interface CuentaPago {
   saldo: number
 }
 
+interface ServicioFijo {
+  id: string
+  servicio: string
+  forma_pago: string | null
+  observaciones: string | null
+  vencimiento: string | null
+  estado: string | null
+  importe: number
+}
+
+interface MovimientoCajaChica {
+  id: string
+  fecha: string | null
+  tipo: string | null
+  concepto: string | null
+  valor: number
+  saldo: number | null
+  periodo: string | null
+}
+
 function getCentroNombre(id: string): string {
   return CENTROS_DE_COSTO.find((c) => c.id === id)?.nombre || id
 }
@@ -58,7 +81,7 @@ export default function EgresosPage() {
   })
   const [filtroCentro, setFiltroCentro] = useState("")
   const [filtroEstado, setFiltroEstado] = useState("")
-  const [vistaTab, setVistaTab] = useState<"todos" | "pendientes">("todos")
+  const [vistaTab, setVistaTab] = useState<"todos" | "pendientes" | "servicios" | "caja">("todos")
 
   // Modal nuevo/editar
   const [modalAbierto, setModalAbierto] = useState(false)
@@ -86,12 +109,51 @@ export default function EgresosPage() {
   // Delete confirm
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null)
 
+  // === Servicios Fijos state ===
+  const [serviciosFijos, setServiciosFijos] = useState<ServicioFijo[]>([])
+  const [loadingServicios, setLoadingServicios] = useState(true)
+  const [modalServicio, setModalServicio] = useState(false)
+  const [guardandoServicio, setGuardandoServicio] = useState(false)
+  const [servicioForm, setServicioForm] = useState({
+    servicio: "",
+    forma_pago: "",
+    observaciones: "",
+    vencimiento: "",
+    importe: "",
+  })
+
+  // === Caja Chica state ===
+  const [movimientosCaja, setMovimientosCaja] = useState<MovimientoCajaChica[]>([])
+  const [loadingCaja, setLoadingCaja] = useState(true)
+  const [modalMovimiento, setModalMovimiento] = useState(false)
+  const [guardandoMovimiento, setGuardandoMovimiento] = useState(false)
+  const [movimientoForm, setMovimientoForm] = useState({
+    fecha: new Date().toISOString().slice(0, 10),
+    tipo: "REP",
+    concepto: "",
+    valor: "",
+    periodo: "2024",
+  })
+  const [cajaFiltroTipo, setCajaFiltroTipo] = useState("")
+  const [cajaFiltroPeriodo, setCajaFiltroPeriodo] = useState("")
+  const [cajaPage, setCajaPage] = useState(1)
+
   useEffect(() => {
     cargarDatos()
   }, [mesSeleccionado, filtroCentro, filtroEstado, vistaTab])
 
   useEffect(() => {
     cargarCuentas()
+  }, [])
+
+  // Load servicios fijos on mount
+  useEffect(() => {
+    cargarServiciosFijos()
+  }, [])
+
+  // Load caja chica on mount
+  useEffect(() => {
+    cargarMovimientosCaja()
   }, [])
 
   async function cargarDatos() {
@@ -122,6 +184,30 @@ export default function EgresosPage() {
       if (data.success) setCuentas(data.data || [])
     } catch (error) {
       console.error("Error cargando cuentas:", error)
+    }
+  }
+
+  async function cargarServiciosFijos() {
+    setLoadingServicios(true)
+    try {
+      const data = await fetchServiciosFijos()
+      setServiciosFijos(data || [])
+    } catch (error) {
+      console.error("Error cargando servicios fijos:", error)
+    } finally {
+      setLoadingServicios(false)
+    }
+  }
+
+  async function cargarMovimientosCaja() {
+    setLoadingCaja(true)
+    try {
+      const data = await fetchMovimientosCajaChica()
+      setMovimientosCaja(data || [])
+    } catch (error) {
+      console.error("Error cargando movimientos caja chica:", error)
+    } finally {
+      setLoadingCaja(false)
     }
   }
 
@@ -325,6 +411,128 @@ export default function EgresosPage() {
     XLSX.writeFile(wb, `egresos_${mesSeleccionado}.xlsx`)
   }
 
+  // === Servicios Fijos helpers ===
+  const totalMensualServicios = serviciosFijos.reduce((s, sf) => s + (sf.importe || 0), 0)
+
+  async function guardarServicioFijo() {
+    setGuardandoServicio(true)
+    try {
+      await createServicioFijo({
+        servicio: servicioForm.servicio,
+        forma_pago: servicioForm.forma_pago || null,
+        observaciones: servicioForm.observaciones || null,
+        vencimiento: servicioForm.vencimiento || null,
+        importe: parseFloat(servicioForm.importe) || 0,
+      })
+      setModalServicio(false)
+      setServicioForm({ servicio: "", forma_pago: "", observaciones: "", vencimiento: "", importe: "" })
+      cargarServiciosFijos()
+    } catch (error) {
+      console.error("Error creando servicio fijo:", error)
+      alert("Error creando servicio fijo")
+    } finally {
+      setGuardandoServicio(false)
+    }
+  }
+
+  async function marcarServicioPagado(id: string) {
+    try {
+      await updateServicioFijo(id, { estado: "pagado" })
+      cargarServiciosFijos()
+    } catch (error) {
+      console.error("Error actualizando servicio:", error)
+    }
+  }
+
+  // === Caja Chica helpers ===
+  const cajaUniqueTipos = useMemo(() => {
+    const tipos = new Set<string>()
+    movimientosCaja.forEach((m) => {
+      if (m.tipo) tipos.add(m.tipo)
+    })
+    return Array.from(tipos).sort()
+  }, [movimientosCaja])
+
+  const cajaUniquePeriodos = useMemo(() => {
+    const periodos = new Set<string>()
+    movimientosCaja.forEach((m) => {
+      if (m.periodo) periodos.add(m.periodo)
+    })
+    return Array.from(periodos).sort()
+  }, [movimientosCaja])
+
+  const cajaFiltrada = useMemo(() => {
+    let result = movimientosCaja
+    if (cajaFiltroTipo) {
+      result = result.filter((m) => m.tipo === cajaFiltroTipo)
+    }
+    if (cajaFiltroPeriodo) {
+      result = result.filter((m) => m.periodo === cajaFiltroPeriodo)
+    }
+    return result
+  }, [movimientosCaja, cajaFiltroTipo, cajaFiltroPeriodo])
+
+  const cajaSaldoActual = useMemo(() => {
+    // Find last non-null saldo in data for periodo "2024", or most recent record
+    const periodo2024 = movimientosCaja.filter((m) => m.periodo === "2024" && m.saldo != null)
+    if (periodo2024.length > 0) {
+      return periodo2024[periodo2024.length - 1].saldo ?? 0
+    }
+    // Fallback to most recent record with saldo
+    const withSaldo = movimientosCaja.filter((m) => m.saldo != null)
+    if (withSaldo.length > 0) {
+      return withSaldo[withSaldo.length - 1].saldo ?? 0
+    }
+    return 0
+  }, [movimientosCaja])
+
+  const cajaTotalIngresos = useMemo(() => {
+    return cajaFiltrada.filter((m) => m.valor > 0).reduce((s, m) => s + m.valor, 0)
+  }, [cajaFiltrada])
+
+  const cajaTotalEgresos = useMemo(() => {
+    return cajaFiltrada.filter((m) => m.valor < 0).reduce((s, m) => s + Math.abs(m.valor), 0)
+  }, [cajaFiltrada])
+
+  const cajaPagination = usePagination(cajaFiltrada, 50)
+  const cajaPageData = cajaPagination.getPage(cajaPage)
+
+  async function guardarMovimientoCaja() {
+    setGuardandoMovimiento(true)
+    try {
+      await createMovimientoCajaChica({
+        fecha: movimientoForm.fecha || null,
+        tipo: movimientoForm.tipo,
+        concepto: movimientoForm.concepto || null,
+        valor: parseFloat(movimientoForm.valor) || 0,
+        periodo: movimientoForm.periodo,
+      })
+      setModalMovimiento(false)
+      setMovimientoForm({ fecha: new Date().toISOString().slice(0, 10), tipo: "REP", concepto: "", valor: "", periodo: "2024" })
+      cargarMovimientosCaja()
+    } catch (error) {
+      console.error("Error creando movimiento caja chica:", error)
+      alert("Error creando movimiento")
+    } finally {
+      setGuardandoMovimiento(false)
+    }
+  }
+
+  const descargarExcelCaja = () => {
+    const headers = ["Fecha", "Tipo", "Concepto", "Valor", "Saldo"]
+    const rows = cajaFiltrada.map((m) => [
+      m.fecha || "",
+      m.tipo || "",
+      m.concepto || "",
+      m.valor,
+      m.saldo ?? "",
+    ])
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Caja Chica")
+    XLSX.writeFile(wb, `caja_chica${cajaFiltroPeriodo ? `_${cajaFiltroPeriodo}` : ""}.xlsx`)
+  }
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -333,18 +541,52 @@ export default function EgresosPage() {
           <p className="text-gray-500">Gastos y pagos del negocio</p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={descargarExcel}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-          >
-            Descargar Excel
-          </button>
-          <button
-            onClick={abrirModalNuevo}
-            className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2"
-          >
-            + Nuevo Egreso
-          </button>
+          {(vistaTab === "todos" || vistaTab === "pendientes") && (
+            <>
+              <button
+                onClick={descargarExcel}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+              >
+                Descargar Excel
+              </button>
+              <button
+                onClick={abrirModalNuevo}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2"
+              >
+                + Nuevo Egreso
+              </button>
+            </>
+          )}
+          {vistaTab === "servicios" && (
+            <button
+              onClick={() => {
+                setServicioForm({ servicio: "", forma_pago: "", observaciones: "", vencimiento: "", importe: "" })
+                setModalServicio(true)
+              }}
+              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2"
+            >
+              + Nuevo Servicio
+            </button>
+          )}
+          {vistaTab === "caja" && (
+            <>
+              <button
+                onClick={descargarExcelCaja}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+              >
+                Descargar Excel
+              </button>
+              <button
+                onClick={() => {
+                  setMovimientoForm({ fecha: new Date().toISOString().slice(0, 10), tipo: "REP", concepto: "", valor: "", periodo: "2024" })
+                  setModalMovimiento(true)
+                }}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2"
+              >
+                + Nuevo Movimiento
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -362,201 +604,414 @@ export default function EgresosPage() {
         >
           Pendientes de Pago ({pendientes.length})
         </button>
-      </div>
-
-      {/* Filtros */}
-      {vistaTab === "todos" && (
-        <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">Mes:</label>
-              <select
-                value={mesSeleccionado}
-                onChange={(e) => setMesSeleccionado(e.target.value)}
-                className="p-2 border rounded-lg focus:ring-2 focus:ring-primary capitalize"
-              >
-                {opcionesMeses().map((op) => (
-                  <option key={op.valor} value={op.valor} className="capitalize">
-                    {op.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">Centro:</label>
-              <select
-                value={filtroCentro}
-                onChange={(e) => setFiltroCentro(e.target.value)}
-                className="p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-              >
-                <option value="">Todos</option>
-                {CENTROS_DE_COSTO.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-sm text-gray-600">Estado:</label>
-              <select
-                value={filtroEstado}
-                onChange={(e) => setFiltroEstado(e.target.value)}
-                className="p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-              >
-                <option value="">Todos</option>
-                <option value="Pendiente">Pendiente</option>
-                <option value="Pagado">Pagado</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Cards resumen */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-        <div className="bg-gradient-to-br from-rose-50 to-rose-100 rounded-xl p-4 border border-rose-200">
-          <p className="text-xs text-rose-600 font-semibold uppercase">Total Egresos</p>
-          <p className="text-2xl font-bold text-rose-700">{formatMoney(totalEgresos)}</p>
-          <p className="text-xs text-rose-500">{egresos.length} registros</p>
-        </div>
-        <div
-          className={`bg-gradient-to-br rounded-xl p-4 border ${totalPendientes > 0 ? "from-amber-50 to-amber-100 border-amber-200" : "from-green-50 to-green-100 border-green-200"}`}
+        <button
+          onClick={() => setVistaTab("servicios")}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition ${vistaTab === "servicios" ? "bg-primary text-white" : "text-gray-600 hover:bg-gray-200"}`}
         >
-          <p className={`text-xs font-semibold uppercase ${totalPendientes > 0 ? "text-amber-600" : "text-green-600"}`}>
-            Pendientes de Pago
-          </p>
-          <p className={`text-2xl font-bold ${totalPendientes > 0 ? "text-amber-700" : "text-green-700"}`}>
-            {formatMoney(totalPendientes)}
-          </p>
-          <p className={`text-xs ${totalPendientes > 0 ? "text-amber-500" : "text-green-500"}`}>{pendientes.length} pendientes</p>
-        </div>
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
-          <p className="text-xs text-blue-600 font-semibold uppercase">Top Centro de Costo</p>
-          {topCentros.length > 0 ? (
-            <>
-              <p className="text-sm font-bold text-blue-700 truncate">{getCentroNombre(topCentros[0][0])}</p>
-              <p className="text-lg font-bold text-blue-800">{formatMoney(topCentros[0][1])}</p>
-            </>
-          ) : (
-            <p className="text-sm text-blue-500">Sin datos</p>
-          )}
-        </div>
+          Servicios Fijos
+        </button>
+        <button
+          onClick={() => setVistaTab("caja")}
+          className={`px-4 py-2 rounded-md text-sm font-medium transition ${vistaTab === "caja" ? "bg-primary text-white" : "text-gray-600 hover:bg-gray-200"}`}
+        >
+          Caja Chica
+        </button>
       </div>
 
-      {/* Mini cards por centro */}
-      {topCentros.length > 1 && vistaTab === "todos" && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-6">
-          {topCentros.map(([centro, total]) => (
-            <div key={centro} className="bg-white rounded-lg shadow p-3 text-center">
-              <p className="text-xs text-gray-500 truncate">{getCentroNombre(centro)}</p>
-              <p className="text-sm font-bold text-gray-900">{formatMoney(total)}</p>
+      {/* ===================== EGRESOS CONTENT (Todos / Pendientes) ===================== */}
+      {(vistaTab === "todos" || vistaTab === "pendientes") && (
+        <>
+          {/* Filtros */}
+          {vistaTab === "todos" && (
+            <div className="bg-white rounded-lg shadow p-4 mb-6">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600">Mes:</label>
+                  <select
+                    value={mesSeleccionado}
+                    onChange={(e) => setMesSeleccionado(e.target.value)}
+                    className="p-2 border rounded-lg focus:ring-2 focus:ring-primary capitalize"
+                  >
+                    {opcionesMeses().map((op) => (
+                      <option key={op.valor} value={op.valor} className="capitalize">
+                        {op.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600">Centro:</label>
+                  <select
+                    value={filtroCentro}
+                    onChange={(e) => setFiltroCentro(e.target.value)}
+                    className="p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="">Todos</option>
+                    {CENTROS_DE_COSTO.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-gray-600">Estado:</label>
+                  <select
+                    value={filtroEstado}
+                    onChange={(e) => setFiltroEstado(e.target.value)}
+                    className="p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                  >
+                    <option value="">Todos</option>
+                    <option value="Pendiente">Pendiente</option>
+                    <option value="Pagado">Pagado</option>
+                  </select>
+                </div>
+              </div>
             </div>
-          ))}
-        </div>
+          )}
+
+          {/* Cards resumen */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-gradient-to-br from-rose-50 to-rose-100 rounded-xl p-4 border border-rose-200">
+              <p className="text-xs text-rose-600 font-semibold uppercase">Total Egresos</p>
+              <p className="text-2xl font-bold text-rose-700">{formatMoney(totalEgresos)}</p>
+              <p className="text-xs text-rose-500">{egresos.length} registros</p>
+            </div>
+            <div
+              className={`bg-gradient-to-br rounded-xl p-4 border ${totalPendientes > 0 ? "from-amber-50 to-amber-100 border-amber-200" : "from-green-50 to-green-100 border-green-200"}`}
+            >
+              <p className={`text-xs font-semibold uppercase ${totalPendientes > 0 ? "text-amber-600" : "text-green-600"}`}>
+                Pendientes de Pago
+              </p>
+              <p className={`text-2xl font-bold ${totalPendientes > 0 ? "text-amber-700" : "text-green-700"}`}>
+                {formatMoney(totalPendientes)}
+              </p>
+              <p className={`text-xs ${totalPendientes > 0 ? "text-amber-500" : "text-green-500"}`}>{pendientes.length} pendientes</p>
+            </div>
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
+              <p className="text-xs text-blue-600 font-semibold uppercase">Top Centro de Costo</p>
+              {topCentros.length > 0 ? (
+                <>
+                  <p className="text-sm font-bold text-blue-700 truncate">{getCentroNombre(topCentros[0][0])}</p>
+                  <p className="text-lg font-bold text-blue-800">{formatMoney(topCentros[0][1])}</p>
+                </>
+              ) : (
+                <p className="text-sm text-blue-500">Sin datos</p>
+              )}
+            </div>
+          </div>
+
+          {/* Mini cards por centro */}
+          {topCentros.length > 1 && vistaTab === "todos" && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-6">
+              {topCentros.map(([centro, total]) => (
+                <div key={centro} className="bg-white rounded-lg shadow p-3 text-center">
+                  <p className="text-xs text-gray-500 truncate">{getCentroNombre(centro)}</p>
+                  <p className="text-sm font-bold text-gray-900">{formatMoney(total)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Tabla */}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            {loading ? (
+              <div className="text-center py-12">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <p className="mt-2 text-gray-600">Cargando...</p>
+              </div>
+            ) : egresos.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500">No hay egresos en este periodo</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Centro de Costo</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Descripcion</th>
+                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Monto</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Fecha</th>
+                      <th className="px-4 py-3 text-center font-semibold text-gray-700">Estado</th>
+                      <th className="px-4 py-3 text-center font-semibold text-gray-700">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {egresos.map((e, idx) => (
+                      <tr key={e.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                        <td className="px-4 py-3">
+                          <div>
+                            <span className="font-medium text-gray-900 text-xs">{getCentroNombre(e.centro_costo)}</span>
+                            {e.sub_categoria && <p className="text-xs text-gray-500">{e.sub_categoria}</p>}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate" title={e.descripcion || ""}>
+                          {e.descripcion || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium text-rose-600">{formatMoney(e.monto)}</td>
+                        <td className="px-4 py-3 text-gray-600">{formatDateStr(e.fecha)}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              e.estado_pago === "Pagado" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                            }`}
+                          >
+                            {e.estado_pago}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            {e.estado_pago === "Pendiente" && (
+                              <button
+                                onClick={() => abrirPago(e)}
+                                className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200"
+                              >
+                                Pagar
+                              </button>
+                            )}
+                            <button
+                              onClick={() => abrirModalEditar(e)}
+                              className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200"
+                            >
+                              Editar
+                            </button>
+                            {confirmDelete === e.id ? (
+                              <div className="flex gap-1">
+                                <button onClick={() => eliminarEgreso(e.id)} className="px-2 py-1 bg-red-600 text-white rounded text-xs">
+                                  Si
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDelete(null)}
+                                  className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmDelete(e.id)}
+                                className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
+                              >
+                                Eliminar
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-rose-100 font-bold">
+                      <td colSpan={2} className="px-4 py-3 text-gray-900">
+                        TOTAL ({egresos.length})
+                      </td>
+                      <td className="px-4 py-3 text-right text-rose-700">{formatMoney(totalEgresos)}</td>
+                      <td colSpan={3}></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
-      {/* Tabla */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {loading ? (
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            <p className="mt-2 text-gray-600">Cargando...</p>
+      {/* ===================== SERVICIOS FIJOS CONTENT ===================== */}
+      {vistaTab === "servicios" && (
+        <>
+          {/* Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mb-6">
+            <div className="bg-gradient-to-br from-violet-50 to-violet-100 rounded-xl p-4 border border-violet-200">
+              <p className="text-xs text-violet-600 font-semibold uppercase">Total Mensual</p>
+              <p className="text-2xl font-bold text-violet-700">{formatMoney(totalMensualServicios)}</p>
+              <p className="text-xs text-violet-500">{serviciosFijos.length} servicios</p>
+            </div>
           </div>
-        ) : egresos.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No hay egresos en este periodo</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-100">
-                <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Centro de Costo</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Descripcion</th>
-                  <th className="px-4 py-3 text-right font-semibold text-gray-700">Monto</th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">Fecha</th>
-                  <th className="px-4 py-3 text-center font-semibold text-gray-700">Estado</th>
-                  <th className="px-4 py-3 text-center font-semibold text-gray-700">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {egresos.map((e, idx) => (
-                  <tr key={e.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                    <td className="px-4 py-3">
-                      <div>
-                        <span className="font-medium text-gray-900 text-xs">{getCentroNombre(e.centro_costo)}</span>
-                        {e.sub_categoria && <p className="text-xs text-gray-500">{e.sub_categoria}</p>}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate" title={e.descripcion || ""}>
-                      {e.descripcion || "-"}
-                    </td>
-                    <td className="px-4 py-3 text-right font-medium text-rose-600">{formatMoney(e.monto)}</td>
-                    <td className="px-4 py-3 text-gray-600">{formatDateStr(e.fecha)}</td>
-                    <td className="px-4 py-3 text-center">
-                      <span
-                        className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          e.estado_pago === "Pagado" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
-                        }`}
-                      >
-                        {e.estado_pago}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        {e.estado_pago === "Pendiente" && (
-                          <button
-                            onClick={() => abrirPago(e)}
-                            className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200"
+
+          {/* Tabla servicios fijos */}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            {loadingServicios ? (
+              <div className="text-center py-12">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <p className="mt-2 text-gray-600">Cargando...</p>
+              </div>
+            ) : serviciosFijos.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500">No hay servicios fijos registrados</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Servicio</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Forma de Pago</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Observaciones</th>
+                      <th className="px-4 py-3 text-left font-semibold text-gray-700">Vencimiento</th>
+                      <th className="px-4 py-3 text-center font-semibold text-gray-700">Estado</th>
+                      <th className="px-4 py-3 text-right font-semibold text-gray-700">Importe</th>
+                      <th className="px-4 py-3 text-center font-semibold text-gray-700">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {serviciosFijos.map((sf, idx) => (
+                      <tr key={sf.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                        <td className="px-4 py-3 font-medium text-gray-900">{sf.servicio}</td>
+                        <td className="px-4 py-3 text-gray-600">{sf.forma_pago || "-"}</td>
+                        <td className="px-4 py-3 text-gray-600 max-w-[200px] truncate" title={sf.observaciones || ""}>
+                          {sf.observaciones || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-gray-600">{sf.vencimiento ? formatDateStr(sf.vencimiento) : "-"}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              sf.estado === "pagado" ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"
+                            }`}
                           >
-                            Pagar
-                          </button>
-                        )}
-                        <button
-                          onClick={() => abrirModalEditar(e)}
-                          className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs hover:bg-blue-200"
-                        >
-                          Editar
-                        </button>
-                        {confirmDelete === e.id ? (
-                          <div className="flex gap-1">
-                            <button onClick={() => eliminarEgreso(e.id)} className="px-2 py-1 bg-red-600 text-white rounded text-xs">
-                              Si
-                            </button>
+                            {sf.estado || "pendiente"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium text-gray-900">{formatMoney(sf.importe)}</td>
+                        <td className="px-4 py-3 text-center">
+                          {sf.estado !== "pagado" && (
                             <button
-                              onClick={() => setConfirmDelete(null)}
-                              className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs"
+                              onClick={() => marcarServicioPagado(sf.id)}
+                              className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs hover:bg-green-200"
                             >
-                              No
+                              Marcar Pagado
                             </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setConfirmDelete(e.id)}
-                            className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs hover:bg-red-200"
-                          >
-                            Eliminar
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="bg-rose-100 font-bold">
-                  <td colSpan={2} className="px-4 py-3 text-gray-900">
-                    TOTAL ({egresos.length})
-                  </td>
-                  <td className="px-4 py-3 text-right text-rose-700">{formatMoney(totalEgresos)}</td>
-                  <td colSpan={3}></td>
-                </tr>
-              </tfoot>
-            </table>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-violet-100 font-bold">
+                      <td colSpan={5} className="px-4 py-3 text-gray-900">
+                        TOTAL ({serviciosFijos.length})
+                      </td>
+                      <td className="px-4 py-3 text-right text-violet-700">{formatMoney(totalMensualServicios)}</td>
+                      <td></td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
+
+      {/* ===================== CAJA CHICA CONTENT ===================== */}
+      {vistaTab === "caja" && (
+        <>
+          {/* Stats cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
+              <p className="text-xs text-blue-600 font-semibold uppercase">Saldo Actual</p>
+              <p className="text-2xl font-bold text-blue-700">{formatMoney(cajaSaldoActual)}</p>
+            </div>
+            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
+              <p className="text-xs text-green-600 font-semibold uppercase">Total Ingresos</p>
+              <p className="text-2xl font-bold text-green-700">{formatMoney(cajaTotalIngresos)}</p>
+            </div>
+            <div className="bg-gradient-to-br from-rose-50 to-rose-100 rounded-xl p-4 border border-rose-200">
+              <p className="text-xs text-rose-600 font-semibold uppercase">Total Egresos</p>
+              <p className="text-2xl font-bold text-rose-700">{formatMoney(cajaTotalEgresos)}</p>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <div className="bg-white rounded-lg shadow p-4 mb-6">
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Tipo:</label>
+                <select
+                  value={cajaFiltroTipo}
+                  onChange={(e) => { setCajaFiltroTipo(e.target.value); setCajaPage(1) }}
+                  className="p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">Todos</option>
+                  {cajaUniqueTipos.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-600">Periodo:</label>
+                <select
+                  value={cajaFiltroPeriodo}
+                  onChange={(e) => { setCajaFiltroPeriodo(e.target.value); setCajaPage(1) }}
+                  className="p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">Todos</option>
+                  {cajaUniquePeriodos.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Tabla caja chica */}
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            {loadingCaja ? (
+              <div className="text-center py-12">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                <p className="mt-2 text-gray-600">Cargando...</p>
+              </div>
+            ) : cajaFiltrada.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500">No hay movimientos de caja chica</p>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Fecha</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Tipo</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Concepto</th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-700">Valor</th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-700">Saldo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cajaPageData.map((m, idx) => (
+                        <tr key={m.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                          <td className="px-4 py-3 text-gray-600">{m.fecha ? formatDateStr(m.fecha) : "-"}</td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                              {m.tipo || "-"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 max-w-[250px] truncate" title={m.concepto || ""}>
+                            {m.concepto || "-"}
+                          </td>
+                          <td className={`px-4 py-3 text-right font-medium ${m.valor > 0 ? "text-green-600" : m.valor < 0 ? "text-red-600" : "text-gray-600"}`}>
+                            {formatMoney(m.valor)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-medium text-gray-900">
+                            {m.saldo != null ? formatMoney(m.saldo) : "-"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <TablePagination
+                  currentPage={cajaPage}
+                  totalPages={cajaPagination.totalPages}
+                  totalItems={cajaPagination.totalItems}
+                  pageSize={cajaPagination.pageSize}
+                  onPageChange={setCajaPage}
+                />
+              </>
+            )}
+          </div>
+        </>
+      )}
 
       {/* MODAL NUEVO/EDITAR EGRESO */}
       {modalAbierto && (
@@ -737,6 +1192,175 @@ export default function EgresosPage() {
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400"
                 >
                   {guardando ? "Guardando..." : "Confirmar Pago"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* MODAL NUEVO SERVICIO FIJO */}
+      {modalServicio && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setModalServicio(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div
+              className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
+                <h3 className="text-lg font-bold text-gray-900">Nuevo Servicio Fijo</h3>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="text-sm text-gray-600 block mb-1">Servicio *</label>
+                  <input
+                    value={servicioForm.servicio}
+                    onChange={(e) => setServicioForm((prev) => ({ ...prev, servicio: e.target.value }))}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                    placeholder="Nombre del servicio..."
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600 block mb-1">Forma de Pago</label>
+                  <input
+                    value={servicioForm.forma_pago}
+                    onChange={(e) => setServicioForm((prev) => ({ ...prev, forma_pago: e.target.value }))}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                    placeholder="Transferencia, debito automatico..."
+                  />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600 block mb-1">Observaciones</label>
+                  <textarea
+                    value={servicioForm.observaciones}
+                    onChange={(e) => setServicioForm((prev) => ({ ...prev, observaciones: e.target.value }))}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                    rows={3}
+                    placeholder="Observaciones..."
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm text-gray-600 block mb-1">Vencimiento</label>
+                    <input
+                      type="date"
+                      value={servicioForm.vencimiento}
+                      onChange={(e) => setServicioForm((prev) => ({ ...prev, vencimiento: e.target.value }))}
+                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600 block mb-1">Importe *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={servicioForm.importe}
+                      onChange={(e) => setServicioForm((prev) => ({ ...prev, importe: e.target.value }))}
+                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3 sticky bottom-0 bg-white">
+                <button onClick={() => setModalServicio(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+                  Cancelar
+                </button>
+                <button
+                  onClick={guardarServicioFijo}
+                  disabled={guardandoServicio || !servicioForm.servicio}
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-gray-400"
+                >
+                  {guardandoServicio ? "Guardando..." : "Crear Servicio"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* MODAL NUEVO MOVIMIENTO CAJA CHICA */}
+      {modalMovimiento && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setModalMovimiento(false)} />
+          <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
+            <div
+              className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="px-6 py-4 border-b border-gray-200 sticky top-0 bg-white z-10">
+                <h3 className="text-lg font-bold text-gray-900">Nuevo Movimiento Caja Chica</h3>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm text-gray-600 block mb-1">Fecha</label>
+                    <input
+                      type="date"
+                      value={movimientoForm.fecha}
+                      onChange={(e) => setMovimientoForm((prev) => ({ ...prev, fecha: e.target.value }))}
+                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600 block mb-1">Tipo *</label>
+                    <select
+                      value={movimientoForm.tipo}
+                      onChange={(e) => setMovimientoForm((prev) => ({ ...prev, tipo: e.target.value }))}
+                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                    >
+                      <option value="REP">REP</option>
+                      <option value="ADM">ADM</option>
+                      <option value="DIST">DIST</option>
+                      <option value="VARIOS">VARIOS</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600 block mb-1">Concepto</label>
+                  <input
+                    value={movimientoForm.concepto}
+                    onChange={(e) => setMovimientoForm((prev) => ({ ...prev, concepto: e.target.value }))}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                    placeholder="Descripcion del movimiento..."
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm text-gray-600 block mb-1">Valor *</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={movimientoForm.valor}
+                      onChange={(e) => setMovimientoForm((prev) => ({ ...prev, valor: e.target.value }))}
+                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                      placeholder="Positivo=ingreso, Negativo=egreso"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-gray-600 block mb-1">Periodo *</label>
+                    <select
+                      value={movimientoForm.periodo}
+                      onChange={(e) => setMovimientoForm((prev) => ({ ...prev, periodo: e.target.value }))}
+                      className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                    >
+                      <option value="2024">2024</option>
+                      <option value="2023">2023</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3 sticky bottom-0 bg-white">
+                <button onClick={() => setModalMovimiento(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+                  Cancelar
+                </button>
+                <button
+                  onClick={guardarMovimientoCaja}
+                  disabled={guardandoMovimiento || !movimientoForm.valor}
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-gray-400"
+                >
+                  {guardandoMovimiento ? "Guardando..." : "Crear Movimiento"}
                 </button>
               </div>
             </div>
