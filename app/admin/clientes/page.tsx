@@ -7,10 +7,17 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card } from "@/components/ui/card"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
-import { fetchClients, fetchVendedores } from "@/lib/supabase/queries"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { fetchClients, fetchVendedores, deleteClientsBulk } from "@/lib/supabase/queries"
 import { normalizeSearch } from "@/lib/utils"
 import type { Client, Vendedor } from "@/lib/types"
-import { Search, Plus, Download, Users, TrendingUp } from "lucide-react"
+import { Search, Plus, Download, Users, TrendingUp, Trash2 } from "lucide-react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
 
@@ -23,19 +30,25 @@ export default function AdminClientesPage() {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [c, v] = await Promise.all([fetchClients(), fetchVendedores()])
-        setClients(c)
-        setVendedores(v)
-      } catch (err) {
-        console.error("Error loading data:", err)
-      } finally {
-        setLoading(false)
-      }
+  // Bulk delete
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+
+  async function loadData() {
+    try {
+      const [c, v] = await Promise.all([fetchClients(), fetchVendedores()])
+      setClients(c)
+      setVendedores(v)
+    } catch (err) {
+      console.error("Error loading data:", err)
+    } finally {
+      setLoading(false)
     }
-    load()
+  }
+
+  useEffect(() => {
+    loadData()
   }, [])
 
   if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
@@ -69,6 +82,48 @@ export default function AdminClientesPage() {
   const currentPage = Math.min(page, totalPages)
   const paginatedClients = getPage(currentPage)
 
+  // Selection helpers
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    const pageIds = paginatedClients.map((c) => c.id)
+    const allSelected = pageIds.every((id) => selectedIds.has(id))
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (allSelected) {
+        pageIds.forEach((id) => next.delete(id))
+      } else {
+        pageIds.forEach((id) => next.add(id))
+      }
+      return next
+    })
+  }
+
+  const allPageSelected = paginatedClients.length > 0 && paginatedClients.every((c) => selectedIds.has(c.id))
+
+  async function handleBulkDelete() {
+    setDeleting(true)
+    try {
+      await deleteClientsBulk(Array.from(selectedIds))
+      setSelectedIds(new Set())
+      setShowDeleteDialog(false)
+      setLoading(true)
+      await loadData()
+    } catch (err) {
+      console.error("Error eliminando clientes:", err)
+      alert("Error al eliminar: " + (err instanceof Error ? err.message : "Error desconocido"))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div className="p-8 space-y-6">
       {/* Header */}
@@ -78,6 +133,12 @@ export default function AdminClientesPage() {
           <p className="text-muted-foreground">Administra la base de datos de clientes</p>
         </div>
         <div className="flex gap-2">
+          {selectedIds.size > 0 && (
+            <Button variant="destructive" onClick={() => setShowDeleteDialog(true)}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Eliminar ({selectedIds.size})
+            </Button>
+          )}
           <Button variant="outline" onClick={() => {
             const data = filteredClients.map((c) => ({
               "Razon Social": c.businessName,
@@ -174,10 +235,31 @@ export default function AdminClientesPage() {
         </Select>
       </div>
 
+      {/* Selection info bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-2">
+          <span className="text-sm font-medium text-red-800">
+            {selectedIds.size} cliente{selectedIds.size !== 1 ? "s" : ""} seleccionado{selectedIds.size !== 1 ? "s" : ""}
+          </span>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-xs text-red-600 hover:underline ml-auto"
+          >
+            Deseleccionar todos
+          </button>
+        </div>
+      )}
+
       {/* Clients Table */}
       {paginatedClients.length > 0 ? (
         <>
-          <ClientTable clients={paginatedClients} />
+          <ClientTable
+            clients={paginatedClients}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            onToggleAll={toggleAll}
+            allSelected={allPageSelected}
+          />
           <TablePagination
             currentPage={currentPage}
             totalPages={totalPages}
@@ -191,6 +273,31 @@ export default function AdminClientesPage() {
           <p>No se encontraron clientes</p>
         </div>
       )}
+
+      {/* Bulk Delete Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirmar eliminacion masiva</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            Esta seguro que desea eliminar <strong className="text-red-600">{selectedIds.size} cliente{selectedIds.size !== 1 ? "s" : ""}</strong>?
+            Esta accion no se puede deshacer.
+          </p>
+          <DialogFooter>
+            <button onClick={() => setShowDeleteDialog(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">
+              Cancelar
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={deleting}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-red-400 text-sm"
+            >
+              {deleting ? "Eliminando..." : `Eliminar ${selectedIds.size}`}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

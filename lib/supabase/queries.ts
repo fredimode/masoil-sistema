@@ -599,6 +599,24 @@ export async function deleteProveedor(id: string): Promise<void> {
   if (error) throw error
 }
 
+export async function deleteProveedoresBulk(ids: string[]): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("proveedores").delete().in("id", ids)
+  if (error) throw error
+}
+
+export async function deleteClient(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("clients").delete().eq("id", id)
+  if (error) throw error
+}
+
+export async function deleteClientsBulk(ids: string[]): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("clients").delete().in("id", ids)
+  if (error) throw error
+}
+
 // ---------------------------------------------------------------------------
 // Facturas GestionPro
 // ---------------------------------------------------------------------------

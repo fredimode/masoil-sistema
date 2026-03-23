@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Table,
@@ -22,7 +23,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
-import { fetchProveedores, fetchProveedoresCount, updateProveedor, deleteProveedor } from "@/lib/supabase/queries"
+import { fetchProveedores, fetchProveedoresCount, updateProveedor, deleteProveedor, deleteProveedoresBulk } from "@/lib/supabase/queries"
 import { normalizeSearch, formatCurrency } from "@/lib/utils"
 import { Search, Plus, Download, Users, Building2, CreditCard, Eye, Pencil, Trash2 } from "lucide-react"
 import Link from "next/link"
@@ -40,6 +41,11 @@ export default function AdminProveedoresPage() {
   const [editingItem, setEditingItem] = useState<any | null>(null)
   const [editForm, setEditForm] = useState<any>({})
   const [deletingItem, setDeletingItem] = useState<any | null>(null)
+
+  // Bulk delete
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   async function loadData() {
     try {
@@ -92,6 +98,32 @@ export default function AdminProveedoresPage() {
   const currentPage = Math.min(page, totalPages)
   const paginatedProveedores = getPage(currentPage)
 
+  // Selection helpers
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleAll() {
+    const pageIds = paginatedProveedores.map((p: any) => p.id)
+    const allSelected = pageIds.every((id: string) => selectedIds.has(id))
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (allSelected) {
+        pageIds.forEach((id: string) => next.delete(id))
+      } else {
+        pageIds.forEach((id: string) => next.add(id))
+      }
+      return next
+    })
+  }
+
+  const allPageSelected = paginatedProveedores.length > 0 && paginatedProveedores.every((p: any) => selectedIds.has(p.id))
+
   const handleExport = () => {
     const data = filtered.map((p) => ({
       Nombre: p.nombre,
@@ -128,10 +160,27 @@ export default function AdminProveedoresPage() {
     try {
       await deleteProveedor(deletingItem.id)
       setDeletingItem(null)
+      setSelectedIds((prev) => { const next = new Set(prev); next.delete(deletingItem.id); return next })
       setLoading(true)
       await loadData()
     } catch (err) {
       console.error("Error eliminando proveedor:", err)
+    }
+  }
+
+  async function handleBulkDelete() {
+    setBulkDeleting(true)
+    try {
+      await deleteProveedoresBulk(Array.from(selectedIds))
+      setSelectedIds(new Set())
+      setShowBulkDeleteDialog(false)
+      setLoading(true)
+      await loadData()
+    } catch (err) {
+      console.error("Error eliminando proveedores:", err)
+      alert("Error al eliminar: " + (err instanceof Error ? err.message : "Error desconocido"))
+    } finally {
+      setBulkDeleting(false)
     }
   }
 
@@ -144,6 +193,12 @@ export default function AdminProveedoresPage() {
           <p className="text-muted-foreground">Gestion de proveedores del sistema</p>
         </div>
         <div className="flex gap-2">
+          {selectedIds.size > 0 && (
+            <Button variant="destructive" onClick={() => setShowBulkDeleteDialog(true)}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Eliminar ({selectedIds.size})
+            </Button>
+          )}
           <Button variant="outline" onClick={handleExport}>
             <Download className="h-4 w-4 mr-2" />
             Exportar
@@ -234,6 +289,21 @@ export default function AdminProveedoresPage() {
         </Select>
       </div>
 
+      {/* Selection info bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 bg-red-50 border border-red-200 rounded-lg px-4 py-2">
+          <span className="text-sm font-medium text-red-800">
+            {selectedIds.size} proveedor{selectedIds.size !== 1 ? "es" : ""} seleccionado{selectedIds.size !== 1 ? "s" : ""}
+          </span>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-xs text-red-600 hover:underline ml-auto"
+          >
+            Deseleccionar todos
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       {paginatedProveedores.length > 0 ? (
         <>
@@ -242,6 +312,12 @@ export default function AdminProveedoresPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={allPageSelected}
+                        onCheckedChange={() => toggleAll()}
+                      />
+                    </TableHead>
                     <TableHead>Nombre</TableHead>
                     <TableHead>CUIT</TableHead>
                     <TableHead>Empresa</TableHead>
@@ -255,8 +331,14 @@ export default function AdminProveedoresPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paginatedProveedores.map((p) => (
-                    <TableRow key={p.id}>
+                  {paginatedProveedores.map((p: any) => (
+                    <TableRow key={p.id} className={selectedIds.has(p.id) ? "bg-red-50" : undefined}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.has(p.id)}
+                          onCheckedChange={() => toggleSelect(p.id)}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">{p.nombre}</TableCell>
                       <TableCell>{p.cuit || "-"}</TableCell>
                       <TableCell>
@@ -385,7 +467,7 @@ export default function AdminProveedoresPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
+      {/* Single Delete Dialog */}
       <Dialog open={!!deletingItem} onOpenChange={(open) => !open && setDeletingItem(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -397,6 +479,31 @@ export default function AdminProveedoresPage() {
           <DialogFooter>
             <button onClick={() => setDeletingItem(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
             <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">Eliminar</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete Dialog */}
+      <Dialog open={showBulkDeleteDialog} onOpenChange={setShowBulkDeleteDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirmar eliminacion masiva</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            Esta seguro que desea eliminar <strong className="text-red-600">{selectedIds.size} proveedor{selectedIds.size !== 1 ? "es" : ""}</strong>?
+            Esta accion no se puede deshacer.
+          </p>
+          <DialogFooter>
+            <button onClick={() => setShowBulkDeleteDialog(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">
+              Cancelar
+            </button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkDeleting}
+              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-red-400 text-sm"
+            >
+              {bulkDeleting ? "Eliminando..." : `Eliminar ${selectedIds.size}`}
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

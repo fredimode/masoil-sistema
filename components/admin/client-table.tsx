@@ -3,20 +3,35 @@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import type { Client } from "@/lib/types"
 import Link from "next/link"
 import { Eye, Edit, MessageCircle } from "lucide-react"
 
 interface ClientTableProps {
   clients: Client[]
+  selectedIds?: Set<string>
+  onToggleSelect?: (id: string) => void
+  onToggleAll?: () => void
+  allSelected?: boolean
 }
 
-export function ClientTable({ clients }: ClientTableProps) {
+export function ClientTable({ clients, selectedIds, onToggleSelect, onToggleAll, allSelected }: ClientTableProps) {
+  const hasSelection = !!selectedIds
+
   return (
     <div className="border rounded-lg overflow-hidden">
       <Table>
         <TableHeader>
           <TableRow>
+            {hasSelection && (
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={() => onToggleAll?.()}
+                />
+              </TableHead>
+            )}
             <TableHead>Razon Social</TableHead>
             <TableHead>Localidad</TableHead>
             <TableHead className="w-24">Zona</TableHead>
@@ -29,7 +44,15 @@ export function ClientTable({ clients }: ClientTableProps) {
         </TableHeader>
         <TableBody>
           {clients.map((client) => (
-            <TableRow key={client.id}>
+            <TableRow key={client.id} className={selectedIds?.has(client.id) ? "bg-red-50" : undefined}>
+              {hasSelection && (
+                <TableCell>
+                  <Checkbox
+                    checked={selectedIds?.has(client.id) || false}
+                    onCheckedChange={() => onToggleSelect?.(client.id)}
+                  />
+                </TableCell>
+              )}
               <TableCell className="font-medium">{client.businessName}</TableCell>
               <TableCell className="text-sm">{client.localidad || "-"}</TableCell>
               <TableCell>
