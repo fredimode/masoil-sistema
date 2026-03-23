@@ -177,8 +177,9 @@ export default function NuevaFacturaPage() {
   const total = Math.round((baseGravada + iva21) * 100) / 100
 
   // Determinar tipo de factura
-  const condicionIva = clienteSeleccionado?.condicion_iva || ""
-  const tipoFactura = condicionIva === "Responsable Inscripto" || condicionIva === "RI" ? "FACTURA A" : "FACTURA B"
+  const condicionIva = (clienteSeleccionado?.condicion_iva || "").toUpperCase().trim()
+  const esRI = condicionIva === "RESP. INSCRIPTO" || condicionIva === "RESPONSABLE INSCRIPTO" || condicionIva === "RI"
+  const tipoFactura = esRI ? "FACTURA A" : "FACTURA B"
 
   async function generarFactura() {
     if (!clienteSeleccionado || items.length === 0) return

@@ -36,15 +36,19 @@ const PROVINCIA_CODIGO: Record<string, string> = {
 }
 
 // Mapeo condición IVA del cliente → código TusFacturas
+// Normaliza a uppercase para comparar
 const CONDICION_IVA_MAP: Record<string, string> = {
-  "Responsable Inscripto": "RI",
+  "RESP. INSCRIPTO": "RI",
+  "RESPONSABLE INSCRIPTO": "RI",
   "RI": "RI",
-  "Monotributista": "M",
+  "MONOTRIBUTISTA": "M",
+  "MONOTRIBUTISTA SOCIAL": "M",
   "M": "M",
-  "Consumidor Final": "CF",
+  "CONSUMIDOR FINAL": "CF",
   "CF": "CF",
-  "Exento": "E",
+  "EXENTO": "E",
   "E": "E",
+  "NO CATEGORIZADO": "CF",
 }
 
 function formatDate(date: Date): string {
@@ -167,7 +171,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Determinar tipo de factura por condición IVA
-    const condicionIvaCliente = CONDICION_IVA_MAP[cliente.condicion_iva || ""] || "CF"
+    const condicionIvaCliente = CONDICION_IVA_MAP[(cliente.condicion_iva || "").toUpperCase().trim()] || "CF"
     const tipoFactura = condicionIvaCliente === "RI" ? "FACTURA A" : "FACTURA B"
 
     // Calcular totales - precios son SIN IVA
