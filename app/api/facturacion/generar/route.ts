@@ -202,7 +202,7 @@ export async function POST(request: NextRequest) {
     const payload = {
       apitoken: process.env.TUSFACTURAS_API_TOKEN,
       usertoken: process.env.TUSFACTURAS_USER_TOKEN,
-      apikey: parseInt(process.env.TUSFACTURAS_API_KEY || "0"),
+      apikey: process.env.TUSFACTURAS_API_KEY,
       cliente: {
         documento_tipo: "CUIT",
         documento_nro: cuitCliente,
