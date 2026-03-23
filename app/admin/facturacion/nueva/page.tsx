@@ -1,334 +1,514 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { formatMoney } from "@/lib/utils"
 import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
+import Link from "next/link"
 
-interface PedidoEntregado {
+interface ClienteDB {
   id: string
-  client_name: string
-  client_id: string
-  total: number
-  products: {
-    productName: string
-    quantity: number
-    price: number
-  }[]
+  business_name: string
+  razon_social: string | null
+  cuit: string | null
+  numero_docum: string | null
+  condicion_iva: string | null
+  domicilio: string | null
+  provincia: string | null
+  email: string | null
 }
 
-interface ClienteFacturacion {
+interface ProductoDB {
+  id: string
+  code: string
+  name: string
+  price: number
+}
+
+interface ItemFactura {
+  productId: string
+  codigo: string
+  descripcion: string
+  cantidad: number
+  precioUnitario: number
+}
+
+interface FacturaResultado {
+  id: number
+  numero: string
+  tipo: string
+  cae: string
+  vencimiento_cae: string
+  comprobante_nro: string
+  total: number
   razon_social: string
-  cuit: string
-  condicion_iva: string
-  domicilio: string
 }
 
 export default function NuevaFacturaPage() {
   const router = useRouter()
-  const [loading, setLoading] = useState(true)
-  const [pedidos, setPedidos] = useState<PedidoEntregado[]>([])
-  const [pedidoSeleccionado, setPedidoSeleccionado] = useState<PedidoEntregado | null>(null)
+  const supabase = createClient()
+
+  // Estado general
+  const [paso, setPaso] = useState<1 | 2 | 3>(1)
   const [generando, setGenerando] = useState(false)
+  const [resultado, setResultado] = useState<{ success: boolean; factura?: FacturaResultado; error?: string; errores?: string[]; tusfacturas_response?: Record<string, unknown> } | null>(null)
 
-  // Datos de facturacion del cliente
-  const [datosCliente, setDatosCliente] = useState<ClienteFacturacion>({
-    razon_social: "",
-    cuit: "",
-    condicion_iva: "Responsable Inscripto",
-    domicilio: "",
-  })
+  // Paso 1: Seleccionar cliente
+  const [clienteSearch, setClienteSearch] = useState("")
+  const [clienteResults, setClienteResults] = useState<ClienteDB[]>([])
+  const [searchingClientes, setSearchingClientes] = useState(false)
+  const [clienteSeleccionado, setClienteSeleccionado] = useState<ClienteDB | null>(null)
+  const [showClienteDropdown, setShowClienteDropdown] = useState(false)
+  const clienteInputRef = useRef<HTMLInputElement>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Tipo de factura
-  const [tipoFactura, setTipoFactura] = useState("B")
+  // Paso 2: Items
+  const [items, setItems] = useState<ItemFactura[]>([])
+  const [productoSearch, setProductoSearch] = useState("")
+  const [productoResults, setProductoResults] = useState<ProductoDB[]>([])
+  const [searchingProductos, setSearchingProductos] = useState(false)
+  const [showProductoDropdown, setShowProductoDropdown] = useState(false)
 
+  // Modo: desde pedido o manual
+  const [modo, setModo] = useState<"pedido" | "manual">("manual")
+  const [orderId, setOrderId] = useState<string | null>(null)
+
+  // Buscar clientes con debounce
   useEffect(() => {
-    cargarPedidosEntregados()
+    if (clienteSearch.length < 2) {
+      setClienteResults([])
+      return
+    }
+
+    const timeout = setTimeout(async () => {
+      setSearchingClientes(true)
+      try {
+        const { data } = await supabase
+          .from("clients")
+          .select("id, business_name, razon_social, cuit, numero_docum, condicion_iva, domicilio, provincia, email")
+          .or(`razon_social.ilike.%${clienteSearch}%,business_name.ilike.%${clienteSearch}%,cuit.ilike.%${clienteSearch}%,numero_docum.ilike.%${clienteSearch}%`)
+          .limit(15)
+
+        setClienteResults(data || [])
+        setShowClienteDropdown(true)
+      } catch (e) {
+        console.error("Error buscando clientes:", e)
+      } finally {
+        setSearchingClientes(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(timeout)
+  }, [clienteSearch])
+
+  // Buscar productos con debounce
+  useEffect(() => {
+    if (productoSearch.length < 2) {
+      setProductoResults([])
+      return
+    }
+
+    const timeout = setTimeout(async () => {
+      setSearchingProductos(true)
+      try {
+        const { data } = await supabase
+          .from("products")
+          .select("id, code, name, price")
+          .or(`name.ilike.%${productoSearch}%,code.ilike.%${productoSearch}%`)
+          .limit(10)
+
+        setProductoResults(data || [])
+        setShowProductoDropdown(true)
+      } catch (e) {
+        console.error("Error buscando productos:", e)
+      } finally {
+        setSearchingProductos(false)
+      }
+    }, 300)
+
+    return () => clearTimeout(timeout)
+  }, [productoSearch])
+
+  // Click fuera cierra dropdowns
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowClienteDropdown(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClick)
+    return () => document.removeEventListener("mousedown", handleClick)
   }, [])
 
-  async function cargarPedidosEntregados() {
-    setLoading(true)
-    try {
-      const res = await fetch("/api/facturacion?action=pedidos-entregados")
-      const data = await res.json()
-      if (data.success) setPedidos(data.data || [])
-    } catch (error) {
-      console.error("Error cargando pedidos:", error)
-    } finally {
-      setLoading(false)
-    }
+  function seleccionarCliente(c: ClienteDB) {
+    setClienteSeleccionado(c)
+    setClienteSearch(c.razon_social || c.business_name)
+    setShowClienteDropdown(false)
+    setPaso(2)
   }
 
-  function seleccionarPedido(pedido: PedidoEntregado) {
-    setPedidoSeleccionado(pedido)
-    setDatosCliente({
-      razon_social: pedido.client_name,
-      cuit: "",
-      condicion_iva: "Responsable Inscripto",
-      domicilio: "",
-    })
+  function agregarProducto(p: ProductoDB) {
+    setItems((prev) => [
+      ...prev,
+      {
+        productId: p.id,
+        codigo: p.code,
+        descripcion: p.name,
+        cantidad: 1,
+        precioUnitario: Number(p.price),
+      },
+    ])
+    setProductoSearch("")
+    setProductoResults([])
+    setShowProductoDropdown(false)
   }
 
-  // Calculo fiscal
-  const subtotal = pedidoSeleccionado?.total || 0
-  const baseGravada = subtotal / 1.21 // Base sin IVA (asumiendo precio con IVA incluido)
-  const iva21 = baseGravada * 0.21
-  const total = baseGravada + iva21
+  function actualizarItem(index: number, field: "cantidad" | "precioUnitario", value: number) {
+    setItems((prev) => prev.map((it, i) => (i === index ? { ...it, [field]: value } : it)))
+  }
+
+  function eliminarItem(index: number) {
+    setItems((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  // Cálculos
+  const baseGravada = items.reduce((sum, it) => sum + it.cantidad * it.precioUnitario, 0)
+  const iva21 = Math.round(baseGravada * 0.21 * 100) / 100
+  const total = Math.round((baseGravada + iva21) * 100) / 100
+
+  // Determinar tipo de factura
+  const condicionIva = clienteSeleccionado?.condicion_iva || ""
+  const tipoFactura = condicionIva === "Responsable Inscripto" || condicionIva === "RI" ? "FACTURA A" : "FACTURA B"
 
   async function generarFactura() {
-    if (!pedidoSeleccionado) return
+    if (!clienteSeleccionado || items.length === 0) return
     setGenerando(true)
+    setResultado(null)
 
     try {
-      // Estructura del payload para TusFacturas.app
-      // Basado en la integracion de NewBiz Travel
-      const payload = {
-        // TODO: CUIT Masoil - reemplazar con datos reales
-        // TODO: Punto de venta - configurar en TusFacturas
-        // TODO: API token TusFacturas - agregar en .env
-        usertoken: "PLACEHOLDER_API_TOKEN_TUSFACTURAS",
-        apikey: "PLACEHOLDER_API_KEY_TUSFACTURAS",
-        apitoken: "PLACEHOLDER_API_TOKEN_TUSFACTURAS",
-        comprobante: {
-          fecha: new Date().toISOString().slice(0, 10).split("-").reverse().join("/"),
-          tipo: tipoFactura === "A" ? "FACTURA A" : "FACTURA B",
-          operacion: "V", // Venta
-          punto_venta: 1, // TODO: punto de venta Masoil
-          numero: 0, // Auto-asignado por AFIP
-          periodo_facturado_desde: new Date().toISOString().slice(0, 10).split("-").reverse().join("/"),
-          periodo_facturado_hasta: new Date().toISOString().slice(0, 10).split("-").reverse().join("/"),
-          rubro: "Productos",
-          rubro_grupo_contable: "Ventas",
-          detalle: pedidoSeleccionado.products.map((p) => ({
-            cantidad: p.quantity,
-            afecta_stock: "N",
-            bonificacion_porcentaje: 0,
-            producto: {
-              descripcion: p.productName,
-              unidad_bulto: 1,
-              lista_precios: "standard",
-              codigo: "",
-              precio_unitario_sin_iva: p.price / 1.21,
-              alicuota: 21,
-              unidad_medida: "unidades",
-            },
-          })),
-          bonificacion: 0,
-          leyenda_gral: "",
-          percepciones_iibb: 0,
-          percepciones_iibb_base: 0,
-          percepciones_iibb_alicuota: 0,
-          percepciones_iva: 0,
-          percepciones_iva_base: 0,
-          percepciones_iva_alicuota: 0,
-          exentos: 0,
-          impuestos_internos: 0,
-          impuestos_internos_base: 0,
-          impuestos_internos_alicuota: 0,
-          total: total,
-        },
-        cliente: {
-          documento_tipo: "CUIT",
-          documento_nro: datosCliente.cuit || "00000000000", // TODO: CUIT real del cliente
-          razon_social: datosCliente.razon_social,
-          email: "",
-          domicilio: datosCliente.domicilio,
-          provincia: "", // TODO: mapear provincia
-          envia_por_mail: "N",
-          condicion_pago: 210, // TODO: mapear condicion IVA
-          condicion_iva: tipoFactura === "A" ? 1 : 5, // 1=RI, 5=CF
-        },
+      const payload: Record<string, unknown> = {
+        clientId: clienteSeleccionado.id,
+        items: items.map((it) => ({
+          productId: it.productId,
+          producto_nombre: it.descripcion,
+          producto_codigo: it.codigo,
+          cantidad: it.cantidad,
+          precioUnitario: it.precioUnitario,
+        })),
       }
 
-      console.log("=== PAYLOAD FACTURA TUSFACTURAS ===")
-      console.log(JSON.stringify(payload, null, 2))
-      console.log("=== FIN PAYLOAD ===")
+      if (orderId) {
+        payload.orderId = orderId
+      }
 
-      // Guardar registro en Supabase
-      const res = await fetch("/api/facturacion", {
+      const res = await fetch("/api/facturacion/generar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          order_id: pedidoSeleccionado.id,
-          tipo: `Factura ${tipoFactura}`,
-          fecha: new Date().toISOString().slice(0, 10),
-          cuit_cliente: datosCliente.cuit || null,
-          razon_social: datosCliente.razon_social,
-          base_gravada: Math.round(baseGravada * 100) / 100,
-          iva_21: Math.round(iva21 * 100) / 100,
-          total: Math.round(total * 100) / 100,
-          // CAE se completa cuando se integre con TusFacturas
-          cae: null,
-          vencimiento_cae: null,
-          pdf_url: null,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const data = await res.json()
+      setResultado(data)
+
       if (data.success) {
-        alert("Factura registrada. El payload para TusFacturas se mostro en la consola del navegador.")
-        router.push("/admin/facturacion")
-      } else {
-        alert("Error: " + (data.error || "Error desconocido"))
+        setPaso(3)
       }
     } catch (error) {
-      console.error("Error generando factura:", error)
-      alert("Error generando factura")
+      setResultado({ success: false, error: "Error de conexión: " + (error instanceof Error ? error.message : "desconocido") })
     } finally {
       setGenerando(false)
     }
   }
 
+  // Resultado exitoso
+  if (paso === 3 && resultado?.success) {
+    return (
+      <div className="p-6 max-w-3xl mx-auto">
+        <div className="bg-green-50 border border-green-200 rounded-xl p-8 text-center">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-green-800 mb-2">Factura Generada</h2>
+          <p className="text-green-700 mb-6">La factura fue procesada exitosamente por TusFacturas</p>
+
+          <div className="bg-white rounded-lg p-6 text-left space-y-3 mb-6">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Tipo</span>
+              <span className="font-bold text-gray-900">{resultado.factura?.tipo}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Número de Comprobante</span>
+              <span className="font-bold text-gray-900">{resultado.factura?.comprobante_nro || resultado.factura?.numero}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">CAE</span>
+              <span className="font-mono font-bold text-green-700">{resultado.factura?.cae || "Testing - sin CAE real"}</span>
+            </div>
+            {resultado.factura?.vencimiento_cae && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Vencimiento CAE</span>
+                <span className="font-medium text-gray-900">{resultado.factura.vencimiento_cae}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-gray-600">Cliente</span>
+              <span className="font-medium text-gray-900">{resultado.factura?.razon_social}</span>
+            </div>
+            <div className="flex justify-between border-t pt-3">
+              <span className="text-gray-900 font-bold">Total</span>
+              <span className="text-xl font-bold text-primary">{formatMoney(resultado.factura?.total || 0)}</span>
+            </div>
+          </div>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
+            <p className="text-sm text-amber-800">
+              <strong>Modo Testing:</strong> Esta factura fue generada con el PDV de desarrollo. No genera CAE real en AFIP.
+            </p>
+          </div>
+
+          <div className="flex justify-center gap-3">
+            <button
+              onClick={() => {
+                setPaso(1)
+                setResultado(null)
+                setClienteSeleccionado(null)
+                setClienteSearch("")
+                setItems([])
+                setOrderId(null)
+              }}
+              className="px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+            >
+              Nueva Factura
+            </button>
+            <Link
+              href="/admin/facturacion"
+              className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90"
+            >
+              Volver a Facturación
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Nueva Factura</h2>
-        <p className="text-gray-500">Selecciona un pedido entregado para generar la factura</p>
+        <div className="flex items-center gap-3 mb-1">
+          <Link href="/admin/facturacion" className="text-gray-400 hover:text-gray-600">
+            ← Facturación
+          </Link>
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900">Nueva Factura Electrónica</h2>
+        <p className="text-gray-500">Genera una factura a través de TusFacturas (modo testing)</p>
       </div>
 
-      {/* Aviso placeholders */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+      {/* Indicador de modo */}
+      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
         <p className="text-sm text-amber-800">
-          <strong>Pendiente configurar:</strong> CUIT Masoil, punto de venta, API token de TusFacturas.app. Por ahora la factura se
-          registra en el sistema y el payload se muestra en consola.
+          <strong>TESTING</strong> — Punto de venta de desarrollo. Las facturas no se envían a AFIP.
         </p>
       </div>
 
-      {/* Paso 1: Seleccionar pedido */}
+      {/* Paso 1: Seleccionar cliente */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <h3 className="font-bold text-gray-900 mb-4">1. Seleccionar Pedido Entregado</h3>
+        <h3 className="font-bold text-gray-900 mb-4">1. Seleccionar Cliente</h3>
 
-        {loading ? (
-          <div className="text-center py-8">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-          </div>
-        ) : pedidos.length === 0 ? (
-          <p className="text-gray-500 text-center py-4">No hay pedidos con estado ENTREGADO disponibles</p>
-        ) : (
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {pedidos.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => seleccionarPedido(p)}
-                className={`w-full text-left p-3 rounded-lg border transition ${
-                  pedidoSeleccionado?.id === p.id
-                    ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                    : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <span className="font-medium text-gray-900">Pedido #{p.id}</span>
-                    <span className="text-gray-500 ml-2">- {p.client_name}</span>
+        <div className="relative" ref={dropdownRef}>
+          <input
+            ref={clienteInputRef}
+            type="text"
+            value={clienteSearch}
+            onChange={(e) => {
+              setClienteSearch(e.target.value)
+              if (clienteSeleccionado) {
+                setClienteSeleccionado(null)
+                setPaso(1)
+                setItems([])
+              }
+            }}
+            placeholder="Buscar por razón social, CUIT o nombre..."
+            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+          />
+          {searchingClientes && (
+            <div className="absolute right-3 top-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+            </div>
+          )}
+
+          {showClienteDropdown && clienteResults.length > 0 && !clienteSeleccionado && (
+            <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-64 overflow-y-auto">
+              {clienteResults.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => seleccionarCliente(c)}
+                  className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b last:border-b-0"
+                >
+                  <div className="font-medium text-gray-900">{c.razon_social || c.business_name}</div>
+                  <div className="text-xs text-gray-500 flex gap-3">
+                    {(c.cuit || c.numero_docum) && <span>CUIT: {c.cuit || c.numero_docum}</span>}
+                    {c.condicion_iva && <span>IVA: {c.condicion_iva}</span>}
+                    {c.provincia && <span>{c.provincia}</span>}
                   </div>
-                  <span className="font-bold text-gray-900">{formatMoney(p.total)}</span>
-                </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  {p.products.length} producto{p.products.length !== 1 ? "s" : ""}:{" "}
-                  {p.products.map((pr) => `${pr.productName} x${pr.quantity}`).join(", ")}
-                </p>
-              </button>
-            ))}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Datos del cliente seleccionado */}
+        {clienteSeleccionado && (
+          <div className="mt-4 bg-gray-50 rounded-lg p-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+              <div>
+                <span className="text-gray-500 block">Razón Social</span>
+                <span className="font-medium text-gray-900">{clienteSeleccionado.razon_social || clienteSeleccionado.business_name}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block">CUIT</span>
+                <span className="font-medium text-gray-900">{clienteSeleccionado.cuit || clienteSeleccionado.numero_docum || "No registrado"}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block">Condición IVA</span>
+                <span className="font-medium text-gray-900">{clienteSeleccionado.condicion_iva || "No registrada"}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block">Domicilio</span>
+                <span className="font-medium text-gray-900">{clienteSeleccionado.domicilio || "No registrado"}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block">Provincia</span>
+                <span className="font-medium text-gray-900">{clienteSeleccionado.provincia || "No registrada"}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block">Tipo Factura</span>
+                <span className={`font-bold ${tipoFactura === "FACTURA A" ? "text-blue-700" : "text-green-700"}`}>
+                  {tipoFactura}
+                </span>
+              </div>
+            </div>
           </div>
         )}
       </div>
 
-      {/* Paso 2: Datos del cliente */}
-      {pedidoSeleccionado && (
+      {/* Paso 2: Agregar productos */}
+      {clienteSeleccionado && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h3 className="font-bold text-gray-900 mb-4">2. Datos de Facturacion del Cliente</h3>
+          <h3 className="font-bold text-gray-900 mb-4">2. Detalle de Productos</h3>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm text-gray-600 block mb-1">Tipo de Factura *</label>
-              <select
-                value={tipoFactura}
-                onChange={(e) => setTipoFactura(e.target.value)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-              >
-                <option value="A">Factura A (Responsable Inscripto)</option>
-                <option value="B">Factura B (Consumidor Final)</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm text-gray-600 block mb-1">Condicion IVA</label>
-              <select
-                value={datosCliente.condicion_iva}
-                onChange={(e) => setDatosCliente((prev) => ({ ...prev, condicion_iva: e.target.value }))}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-              >
-                <option value="Responsable Inscripto">Responsable Inscripto</option>
-                <option value="Monotributista">Monotributista</option>
-                <option value="Consumidor Final">Consumidor Final</option>
-                <option value="Exento">Exento</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm text-gray-600 block mb-1">Razon Social *</label>
-              <input
-                value={datosCliente.razon_social}
-                onChange={(e) => setDatosCliente((prev) => ({ ...prev, razon_social: e.target.value }))}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-              />
-            </div>
-            <div>
-              <label className="text-sm text-gray-600 block mb-1">CUIT {tipoFactura === "A" ? "*" : "(opcional)"}</label>
-              <input
-                value={datosCliente.cuit}
-                onChange={(e) => setDatosCliente((prev) => ({ ...prev, cuit: e.target.value }))}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-                placeholder="XX-XXXXXXXX-X"
-              />
-            </div>
-            <div className="col-span-2">
-              <label className="text-sm text-gray-600 block mb-1">Domicilio</label>
-              <input
-                value={datosCliente.domicilio}
-                onChange={(e) => setDatosCliente((prev) => ({ ...prev, domicilio: e.target.value }))}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-                placeholder="Direccion del cliente..."
-              />
-            </div>
+          {/* Buscador de productos */}
+          <div className="relative mb-4">
+            <input
+              type="text"
+              value={productoSearch}
+              onChange={(e) => setProductoSearch(e.target.value)}
+              placeholder="Buscar producto por nombre o código..."
+              className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+            />
+            {searchingProductos && (
+              <div className="absolute right-3 top-3">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+              </div>
+            )}
+
+            {showProductoDropdown && productoResults.length > 0 && (
+              <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                {productoResults.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => agregarProducto(p)}
+                    className="w-full text-left px-4 py-2 hover:bg-gray-50 border-b last:border-b-0 flex justify-between items-center"
+                  >
+                    <div>
+                      <span className="font-medium text-gray-900">{p.name}</span>
+                      <span className="text-xs text-gray-500 ml-2">{p.code}</span>
+                    </div>
+                    <span className="text-sm font-medium text-gray-700">{formatMoney(Number(p.price))}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+
+          {/* Tabla de items */}
+          {items.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700">Producto</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700 w-20">Código</th>
+                    <th className="px-4 py-2 text-center font-semibold text-gray-700 w-24">Cant.</th>
+                    <th className="px-4 py-2 text-right font-semibold text-gray-700 w-36">Precio Unit. (s/IVA)</th>
+                    <th className="px-4 py-2 text-right font-semibold text-gray-700 w-28">Subtotal</th>
+                    <th className="px-4 py-2 w-10"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((it, idx) => (
+                    <tr key={idx} className="border-t">
+                      <td className="px-4 py-2 text-gray-900">{it.descripcion}</td>
+                      <td className="px-4 py-2 text-gray-500 text-xs">{it.codigo}</td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="number"
+                          min={1}
+                          value={it.cantidad}
+                          onChange={(e) => actualizarItem(idx, "cantidad", parseInt(e.target.value) || 1)}
+                          className="w-20 p-1 border rounded text-center text-sm"
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={it.precioUnitario}
+                          onChange={(e) => actualizarItem(idx, "precioUnitario", parseFloat(e.target.value) || 0)}
+                          className="w-32 p-1 border rounded text-right text-sm"
+                        />
+                      </td>
+                      <td className="px-4 py-2 text-right font-medium text-gray-900">
+                        {formatMoney(it.cantidad * it.precioUnitario)}
+                      </td>
+                      <td className="px-4 py-2">
+                        <button
+                          onClick={() => eliminarItem(idx)}
+                          className="text-red-500 hover:text-red-700 text-lg"
+                          title="Eliminar"
+                        >
+                          ×
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-gray-400 text-center py-6">Buscá y agregá productos al detalle</p>
+          )}
         </div>
       )}
 
-      {/* Paso 3: Detalle y totales */}
-      {pedidoSeleccionado && (
+      {/* Paso 3: Resumen y totales */}
+      {items.length > 0 && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h3 className="font-bold text-gray-900 mb-4">3. Detalle de la Factura</h3>
+          <h3 className="font-bold text-gray-900 mb-4">3. Resumen</h3>
 
-          <table className="w-full text-sm mb-4">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="px-4 py-2 text-left font-semibold text-gray-700">Producto</th>
-                <th className="px-4 py-2 text-center font-semibold text-gray-700">Cant.</th>
-                <th className="px-4 py-2 text-right font-semibold text-gray-700">Precio Unit.</th>
-                <th className="px-4 py-2 text-right font-semibold text-gray-700">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pedidoSeleccionado.products.map((p, idx) => (
-                <tr key={idx} className="border-t">
-                  <td className="px-4 py-2 text-gray-900">{p.productName}</td>
-                  <td className="px-4 py-2 text-center text-gray-600">{p.quantity}</td>
-                  <td className="px-4 py-2 text-right text-gray-600">{formatMoney(p.price)}</td>
-                  <td className="px-4 py-2 text-right font-medium text-gray-900">{formatMoney(p.price * p.quantity)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {/* Totales fiscales */}
-          <div className="border-t pt-4 space-y-2">
+          <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Base Gravada (21%)</span>
+              <span className="text-gray-600">Base Gravada</span>
               <span className="font-medium text-gray-900">{formatMoney(baseGravada)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">IVA 21%</span>
               <span className="font-medium text-gray-900">{formatMoney(iva21)}</span>
             </div>
-            <div className="flex justify-between text-lg font-bold border-t pt-2">
+            <div className="flex justify-between text-lg font-bold border-t pt-3">
               <span className="text-gray-900">TOTAL</span>
               <span className="text-primary">{formatMoney(total)}</span>
             </div>
@@ -336,21 +516,51 @@ export default function NuevaFacturaPage() {
         </div>
       )}
 
+      {/* Error */}
+      {resultado && !resultado.success && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+          <h4 className="font-bold text-red-800 mb-2">Error al generar factura</h4>
+          <p className="text-red-700 text-sm mb-2">{resultado.error}</p>
+          {resultado.errores && resultado.errores.length > 0 && (
+            <ul className="list-disc list-inside text-red-600 text-sm mb-3">
+              {resultado.errores.map((e, i) => (
+                <li key={i}>{e}</li>
+              ))}
+            </ul>
+          )}
+          {resultado.tusfacturas_response && (
+            <details className="mt-2">
+              <summary className="text-xs text-red-600 cursor-pointer hover:underline">Ver respuesta completa de TusFacturas</summary>
+              <pre className="mt-2 bg-red-100 rounded p-3 text-xs overflow-x-auto max-h-48">
+                {JSON.stringify(resultado.tusfacturas_response, null, 2)}
+              </pre>
+            </details>
+          )}
+        </div>
+      )}
+
       {/* Botones */}
-      {pedidoSeleccionado && (
+      {items.length > 0 && (
         <div className="flex justify-end gap-3">
-          <button
-            onClick={() => router.push("/admin/facturacion")}
+          <Link
+            href="/admin/facturacion"
             className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
           >
             Cancelar
-          </button>
+          </Link>
           <button
             onClick={generarFactura}
-            disabled={generando || !datosCliente.razon_social}
+            disabled={generando || !clienteSeleccionado || items.length === 0}
             className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-gray-400 font-medium"
           >
-            {generando ? "Generando..." : "Generar Factura"}
+            {generando ? (
+              <span className="flex items-center gap-2">
+                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+                Generando...
+              </span>
+            ) : (
+              "Generar Factura (Testing)"
+            )}
           </button>
         </div>
       )}

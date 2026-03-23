@@ -20,6 +20,7 @@ import {
   Building2,
   ShoppingCart,
   CreditCard,
+  ScrollText,
 } from "lucide-react"
 
 const navItems = [
@@ -40,6 +41,7 @@ const navItems = [
   { href: "/admin/finanzas/ingresos", label: "Ingresos", icon: TrendingUp },
   { href: "/admin/finanzas/comisiones", label: "Comisiones", icon: Percent },
   { href: "/admin/facturacion", label: "Facturación", icon: Receipt },
+  { href: "/admin/facturacion/logs", label: "Logs Facturación", icon: ScrollText },
   { type: "separator" as const, label: "Sistema" },
   { href: "/admin/configuracion", label: "Configuración", icon: Settings },
 ]
