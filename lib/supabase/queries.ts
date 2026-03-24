@@ -165,7 +165,7 @@ export async function createOrder(order: {
       vendedor_id: order.vendedorId,
       vendedor_name: order.vendedorName,
       zona: order.zona,
-      status: "RECIBIDO",
+      status: "INGRESADO",
       total: order.total,
       notes: order.notes,
       is_custom: order.isCustom,
@@ -193,7 +193,7 @@ export async function createOrder(order: {
   // Insert initial status history
   const { error: histError } = await supabase.from("order_status_history").insert({
     order_id: orderData.id,
-    status: "RECIBIDO",
+    status: "INGRESADO",
     user_id: order.vendedorId,
     user_name: order.vendedorName,
   })

@@ -7,16 +7,14 @@ interface StatusTimelineProps {
   isCustom?: boolean
 }
 
-const standardFlow: OrderStatus[] = ["RECIBIDO", "CONFIRMADO", "EN_ARMADO", "LISTO", "EN_ENTREGA", "ENTREGADO"]
+// Single linear flow for all orders now
+const mainFlow: OrderStatus[] = ["INGRESADO", "PREPARADO", "FACTURADO", "ENTREGADO"]
 
-const customFlow: OrderStatus[] = ["RECIBIDO", "CONFIRMADO", "EN_FABRICACION", "LISTO", "EN_ENTREGA", "ENTREGADO"]
+export function StatusTimeline({ currentStatus }: StatusTimelineProps) {
+  const currentIndex = mainFlow.indexOf(currentStatus)
 
-export function StatusTimeline({ currentStatus, isCustom = false }: StatusTimelineProps) {
-  const flow = isCustom ? customFlow : standardFlow
-  const currentIndex = flow.indexOf(currentStatus)
-
-  // Handle special statuses
-  if (currentStatus === "SIN_STOCK" || currentStatus === "CON_PROVEEDOR" || currentStatus === "CANCELADO") {
+  // Handle special statuses (not in the main flow)
+  if (currentStatus === "ESPERANDO_MERCADERIA" || currentStatus === "CANCELADO") {
     const config = getStatusConfig(currentStatus)
     return (
       <div className="flex items-center justify-center p-4 bg-muted/50 rounded-lg">
@@ -31,7 +29,7 @@ export function StatusTimeline({ currentStatus, isCustom = false }: StatusTimeli
   return (
     <div className="overflow-x-auto">
       <div className="flex items-center gap-2 min-w-max pb-2">
-        {flow.map((status, index) => {
+        {mainFlow.map((status, index) => {
           const config = getStatusConfig(status)
           const isActive = index <= currentIndex
           const isCurrent = status === currentStatus
@@ -58,7 +56,7 @@ export function StatusTimeline({ currentStatus, isCustom = false }: StatusTimeli
                   {config.label}
                 </span>
               </div>
-              {index < flow.length - 1 && (
+              {index < mainFlow.length - 1 && (
                 <div
                   className={cn(
                     "h-0.5 w-8 mx-1 transition-all",

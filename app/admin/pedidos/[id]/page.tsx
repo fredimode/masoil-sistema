@@ -12,37 +12,13 @@ import { Label } from "@/components/ui/label"
 import { StatusTimeline } from "@/components/vendedor/status-timeline"
 import { CountdownWidget } from "@/components/vendedor/countdown-widget"
 import { fetchOrderById, fetchClientById, updateOrderStatus } from "@/lib/supabase/queries"
-import { getStatusConfig } from "@/lib/status-config"
+import { getStatusConfig, getNextStatuses } from "@/lib/status-config"
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils"
 import type { Order, Client, OrderStatus } from "@/lib/types"
-import { ArrowLeft, Printer, MessageCircle, Phone } from "lucide-react"
+import { ArrowLeft, Printer, MessageCircle, Phone, XCircle } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
-
-const standardFlow: OrderStatus[] = ["RECIBIDO", "CONFIRMADO", "EN_ARMADO", "LISTO", "EN_ENTREGA", "ENTREGADO"]
-const customFlow: OrderStatus[] = ["RECIBIDO", "CONFIRMADO", "EN_FABRICACION", "LISTO", "EN_ENTREGA", "ENTREGADO"]
-const specialStatuses: OrderStatus[] = ["SIN_STOCK", "CON_PROVEEDOR", "CANCELADO"]
-
-function getNextStatuses(currentStatus: OrderStatus, isCustom: boolean): OrderStatus[] {
-  const flow = isCustom ? customFlow : standardFlow
-  const currentIndex = flow.indexOf(currentStatus)
-
-  const options: OrderStatus[] = []
-
-  // If in a normal flow, allow advancing to the next step
-  if (currentIndex >= 0 && currentIndex < flow.length - 1) {
-    options.push(flow[currentIndex + 1])
-  }
-
-  // Always allow special statuses (unless already in a terminal state)
-  if (!["ENTREGADO", "CANCELADO"].includes(currentStatus)) {
-    specialStatuses.forEach((s) => {
-      if (s !== currentStatus) options.push(s)
-    })
-  }
-
-  return options
-}
+import { createClient } from "@/lib/supabase/client"
 
 export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params)
@@ -50,11 +26,13 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [order, setOrder] = useState<Order | null>(null)
   const [client, setClient] = useState<Client | null>(null)
   const [loading, setLoading] = useState(true)
-  const [currentStatus, setCurrentStatus] = useState<OrderStatus>("RECIBIDO")
+  const [currentStatus, setCurrentStatus] = useState<OrderStatus>("INGRESADO")
   const [statusHistory, setStatusHistory] = useState<Order["statusHistory"]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [newStatus, setNewStatus] = useState<string>("")
   const [statusNote, setStatusNote] = useState("")
+  const [cancelMotivo, setCancelMotivo] = useState("")
   const [updating, setUpdating] = useState(false)
 
   useEffect(() => {
@@ -70,7 +48,6 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         setCurrentStatus(orderData.status)
         setStatusHistory(orderData.statusHistory)
 
-        // Fetch client details for sidebar
         if (orderData.clientId) {
           const clientData = await fetchClientById(orderData.clientId)
           setClient(clientData)
@@ -90,17 +67,59 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     notFound()
   }
 
+  // TS doesn't narrow after notFound(), so assert non-null
+  const o = order!
+
   const whatsappHref = client ? `https://wa.me/${client.whatsapp.replace(/\D/g, "")}` : null
-
-  const nextStatuses = getNextStatuses(currentStatus, order.isCustom)
+  const nextStatuses = getNextStatuses(currentStatus)
   const isTerminal = ["ENTREGADO", "CANCELADO"].includes(currentStatus)
+  const canCancel = !isTerminal
 
-  const handleUpdateStatus = async () => {
+  async function handleUpdateStatus() {
     if (!newStatus) return
-
     setUpdating(true)
     try {
-      await updateOrderStatus(order.id, newStatus as OrderStatus, "admin1", "Admin Masoil", statusNote || undefined)
+      // If changing to FACTURADO, offer to generate invoice
+      if (newStatus === "FACTURADO" && client) {
+        const generateInvoice = confirm("¿Generar factura automáticamente?")
+        if (generateInvoice) {
+          try {
+            const res = await fetch("/api/facturacion/generar", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ orderId: o.id, clientId: o.clientId }),
+            })
+            const data = await res.json()
+            if (data.success) {
+              alert(`Factura generada: ${data.factura.tipo} ${data.factura.comprobante_nro || data.factura.numero}`)
+            } else {
+              alert("Error generando factura: " + (data.error || "Error desconocido") + "\nEl estado se actualizará de todas formas.")
+            }
+          } catch {
+            alert("Error de conexión al generar factura. El estado se actualizará de todas formas.")
+          }
+        }
+      }
+
+      // If changing to ENTREGADO, deduct stock
+      if (newStatus === "ENTREGADO") {
+        const supabase = createClient()
+        for (const item of o.products) {
+          if (item.productId) {
+            const { data: product } = await supabase
+              .from("products")
+              .select("stock")
+              .eq("id", item.productId)
+              .single()
+            if (product) {
+              const newStock = Math.max(0, product.stock - item.quantity)
+              await supabase.from("products").update({ stock: newStock }).eq("id", item.productId)
+            }
+          }
+        }
+      }
+
+      await updateOrderStatus(o.id, newStatus as OrderStatus, "admin1", "Admin Masoil", statusNote || undefined)
 
       const now = new Date()
       setCurrentStatus(newStatus as OrderStatus)
@@ -125,6 +144,44 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     }
   }
 
+  async function handleCancel() {
+    if (!cancelMotivo.trim()) {
+      alert("Debés ingresar un motivo para cancelar el pedido")
+      return
+    }
+    setUpdating(true)
+    try {
+      // Save cancel reason
+      const supabase = createClient()
+      await supabase.from("orders").update({
+        cancelado_motivo: cancelMotivo,
+        cancelado_at: new Date().toISOString(),
+      }).eq("id", o.id)
+
+      await updateOrderStatus(o.id, "CANCELADO", "admin1", "Admin Masoil", `Cancelado: ${cancelMotivo}`)
+
+      const now = new Date()
+      setCurrentStatus("CANCELADO")
+      setStatusHistory([
+        ...statusHistory,
+        {
+          status: "CANCELADO" as OrderStatus,
+          timestamp: now,
+          userId: "admin1",
+          userName: "Admin Masoil",
+          notes: `Cancelado: ${cancelMotivo}`,
+        },
+      ])
+      setCancelMotivo("")
+      setCancelDialogOpen(false)
+    } catch (err) {
+      console.error("Error cancelling order:", err)
+      alert("Error al cancelar el pedido")
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   return (
     <div className="p-8 space-y-6 max-w-6xl">
       {/* Header */}
@@ -136,28 +193,69 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         </Button>
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold">Pedido #{order.id}</h1>
-            {order.isUrgent && (
+            <h1 className="text-2xl font-bold">Pedido #{o.id}</h1>
+            {o.isUrgent && (
               <Badge variant="destructive" className="text-xs">
                 URGENTE
               </Badge>
             )}
-            {order.isCustom && (
+            {o.isCustom && (
               <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
                 CUSTOMIZADO
               </Badge>
             )}
           </div>
-          <p className="text-muted-foreground">Creado el {formatDateTime(order.createdAt)}</p>
+          <p className="text-muted-foreground">Creado el {formatDateTime(o.createdAt)}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline">
             <Printer className="h-4 w-4 mr-2" />
             Imprimir Remito
           </Button>
+
+          {/* Cancel button */}
+          {canCancel && (
+            <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="destructive" size="default">
+                  <XCircle className="h-4 w-4 mr-2" />
+                  Cancelar Pedido
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Cancelar Pedido #{o.id}</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4 pt-2">
+                  <p className="text-sm text-muted-foreground">
+                    Esta acción no se puede deshacer. Ingresá el motivo de cancelación.
+                  </p>
+                  <div className="space-y-2">
+                    <Label>Motivo de cancelación *</Label>
+                    <Textarea
+                      placeholder="Ingresá el motivo..."
+                      value={cancelMotivo}
+                      onChange={(e) => setCancelMotivo(e.target.value)}
+                      rows={3}
+                    />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button variant="outline" onClick={() => setCancelDialogOpen(false)}>
+                      Volver
+                    </Button>
+                    <Button variant="destructive" onClick={handleCancel} disabled={!cancelMotivo.trim() || updating}>
+                      {updating ? "Cancelando..." : "Confirmar Cancelación"}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+
+          {/* Update status */}
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button disabled={isTerminal}>
+              <Button disabled={isTerminal || nextStatuses.length === 0}>
                 Actualizar Estado
               </Button>
             </DialogTrigger>
@@ -176,7 +274,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                       <SelectValue placeholder="Seleccionar estado..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {nextStatuses.map((status) => {
+                      {nextStatuses.filter((s) => s !== "CANCELADO").map((status) => {
                         const config = getStatusConfig(status)
                         return (
                           <SelectItem key={status} value={status}>
@@ -213,11 +311,11 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
       {/* Status Timeline */}
       <Card className="p-6">
         <h3 className="font-semibold mb-4">Estado del Pedido</h3>
-        <StatusTimeline currentStatus={currentStatus} isCustom={order.isCustom} />
+        <StatusTimeline currentStatus={currentStatus} isCustom={o.isCustom} />
       </Card>
 
       {/* Countdown for Custom Orders */}
-      {order.isCustom && <CountdownWidget estimatedDelivery={order.estimatedDelivery} />}
+      {o.isCustom && <CountdownWidget estimatedDelivery={o.estimatedDelivery} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Order Details */}
@@ -226,7 +324,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           <Card className="p-6">
             <h3 className="font-semibold mb-4">Productos</h3>
             <div className="space-y-3">
-              {order.products.map((product, index) => (
+              {o.products.map((product, index) => (
                 <div key={index} className="flex items-center justify-between py-3 border-b last:border-0">
                   <div className="flex-1">
                     <p className="font-medium">{product.productName}</p>
@@ -242,7 +340,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             <Separator className="my-4" />
             <div className="flex items-center justify-between">
               <span className="font-semibold text-lg">Total</span>
-              <span className="font-bold text-2xl">{formatCurrency(order.total)}</span>
+              <span className="font-bold text-2xl">{formatCurrency(o.total)}</span>
             </div>
           </Card>
 
@@ -273,10 +371,10 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           </Card>
 
           {/* Notes */}
-          {order.notes && (
+          {o.notes && (
             <Card className="p-6">
               <h3 className="font-semibold mb-2">Notas del Pedido</h3>
-              <p className="text-sm text-muted-foreground">{order.notes}</p>
+              <p className="text-sm text-muted-foreground">{o.notes}</p>
             </Card>
           )}
         </div>
@@ -328,9 +426,9 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           <Card className="p-6">
             <h3 className="font-semibold mb-4">Vendedor Asignado</h3>
             <div>
-              <p className="font-medium mb-1">{order.vendedorName}</p>
+              <p className="font-medium mb-1">{o.vendedorName}</p>
               <Badge variant="outline" className="text-xs">
-                {order.zona}
+                {o.zona}
               </Badge>
             </div>
           </Card>
@@ -341,12 +439,12 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             <div className="space-y-2">
               <div>
                 <p className="text-sm text-muted-foreground">Fecha estimada</p>
-                <p className="font-medium">{formatDate(order.estimatedDelivery)}</p>
+                <p className="font-medium">{formatDate(o.estimatedDelivery)}</p>
               </div>
               <Separator />
               <div>
                 <p className="text-sm text-muted-foreground">Zona de entrega</p>
-                <p className="font-medium">{order.zona}</p>
+                <p className="font-medium">{o.zona}</p>
               </div>
             </div>
           </Card>

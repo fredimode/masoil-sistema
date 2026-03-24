@@ -1,69 +1,37 @@
 import type { StatusConfig, OrderStatus } from "./types"
 
 export const statusConfig: Record<OrderStatus, StatusConfig> = {
-  RECIBIDO: {
-    status: "RECIBIDO",
+  INGRESADO: {
+    status: "INGRESADO",
     icon: "📥",
+    color: "text-teal-700",
+    bgColor: "bg-teal-50 border-teal-200",
+    label: "Ingresado",
+    description: "Pedido recibido del vendedor",
+  },
+  PREPARADO: {
+    status: "PREPARADO",
+    icon: "📦",
     color: "text-blue-700",
     bgColor: "bg-blue-50 border-blue-200",
-    label: "Recibido",
-    description: "Pedido recibido, pendiente de confirmación",
+    label: "Preparado",
+    description: "Mercadería lista en depósito",
   },
-  CONFIRMADO: {
-    status: "CONFIRMADO",
-    icon: "✓",
-    color: "text-cyan-700",
-    bgColor: "bg-cyan-50 border-cyan-200",
-    label: "Confirmado",
-    description: "Pedido confirmado por administración",
-  },
-  EN_ARMADO: {
-    status: "EN_ARMADO",
-    icon: "🔧",
-    color: "text-orange-700",
-    bgColor: "bg-orange-50 border-orange-200",
-    label: "En Armado",
-    description: "Pedido siendo preparado en depósito",
-  },
-  EN_FABRICACION: {
-    status: "EN_FABRICACION",
-    icon: "🏭",
+  FACTURADO: {
+    status: "FACTURADO",
+    icon: "📄",
     color: "text-purple-700",
     bgColor: "bg-purple-50 border-purple-200",
-    label: "En Fabricación",
-    description: "Pedido customizado en proceso de fabricación",
+    label: "Facturado",
+    description: "Factura emitida",
   },
-  CON_PROVEEDOR: {
-    status: "CON_PROVEEDOR",
-    icon: "📦",
-    color: "text-yellow-700",
-    bgColor: "bg-yellow-50 border-yellow-200",
-    label: "Con Proveedor",
-    description: "Esperando reposición de proveedor",
-  },
-  SIN_STOCK: {
-    status: "SIN_STOCK",
-    icon: "⚠️",
-    color: "text-red-700",
-    bgColor: "bg-red-50 border-red-200",
-    label: "Sin Stock",
-    description: "Productos agotados",
-  },
-  LISTO: {
-    status: "LISTO",
-    icon: "✅",
-    color: "text-green-700",
-    bgColor: "bg-green-50 border-green-200",
-    label: "Listo",
-    description: "Pedido listo para entrega",
-  },
-  EN_ENTREGA: {
-    status: "EN_ENTREGA",
-    icon: "🚚",
-    color: "text-blue-700",
-    bgColor: "bg-blue-50 border-blue-200",
-    label: "En Entrega",
-    description: "Pedido en camino al cliente",
+  ESPERANDO_MERCADERIA: {
+    status: "ESPERANDO_MERCADERIA",
+    icon: "⏳",
+    color: "text-amber-700",
+    bgColor: "bg-amber-50 border-amber-200",
+    label: "Esperando Mercadería",
+    description: "Esperando mercadería del proveedor",
   },
   ENTREGADO: {
     status: "ENTREGADO",
@@ -71,18 +39,32 @@ export const statusConfig: Record<OrderStatus, StatusConfig> = {
     color: "text-green-700",
     bgColor: "bg-green-50 border-green-200",
     label: "Entregado",
-    description: "Pedido completado",
+    description: "Entregado al cliente",
   },
   CANCELADO: {
     status: "CANCELADO",
     icon: "❌",
-    color: "text-gray-700",
-    bgColor: "bg-gray-50 border-gray-200",
+    color: "text-red-700",
+    bgColor: "bg-red-50 border-red-200",
     label: "Cancelado",
     description: "Pedido cancelado",
   },
 }
 
+// Valid transitions map
+export const validTransitions: Record<OrderStatus, OrderStatus[]> = {
+  INGRESADO: ["PREPARADO", "ESPERANDO_MERCADERIA", "CANCELADO"],
+  PREPARADO: ["FACTURADO", "CANCELADO"],
+  FACTURADO: ["ENTREGADO", "ESPERANDO_MERCADERIA", "CANCELADO"],
+  ESPERANDO_MERCADERIA: ["PREPARADO", "CANCELADO"],
+  ENTREGADO: [],
+  CANCELADO: [],
+}
+
 export function getStatusConfig(status: OrderStatus): StatusConfig {
-  return statusConfig[status]
+  return statusConfig[status] || statusConfig.INGRESADO
+}
+
+export function getNextStatuses(currentStatus: OrderStatus): OrderStatus[] {
+  return validTransitions[currentStatus] || []
 }

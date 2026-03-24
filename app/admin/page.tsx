@@ -54,12 +54,12 @@ export default function AdminDashboard() {
 
   // Orders by status
   const ordersByStatus = [
-    { name: "Recibido", value: orders.filter((o) => o.status === "RECIBIDO").length, fill: "#3b82f6" },
-    { name: "Confirmado", value: orders.filter((o) => o.status === "CONFIRMADO").length, fill: "#06b6d4" },
-    { name: "En Armado", value: orders.filter((o) => o.status === "EN_ARMADO").length, fill: "#f97316" },
-    { name: "Listo", value: orders.filter((o) => o.status === "LISTO").length, fill: "#10b981" },
-    { name: "En Entrega", value: orders.filter((o) => o.status === "EN_ENTREGA").length, fill: "#3b82f6" },
+    { name: "Ingresado", value: orders.filter((o) => o.status === "INGRESADO").length, fill: "#14b8a6" },
+    { name: "Preparado", value: orders.filter((o) => o.status === "PREPARADO").length, fill: "#3b82f6" },
+    { name: "Facturado", value: orders.filter((o) => o.status === "FACTURADO").length, fill: "#a855f7" },
+    { name: "Esp. Mercadería", value: orders.filter((o) => o.status === "ESPERANDO_MERCADERIA").length, fill: "#f59e0b" },
     { name: "Entregado", value: orders.filter((o) => o.status === "ENTREGADO").length, fill: "#10b981" },
+    { name: "Cancelado", value: orders.filter((o) => o.status === "CANCELADO").length, fill: "#ef4444" },
   ].filter((s) => s.value > 0)
 
   // Recent alerts

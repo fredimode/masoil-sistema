@@ -117,12 +117,12 @@ export default function AdminPedidosPage() {
             <SelectItem value="todos">Todos los estados</SelectItem>
             <SelectItem value="pendientes">Pendientes</SelectItem>
             <SelectItem value="urgentes">Urgentes</SelectItem>
-            <SelectItem value="RECIBIDO">Recibido</SelectItem>
-            <SelectItem value="CONFIRMADO">Confirmado</SelectItem>
-            <SelectItem value="EN_ARMADO">En Armado</SelectItem>
-            <SelectItem value="LISTO">Listo</SelectItem>
-            <SelectItem value="EN_ENTREGA">En Entrega</SelectItem>
+            <SelectItem value="INGRESADO">Ingresado</SelectItem>
+            <SelectItem value="PREPARADO">Preparado</SelectItem>
+            <SelectItem value="FACTURADO">Facturado</SelectItem>
+            <SelectItem value="ESPERANDO_MERCADERIA">Esperando Mercadería</SelectItem>
             <SelectItem value="ENTREGADO">Entregado</SelectItem>
+            <SelectItem value="CANCELADO">Cancelado</SelectItem>
           </SelectContent>
         </Select>
         <Select value={zonaFilter} onValueChange={(v) => { setZonaFilter(v); setPage(1) }}>

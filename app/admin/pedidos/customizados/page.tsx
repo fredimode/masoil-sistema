@@ -41,8 +41,8 @@ export default function AdminCustomOrdersPage() {
           <p className="text-2xl font-bold">{customOrders.length}</p>
         </Card>
         <Card className="p-4">
-          <p className="text-sm text-muted-foreground mb-1">En Fabricación</p>
-          <p className="text-2xl font-bold">{customOrders.filter((o) => o.status === "EN_FABRICACION").length}</p>
+          <p className="text-sm text-muted-foreground mb-1">Esperando Mercadería</p>
+          <p className="text-2xl font-bold">{customOrders.filter((o) => o.status === "ESPERANDO_MERCADERIA").length}</p>
         </Card>
         <Card className="p-4">
           <p className="text-sm text-muted-foreground mb-1">Próximos a Vencer</p>

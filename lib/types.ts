@@ -3,20 +3,16 @@
 export type Zona = "Norte" | "Capital" | "Sur" | "Oeste" | "GBA"
 
 export type OrderStatus =
-  | "RECIBIDO"
-  | "CONFIRMADO"
-  | "EN_ARMADO"
-  | "EN_FABRICACION"
-  | "CON_PROVEEDOR"
-  | "SIN_STOCK"
-  | "LISTO"
-  | "EN_ENTREGA"
+  | "INGRESADO"
+  | "PREPARADO"
+  | "FACTURADO"
+  | "ESPERANDO_MERCADERIA"
   | "ENTREGADO"
   | "CANCELADO"
 
 export type ProductCategory = "Limpiadores" | "Lubricantes" | "Selladores" | "Belleza" | "Higiene"
 
-export type UserRole = "vendedor" | "admin"
+export type UserRole = "admin" | "vendedor" | "operaciones" | "cobranzas"
 
 export interface Product {
   id: string
