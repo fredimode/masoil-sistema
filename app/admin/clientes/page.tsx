@@ -255,6 +255,7 @@ export default function AdminClientesPage() {
         <>
           <ClientTable
             clients={paginatedClients}
+            allClients={clients}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
             onToggleAll={toggleAll}

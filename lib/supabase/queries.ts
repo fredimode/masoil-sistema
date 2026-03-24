@@ -86,6 +86,9 @@ function mapClient(row: any): Client {
     localidad: row.localidad || null,
     vendedorGp: row.contacto || null,
     telefono: row.telefono || null,
+    sucursal: row.sucursal || null,
+    cuit: row.cuit || null,
+    numeroDocum: row.numero_docum || null,
   }
 }
 
@@ -333,6 +336,7 @@ export async function createClient(client: {
   businessName: string; contactName: string; whatsapp: string;
   email: string; zona: string; vendedorId?: string; address: string;
   paymentTerms: string; creditLimit: number; notes: string;
+  sucursal?: string;
 }): Promise<void> {
   const supabase = createSupabaseClient()
   const { error } = await supabase.from("clients").insert({
@@ -346,6 +350,7 @@ export async function createClient(client: {
     payment_terms: client.paymentTerms,
     credit_limit: client.creditLimit,
     notes: client.notes,
+    sucursal: client.sucursal || null,
   })
   if (error) throw error
 }

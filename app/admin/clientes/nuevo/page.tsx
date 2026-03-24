@@ -50,6 +50,7 @@ export default function AdminNuevoClientePage() {
     paymentTerms: "30 días",
     creditLimit: "",
     notes: "",
+    sucursal: "",
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -199,6 +200,16 @@ export default function AdminNuevoClientePage() {
                 className={errors.address ? "border-destructive" : ""}
               />
               {errors.address && <p className="text-sm text-destructive">{errors.address}</p>}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="sucursal">Sucursal</Label>
+              <Input
+                id="sucursal"
+                value={formData.sucursal}
+                onChange={(e) => handleChange("sucursal", e.target.value)}
+                placeholder="Ej: Casa Central, Sucursal Norte"
+              />
             </div>
           </div>
         </Card>

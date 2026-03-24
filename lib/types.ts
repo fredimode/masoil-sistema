@@ -86,6 +86,9 @@ export interface Client {
   localidad?: string | null
   vendedorGp?: string | null
   telefono?: string | null
+  sucursal?: string | null
+  cuit?: string | null
+  numeroDocum?: string | null
 }
 
 export interface Vendedor {
