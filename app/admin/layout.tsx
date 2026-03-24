@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
@@ -10,10 +10,31 @@ import { AdminSidebarContent } from "@/components/admin/sidebar-nav"
 import { AiChat } from "@/components/chat/ai-chat"
 import { createClient } from "@/lib/supabase/client"
 
+type UserRole = "admin" | "vendedor" | "operaciones" | "cobranzas"
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [userRole, setUserRole] = useState<UserRole>("admin")
+
+  useEffect(() => {
+    async function loadRole() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: vendedor } = await supabase
+          .from("vendedores")
+          .select("role")
+          .eq("auth_user_id", user.id)
+          .single()
+        if (vendedor?.role) {
+          setUserRole(vendedor.role as UserRole)
+        }
+      }
+    }
+    loadRole()
+  }, [])
 
   const handleLogout = async () => {
     setLoggingOut(true)
@@ -27,7 +48,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="flex min-h-screen bg-background">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-64 bg-sidebar border-r border-sidebar-border flex-col">
-        <AdminSidebarContent />
+        <AdminSidebarContent userRole={userRole} />
       </aside>
 
       {/* Main Content */}
@@ -43,7 +64,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="p-0 w-64">
-              <AdminSidebarContent onNavigate={() => setSidebarOpen(false)} />
+              <AdminSidebarContent onNavigate={() => setSidebarOpen(false)} userRole={userRole} />
             </SheetContent>
           </Sheet>
 
