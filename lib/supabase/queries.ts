@@ -618,6 +618,45 @@ export async function deleteClientsBulk(ids: string[]): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Cotizaciones
+// ---------------------------------------------------------------------------
+
+export async function fetchCotizaciones(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("cotizaciones")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(500)
+  if (error) throw error
+  return data || []
+}
+
+export async function createCotizacion(cotizacion: {
+  order_id: string
+  proveedor_id: string
+  proveedor_nombre: string
+  items: unknown[]
+  total: number
+  observaciones?: string
+}): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("cotizaciones")
+    .insert(cotizacion)
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+export async function updateCotizacion(id: string, updates: Record<string, unknown>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("cotizaciones").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
 // Facturas GestionPro
 // ---------------------------------------------------------------------------
 
