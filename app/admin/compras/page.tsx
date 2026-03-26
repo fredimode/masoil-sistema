@@ -25,14 +25,20 @@ import {
 } from "@/components/ui/dialog"
 import { Eye, Pencil, Trash2 } from "lucide-react"
 
+const ESTADOS_OC = ["Pendiente", "Realizado", "Recibido Completo", "Recibido Incompleto", "Factura Cargada", "Cancelado"]
+
 function estadoBadge(estado: string) {
   const lower = (estado || "").toLowerCase()
   if (lower.includes("pendiente"))
     return <Badge className="bg-amber-100 text-amber-800 border-amber-200">{estado}</Badge>
-  if (lower.includes("proceso") || lower.includes("en curso"))
+  if (lower.includes("realizado") || lower.includes("proceso") || lower.includes("en curso"))
     return <Badge className="bg-blue-100 text-blue-800 border-blue-200">{estado}</Badge>
-  if (lower.includes("recibid") || lower.includes("completad"))
+  if (lower.includes("recibido completo") || lower.includes("completad"))
     return <Badge className="bg-green-100 text-green-800 border-green-200">{estado}</Badge>
+  if (lower.includes("recibido incompleto"))
+    return <Badge className="bg-orange-100 text-orange-800 border-orange-200">{estado}</Badge>
+  if (lower.includes("factura cargada"))
+    return <Badge className="bg-indigo-100 text-indigo-800 border-indigo-200">{estado}</Badge>
   if (lower.includes("cancelad"))
     return <Badge className="bg-red-100 text-red-800 border-red-200">{estado}</Badge>
   return <Badge variant="outline">{estado || "-"}</Badge>
@@ -329,9 +335,9 @@ export default function ComprasPage() {
                     <tr>
                       <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[90px]">Fecha</th>
                       <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[160px]">Proveedor</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Articulo</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[200px] max-w-[200px]">Articulo</th>
                       <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[100px]">Vendedor</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[120px]">Estado</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[170px]">Estado</th>
                       <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[100px]">Nro Cotiz.</th>
                       <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[100px]">Nro NP</th>
                       <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[100px]">Acciones</th>
@@ -346,14 +352,30 @@ export default function ComprasPage() {
                         <td className="px-3 py-3 font-medium text-gray-900 truncate" title={c.proveedor_nombre || ""}>
                           {c.proveedor_nombre || "-"}
                         </td>
-                        <td className="px-3 py-3 text-gray-600 truncate" title={c.articulo || ""}>
+                        <td className="px-3 py-3 text-gray-600 truncate max-w-[200px]" title={c.articulo || ""}>
                           {c.articulo || "-"}
                         </td>
                         <td className="px-3 py-3 text-gray-600 truncate" title={c.vendedor || ""}>
                           {c.vendedor || "-"}
                         </td>
-                        <td className="px-3 py-3" title={c.estado || ""}>
-                          <div className="max-w-[120px] truncate">{estadoBadge(c.estado)}</div>
+                        <td className="px-3 py-2">
+                          <select
+                            value={c.estado || ""}
+                            onChange={async (e) => {
+                              const nuevoEstado = e.target.value
+                              try {
+                                await updateCompra(c.id, { estado: nuevoEstado })
+                                setCompras((prev) => prev.map((x) => x.id === c.id ? { ...x, estado: nuevoEstado } : x))
+                              } catch (err) {
+                                console.error("Error actualizando estado:", err)
+                              }
+                            }}
+                            className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
+                          >
+                            {ESTADOS_OC.map((e) => (
+                              <option key={e} value={e}>{e}</option>
+                            ))}
+                          </select>
                         </td>
                         <td className="px-3 py-3 text-gray-600 truncate">{c.nro_cotizacion || "-"}</td>
                         <td className="px-3 py-3 text-gray-600 truncate">{c.nro_nota_pedido || "-"}</td>
@@ -475,7 +497,7 @@ export default function ComprasPage() {
                       <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[90px]">Fecha</th>
                       <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[160px]">Proveedor</th>
                       <th className="px-3 py-3 text-right font-semibold text-gray-700 w-[110px]">Importe Total</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[120px]">Estado</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[170px]">Estado</th>
                       <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[90px]">Nro OC</th>
                       <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[140px]">Razon Social</th>
                       <th className="px-3 py-3 text-left font-semibold text-gray-700">Ubicacion</th>
@@ -494,8 +516,24 @@ export default function ComprasPage() {
                         <td className="px-3 py-3 text-right font-bold text-gray-900">
                           {formatCurrency(Number(o.importe_total) || 0)}
                         </td>
-                        <td className="px-3 py-3" title={o.estado || ""}>
-                          <div className="max-w-[120px] truncate">{estadoBadge(o.estado)}</div>
+                        <td className="px-3 py-2">
+                          <select
+                            value={o.estado || ""}
+                            onChange={async (e) => {
+                              const nuevoEstado = e.target.value
+                              try {
+                                await updateOrdenCompra(o.id, { estado: nuevoEstado })
+                                setOrdenes((prev) => prev.map((x) => x.id === o.id ? { ...x, estado: nuevoEstado } : x))
+                              } catch (err) {
+                                console.error("Error actualizando estado:", err)
+                              }
+                            }}
+                            className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
+                          >
+                            {ESTADOS_OC.map((e) => (
+                              <option key={e} value={e}>{e}</option>
+                            ))}
+                          </select>
                         </td>
                         <td className="px-3 py-3 text-gray-600 truncate">{o.nro_oc || "-"}</td>
                         <td className="px-3 py-3 text-gray-600 truncate" title={o.razon_social || ""}>{o.razon_social || "-"}</td>
@@ -589,7 +627,9 @@ export default function ComprasPage() {
             </div>
             <div>
               <label className="text-sm text-gray-600 block mb-1">Estado</label>
-              <input type="text" value={editCompraForm.estado || ""} onChange={(e) => setEditCompraForm((f: any) => ({ ...f, estado: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+              <select value={editCompraForm.estado || ""} onChange={(e) => setEditCompraForm((f: any) => ({ ...f, estado: e.target.value }))} className="w-full p-2 border rounded-lg text-sm">
+                {ESTADOS_OC.map((e) => (<option key={e} value={e}>{e}</option>))}
+              </select>
             </div>
             <div>
               <label className="text-sm text-gray-600 block mb-1">Nro Cotizacion</label>
@@ -662,7 +702,9 @@ export default function ComprasPage() {
             </div>
             <div>
               <label className="text-sm text-gray-600 block mb-1">Estado</label>
-              <input type="text" value={editOrdenForm.estado || ""} onChange={(e) => setEditOrdenForm((f: any) => ({ ...f, estado: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+              <select value={editOrdenForm.estado || ""} onChange={(e) => setEditOrdenForm((f: any) => ({ ...f, estado: e.target.value }))} className="w-full p-2 border rounded-lg text-sm">
+                {ESTADOS_OC.map((e) => (<option key={e} value={e}>{e}</option>))}
+              </select>
             </div>
             <div>
               <label className="text-sm text-gray-600 block mb-1">Nro OC</label>

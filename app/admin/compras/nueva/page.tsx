@@ -1,27 +1,27 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { fetchProveedores, createCompra } from "@/lib/supabase/queries"
+import { fetchProveedores, fetchCompras, createCompra } from "@/lib/supabase/queries"
+import { normalizeSearch } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { Paperclip } from "lucide-react"
+
+const ESTADOS_OC = ["Pendiente", "Realizado", "Recibido Completo", "Recibido Incompleto", "Factura Cargada", "Cancelado"]
 
 export default function NuevaCompraPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [proveedores, setProveedores] = useState<any[]>([])
+  const [provSearch, setProvSearch] = useState("")
+  const [showProvDropdown, setShowProvDropdown] = useState(false)
+  const [nextNP, setNextNP] = useState("NP-0001")
 
   const [form, setForm] = useState({
     fecha: new Date().toISOString().slice(0, 10),
@@ -34,29 +34,52 @@ export default function NuevaCompraPage() {
     nro_cotizacion: "",
     nro_nota_pedido: "",
     estado: "Pendiente",
+    fecha_estimada_ingreso: "",
+    observaciones_incompleto: "",
   })
 
   useEffect(() => {
-    async function loadProveedores() {
+    async function loadData() {
       try {
-        const data = await fetchProveedores()
-        setProveedores(data)
+        const [provs, compras] = await Promise.all([fetchProveedores(), fetchCompras()])
+        setProveedores(provs)
+
+        // Calculate next NP number
+        const npNumbers = compras
+          .map((c: any) => c.nro_nota_pedido)
+          .filter((np: string) => np && /^NP-\d+$/.test(np))
+          .map((np: string) => parseInt(np.replace("NP-", ""), 10))
+        const maxNP = npNumbers.length > 0 ? Math.max(...npNumbers) : 0
+        const next = `NP-${String(maxNP + 1).padStart(4, "0")}`
+        setNextNP(next)
+        setForm((prev) => ({ ...prev, nro_nota_pedido: next }))
       } catch (err) {
-        console.error("Error cargando proveedores:", err)
+        console.error("Error cargando datos:", err)
       } finally {
         setLoading(false)
       }
     }
-    loadProveedores()
+    loadData()
   }, [])
 
-  function handleProveedorChange(proveedorId: string) {
-    const prov = proveedores.find((p) => String(p.id) === proveedorId)
+  const filteredProveedores = useMemo(() => {
+    if (!provSearch.trim()) return []
+    const q = normalizeSearch(provSearch)
+    return proveedores.filter((p) =>
+      normalizeSearch(p.nombre || "").includes(q) ||
+      normalizeSearch(p.cuit || "").includes(q) ||
+      normalizeSearch(p.empresa || "").includes(q)
+    ).slice(0, 15)
+  }, [provSearch, proveedores])
+
+  function selectProveedor(prov: any) {
     setForm((prev) => ({
       ...prev,
-      proveedor_id: proveedorId,
-      proveedor_nombre: prov?.nombre || prov?.razon_social || "",
+      proveedor_id: String(prov.id),
+      proveedor_nombre: prov.nombre || prov.razon_social || "",
     }))
+    setProvSearch(prov.nombre || prov.razon_social || "")
+    setShowProvDropdown(false)
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -76,6 +99,7 @@ export default function NuevaCompraPage() {
         nro_nota_pedido: form.nro_nota_pedido || undefined,
         estado: form.estado || undefined,
         fecha: form.fecha || undefined,
+        fecha_estimada_ingreso: form.fecha_estimada_ingreso || undefined,
       })
       router.push("/admin/compras")
     } catch (err) {
@@ -129,36 +153,67 @@ export default function NuevaCompraPage() {
               />
             </div>
 
-            {/* Proveedor */}
-            <div className="space-y-2">
+            {/* Proveedor - Autocomplete */}
+            <div className="space-y-2 relative">
               <Label htmlFor="proveedor">Proveedor</Label>
-              <Select value={form.proveedor_id} onValueChange={handleProveedorChange}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar proveedor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {proveedores.map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>
-                      {p.nombre || p.razon_social}
-                    </SelectItem>
+              <Input
+                id="proveedor"
+                placeholder="Buscar proveedor por nombre, CUIT o empresa..."
+                value={provSearch}
+                onChange={(e) => {
+                  setProvSearch(e.target.value)
+                  setShowProvDropdown(true)
+                  if (!e.target.value.trim()) {
+                    setForm((prev) => ({ ...prev, proveedor_id: "", proveedor_nombre: "" }))
+                  }
+                }}
+                onFocus={() => provSearch.trim() && setShowProvDropdown(true)}
+                autoComplete="off"
+              />
+              {showProvDropdown && filteredProveedores.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto mt-1">
+                  {filteredProveedores.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm border-b last:border-b-0"
+                      onClick={() => selectProveedor(p)}
+                    >
+                      <span className="font-medium">{p.nombre || p.razon_social}</span>
+                      {p.cuit && <span className="text-gray-500 ml-2">CUIT: {p.cuit}</span>}
+                      {p.empresa && <span className="text-gray-400 ml-2">({p.empresa})</span>}
+                    </button>
                   ))}
-                </SelectContent>
-              </Select>
+                </div>
+              )}
+              {form.proveedor_nombre && (
+                <p className="text-xs text-green-600">Seleccionado: {form.proveedor_nombre}</p>
+              )}
             </div>
 
             {/* Articulo */}
             <div className="space-y-2">
               <Label htmlFor="articulo">
-                Articulo <span className="text-red-500">*</span>
+                Articulo / Detalle <span className="text-red-500">*</span>
               </Label>
               <Textarea
                 id="articulo"
-                placeholder="Descripcion del articulo solicitado..."
+                placeholder="Pegar detalle de WhatsApp, email, etc..."
                 value={form.articulo}
                 onChange={(e) => setForm((prev) => ({ ...prev, articulo: e.target.value }))}
                 required
-                rows={3}
+                rows={4}
               />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => alert("TODO: Integrar con Google Drive para adjuntar presupuesto")}
+              >
+                <Paperclip className="h-3 w-3 mr-1" />
+                Adjuntar presupuesto
+              </Button>
             </div>
 
             {/* Medio de solicitud + Solicitado por */}
@@ -194,7 +249,7 @@ export default function NuevaCompraPage() {
               />
             </div>
 
-            {/* Nro Cotizacion + Nro Nota Pedido */}
+            {/* Nro Cotizacion + Nro Nota Pedido (auto) */}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="nro_cotizacion">Nro Cotizacion</Label>
@@ -206,34 +261,62 @@ export default function NuevaCompraPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="nro_nota_pedido">Nro Nota de Pedido</Label>
+                <Label htmlFor="nro_nota_pedido">Nro Nota de Pedido (auto)</Label>
                 <Input
                   id="nro_nota_pedido"
-                  placeholder="Numero de nota de pedido"
                   value={form.nro_nota_pedido}
                   onChange={(e) => setForm((prev) => ({ ...prev, nro_nota_pedido: e.target.value }))}
+                  className="bg-gray-50"
                 />
               </div>
+            </div>
+
+            {/* Fecha estimada de ingreso */}
+            <div className="space-y-2">
+              <Label htmlFor="fecha_estimada_ingreso">Fecha estimada de ingreso</Label>
+              <Input
+                id="fecha_estimada_ingreso"
+                type="date"
+                value={form.fecha_estimada_ingreso}
+                onChange={(e) => setForm((prev) => ({ ...prev, fecha_estimada_ingreso: e.target.value }))}
+              />
             </div>
 
             {/* Estado */}
             <div className="space-y-2">
               <Label htmlFor="estado">Estado</Label>
-              <Select
+              <select
+                id="estado"
                 value={form.estado}
-                onValueChange={(val) => setForm((prev) => ({ ...prev, estado: val }))}
+                onChange={(e) => setForm((prev) => ({ ...prev, estado: e.target.value }))}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Pendiente">Pendiente</SelectItem>
-                  <SelectItem value="En proceso">En proceso</SelectItem>
-                  <SelectItem value="Recibido">Recibido</SelectItem>
-                  <SelectItem value="Cancelado">Cancelado</SelectItem>
-                </SelectContent>
-              </Select>
+                {ESTADOS_OC.map((e) => (
+                  <option key={e} value={e}>{e}</option>
+                ))}
+              </select>
             </div>
+
+            {/* Observaciones si Recibido Incompleto */}
+            {form.estado === "Recibido Incompleto" && (
+              <div className="space-y-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                <Label htmlFor="obs_incompleto" className="text-orange-800">
+                  Observaciones (obligatorio) <span className="text-red-500">*</span>
+                </Label>
+                <Textarea
+                  id="obs_incompleto"
+                  placeholder="Detalle de lo faltante..."
+                  value={form.observaciones_incompleto}
+                  onChange={(e) => setForm((prev) => ({ ...prev, observaciones_incompleto: e.target.value }))}
+                  required
+                  rows={2}
+                />
+                <p className="text-xs text-orange-600">
+                  {/* TODO: enviar notificación al comprador */}
+                  Se notificara al comprador sobre la recepcion incompleta.
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -247,7 +330,7 @@ export default function NuevaCompraPage() {
           >
             Cancelar
           </Button>
-          <Button type="submit" disabled={submitting || !form.articulo.trim()}>
+          <Button type="submit" disabled={submitting || !form.articulo.trim() || (form.estado === "Recibido Incompleto" && !form.observaciones_incompleto.trim())}>
             {submitting ? "Guardando..." : "Crear Compra"}
           </Button>
         </div>

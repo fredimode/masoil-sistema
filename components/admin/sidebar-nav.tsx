@@ -22,7 +22,6 @@ import {
   ShoppingCart,
   CreditCard,
   ScrollText,
-  FileSearch,
 } from "lucide-react"
 
 type UserRole = "admin" | "vendedor" | "operaciones" | "cobranzas"
@@ -57,7 +56,6 @@ const navSections: NavSection[] = [
     items: [
       { href: "/admin/proveedores", label: "Proveedores", icon: Building2 },
       { href: "/admin/compras", label: "Órdenes de Compra", icon: ShoppingCart },
-      { href: "/admin/cotizaciones", label: "Cotizaciones", icon: FileSearch },
       { href: "/admin/pagos", label: "Pagos Proveedores", icon: CreditCard },
     ],
   },

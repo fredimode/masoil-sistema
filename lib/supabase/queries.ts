@@ -460,6 +460,7 @@ export async function createCompra(compra: {
   proveedor_nombre: string; proveedor_id?: string; articulo: string;
   medio_solicitud?: string; solicitado_por?: string; vendedor?: string;
   nro_cotizacion?: string; nro_nota_pedido?: string; estado?: string; fecha?: string;
+  fecha_estimada_ingreso?: string;
 }): Promise<void> {
   const supabase = createSupabaseClient()
   const { error } = await supabase.from("compras").insert(compra)
