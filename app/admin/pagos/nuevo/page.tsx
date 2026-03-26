@@ -1,31 +1,38 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { fetchProveedores, createPagoProveedor } from "@/lib/supabase/queries"
+import { normalizeSearch } from "@/lib/utils"
+import { Paperclip, Mail } from "lucide-react"
+
+const EMPRESAS = ["Masoil", "Aquiles", "Conancap"]
 
 export default function NuevoPagoPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [proveedores, setProveedores] = useState<any[]>([])
   const [guardando, setGuardando] = useState(false)
+  const [provSearch, setProvSearch] = useState("")
+  const [showProvDropdown, setShowProvDropdown] = useState(false)
 
   const [form, setForm] = useState({
     proveedor_id: "",
     proveedor_nombre: "",
     cuit: "",
     empresa: "",
+    cbu: "",
     fecha_fc: "",
     numero_fc: "",
     importe: "",
     forma_pago: "",
-    cbu: "",
     observaciones: "",
     estado_pago: "PENDIENTE",
     nro_cheque: "",
     banco: "",
     origen: "",
+    email_pagos: "",
   })
 
   useEffect(() => {
@@ -44,28 +51,39 @@ export default function NuevoPagoPage() {
     }
   }
 
-  function handleProveedorChange(proveedorId: string) {
-    const proveedor = proveedores.find((p) => String(p.id) === proveedorId)
-    if (proveedor) {
-      setForm((prev) => ({
-        ...prev,
-        proveedor_id: proveedorId,
-        proveedor_nombre: proveedor.nombre || proveedor.proveedor_nombre || "",
-        cuit: proveedor.cuit || "",
-        empresa: proveedor.empresa || "",
-        cbu: proveedor.cbu || "",
-      }))
-    } else {
-      setForm((prev) => ({
-        ...prev,
-        proveedor_id: "",
-        proveedor_nombre: "",
-        cuit: "",
-        empresa: "",
-        cbu: "",
-      }))
-    }
+  const filteredProveedores = useMemo(() => {
+    if (!provSearch.trim()) return []
+    const q = normalizeSearch(provSearch)
+    return proveedores.filter((p) =>
+      normalizeSearch(p.nombre || "").includes(q) ||
+      normalizeSearch(p.cuit || "").includes(q) ||
+      normalizeSearch(p.empresa || "").includes(q)
+    ).slice(0, 15)
+  }, [provSearch, proveedores])
+
+  function selectProveedor(prov: any) {
+    // Extract email from contactos field if available
+    const contactos = prov.contactos || ""
+    const emailMatch = contactos.match(/[\w.-]+@[\w.-]+\.\w+/)
+    const email = emailMatch ? emailMatch[0] : ""
+
+    setForm((prev) => ({
+      ...prev,
+      proveedor_id: String(prov.id),
+      proveedor_nombre: prov.nombre || prov.proveedor_nombre || "",
+      cuit: prov.cuit || "",
+      empresa: prov.empresa || "",
+      cbu: prov.cbu || "",
+      email_pagos: email,
+    }))
+    setProvSearch(prov.nombre || prov.proveedor_nombre || "")
+    setShowProvDropdown(false)
   }
+
+  // Dynamic field visibility based on forma_pago
+  const showCBU = form.forma_pago === "Transferencia"
+  const showCheque = form.forma_pago === "Cheque" || form.forma_pago === "Echeq"
+  const showBanco = form.forma_pago === "Cheque" || form.forma_pago === "Echeq"
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -121,46 +139,92 @@ export default function NuevoPagoPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-6 space-y-6">
-        {/* Proveedor */}
-        <div>
+        {/* Proveedor - Autocomplete */}
+        <div className="relative">
           <label className="text-sm text-gray-600 block mb-1 font-medium">Proveedor *</label>
-          <select
-            value={form.proveedor_id}
-            onChange={(e) => handleProveedorChange(e.target.value)}
+          <input
+            type="text"
+            placeholder="Buscar proveedor por nombre, CUIT o empresa..."
+            value={provSearch}
+            onChange={(e) => {
+              setProvSearch(e.target.value)
+              setShowProvDropdown(true)
+              if (!e.target.value.trim()) {
+                setForm((prev) => ({ ...prev, proveedor_id: "", proveedor_nombre: "", cuit: "", empresa: "", cbu: "", email_pagos: "" }))
+              }
+            }}
+            onFocus={() => provSearch.trim() && setShowProvDropdown(true)}
             className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+            autoComplete="off"
             required
-          >
-            <option value="">Seleccionar proveedor...</option>
-            {proveedores.map((p) => (
-              <option key={p.id} value={String(p.id)}>
-                {p.nombre || p.proveedor_nombre || `Proveedor #${p.id}`}
-              </option>
-            ))}
-          </select>
+          />
+          {showProvDropdown && filteredProveedores.length > 0 && (
+            <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto mt-1">
+              {filteredProveedores.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm border-b last:border-b-0"
+                  onClick={() => selectProveedor(p)}
+                >
+                  <span className="font-medium">{p.nombre || p.proveedor_nombre}</span>
+                  {p.cuit && <span className="text-gray-500 ml-2">CUIT: {p.cuit}</span>}
+                  {p.empresa && <span className="text-gray-400 ml-2">({p.empresa})</span>}
+                </button>
+              ))}
+            </div>
+          )}
+          {form.proveedor_nombre && (
+            <p className="text-xs text-green-600 mt-1">Seleccionado: {form.proveedor_nombre}</p>
+          )}
         </div>
 
-        {/* CUIT y Empresa (auto) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm text-gray-600 block mb-1 font-medium">CUIT</label>
-            <input
-              type="text"
-              value={form.cuit}
-              onChange={(e) => setForm((prev) => ({ ...prev, cuit: e.target.value }))}
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm bg-gray-50"
-              placeholder="Auto-completado del proveedor"
-            />
-          </div>
-          <div>
-            <label className="text-sm text-gray-600 block mb-1 font-medium">Empresa</label>
+        {/* Empresa */}
+        <div>
+          <label className="text-sm text-gray-600 block mb-1 font-medium">Empresa</label>
+          {form.empresa ? (
             <input
               type="text"
               value={form.empresa}
               onChange={(e) => setForm((prev) => ({ ...prev, empresa: e.target.value }))}
               className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm bg-gray-50"
-              placeholder="Auto-completado del proveedor"
             />
-          </div>
+          ) : (
+            <select
+              value={form.empresa}
+              onChange={(e) => setForm((prev) => ({ ...prev, empresa: e.target.value }))}
+              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+            >
+              <option value="">Seleccionar empresa...</option>
+              {EMPRESAS.map((e) => (
+                <option key={e} value={e}>{e}</option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        {/* CBU - moved up */}
+        <div>
+          <label className="text-sm text-gray-600 block mb-1 font-medium">CBU</label>
+          <input
+            type="text"
+            value={form.cbu}
+            onChange={(e) => setForm((prev) => ({ ...prev, cbu: e.target.value }))}
+            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm bg-gray-50"
+            placeholder="Auto-completado del proveedor"
+          />
+        </div>
+
+        {/* CUIT */}
+        <div>
+          <label className="text-sm text-gray-600 block mb-1 font-medium">CUIT</label>
+          <input
+            type="text"
+            value={form.cuit}
+            onChange={(e) => setForm((prev) => ({ ...prev, cuit: e.target.value }))}
+            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm bg-gray-50"
+            placeholder="Auto-completado del proveedor"
+          />
         </div>
 
         {/* Fecha FC y Numero FC */}
@@ -205,30 +269,58 @@ export default function NuevoPagoPage() {
             <label className="text-sm text-gray-600 block mb-1 font-medium">Forma de Pago *</label>
             <select
               value={form.forma_pago}
-              onChange={(e) => setForm((prev) => ({ ...prev, forma_pago: e.target.value }))}
+              onChange={(e) => setForm((prev) => ({ ...prev, forma_pago: e.target.value, nro_cheque: "", banco: "" }))}
               className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
               required
             >
               <option value="">Seleccionar...</option>
               <option value="Transferencia">Transferencia</option>
               <option value="Cheque">Cheque</option>
+              <option value="Echeq">Echeq</option>
               <option value="Efectivo">Efectivo</option>
-              <option value="Otro">Otro</option>
+              <option value="Pago mis cuentas">Pago mis cuentas</option>
             </select>
           </div>
         </div>
 
-        {/* CBU (auto) */}
-        <div>
-          <label className="text-sm text-gray-600 block mb-1 font-medium">CBU</label>
-          <input
-            type="text"
-            value={form.cbu}
-            onChange={(e) => setForm((prev) => ({ ...prev, cbu: e.target.value }))}
-            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm bg-gray-50"
-            placeholder="Auto-completado del proveedor"
-          />
-        </div>
+        {/* Dynamic fields based on forma_pago */}
+        {showCBU && (
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <label className="text-sm text-blue-800 block mb-1 font-medium">CBU para transferencia</label>
+            <input
+              type="text"
+              value={form.cbu}
+              onChange={(e) => setForm((prev) => ({ ...prev, cbu: e.target.value }))}
+              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+              placeholder="CBU del proveedor"
+            />
+          </div>
+        )}
+
+        {(showCheque || showBanco) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+            <div>
+              <label className="text-sm text-purple-800 block mb-1 font-medium">Nro de Cheque</label>
+              <input
+                type="text"
+                value={form.nro_cheque}
+                onChange={(e) => setForm((prev) => ({ ...prev, nro_cheque: e.target.value }))}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                placeholder="Numero del cheque"
+              />
+            </div>
+            <div>
+              <label className="text-sm text-purple-800 block mb-1 font-medium">Banco</label>
+              <input
+                type="text"
+                value={form.banco}
+                onChange={(e) => setForm((prev) => ({ ...prev, banco: e.target.value }))}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                placeholder="Nombre del banco"
+              />
+            </div>
+          </div>
+        )}
 
         {/* Estado y Origen */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -255,28 +347,28 @@ export default function NuevoPagoPage() {
           </div>
         </div>
 
-        {/* Nro Cheque y Banco */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm text-gray-600 block mb-1 font-medium">Nro de Cheque</label>
+        {/* Email de pagos */}
+        <div>
+          <label className="text-sm text-gray-600 block mb-1 font-medium">Email de pagos</label>
+          <div className="flex gap-2">
             <input
-              type="text"
-              value={form.nro_cheque}
-              onChange={(e) => setForm((prev) => ({ ...prev, nro_cheque: e.target.value }))}
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
-              placeholder="Solo si paga con cheque"
+              type="email"
+              value={form.email_pagos}
+              onChange={(e) => setForm((prev) => ({ ...prev, email_pagos: e.target.value }))}
+              className="flex-1 p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+              placeholder="Email del proveedor para enviar comprobante"
             />
+            <button
+              type="button"
+              className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm flex items-center gap-1 whitespace-nowrap"
+              onClick={() => alert("TODO: Integrar con Resend/n8n para enviar comprobante por email")}
+              disabled={!form.email_pagos}
+            >
+              <Mail className="h-4 w-4" />
+              Enviar comprobante
+            </button>
           </div>
-          <div>
-            <label className="text-sm text-gray-600 block mb-1 font-medium">Banco</label>
-            <input
-              type="text"
-              value={form.banco}
-              onChange={(e) => setForm((prev) => ({ ...prev, banco: e.target.value }))}
-              className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
-              placeholder="Nombre del banco"
-            />
-          </div>
+          {form.email_pagos && <p className="text-xs text-gray-400 mt-1">Pre-cargado del proveedor</p>}
         </div>
 
         {/* Observaciones */}
@@ -291,6 +383,18 @@ export default function NuevoPagoPage() {
           />
         </div>
 
+        {/* Adjuntar comprobante */}
+        <div>
+          <button
+            type="button"
+            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm flex items-center gap-2"
+            onClick={() => alert("TODO: Integrar con Google Drive para adjuntar comprobante")}
+          >
+            <Paperclip className="h-4 w-4" />
+            Adjuntar comprobante
+          </button>
+        </div>
+
         {/* Botones */}
         <div className="flex justify-end gap-3 pt-4 border-t">
           <Link
@@ -301,7 +405,7 @@ export default function NuevoPagoPage() {
           </Link>
           <button
             type="submit"
-            disabled={guardando || !form.proveedor_id || !form.importe || !form.forma_pago}
+            disabled={guardando || !form.proveedor_nombre || !form.importe || !form.forma_pago}
             className="px-6 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-gray-400 text-sm font-medium"
           >
             {guardando ? "Guardando..." : "Crear Pago"}
