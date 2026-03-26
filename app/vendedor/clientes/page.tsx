@@ -9,7 +9,7 @@ import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import { fetchClientsByVendedor } from "@/lib/supabase/queries"
 import type { Client } from "@/lib/types"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Search, Phone, MessageCircle, Plus, MapPin, Mail } from "lucide-react"
+import { Search, Phone, MessageCircle, Plus, MapPin, Mail, Users } from "lucide-react"
 import { formatDate } from "@/lib/utils"
 import Link from "next/link"
 
@@ -143,9 +143,15 @@ export default function VendedorClientesPage() {
                 </Card>
               ))}
             </div>
+          ) : clients.length === 0 ? (
+            <div className="text-center py-16 text-muted-foreground">
+              <Users className="h-12 w-12 mx-auto mb-4 opacity-40" />
+              <p className="text-lg font-medium mb-1">No tenés clientes asignados todavía</p>
+              <p className="text-sm">Contactá al administrador para que te asigne clientes.</p>
+            </div>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
-              <p>No se encontraron clientes</p>
+              <p>No se encontraron clientes con esa búsqueda</p>
             </div>
           )}
         </div>
