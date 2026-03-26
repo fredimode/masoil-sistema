@@ -175,7 +175,7 @@ export async function POST(req: Request) {
           try {
             const resend = new Resend(process.env.RESEND_API_KEY)
             const { error } = await resend.emails.send({
-              from: "Masoil Sistema <onboarding@resend.dev>",
+              from: "Masoil <proveedores@masoil.com.ar>",
               to: destinatario,
               subject: asunto,
               html: cuerpo,

@@ -23,7 +23,8 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Eye, Pencil, Trash2 } from "lucide-react"
+import { Eye, Pencil, Trash2, Paperclip } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
 
 const ESTADOS_OC = ["Pendiente", "Realizado", "Recibido Completo", "Recibido Incompleto", "Factura Cargada", "Cancelado"]
 
@@ -195,6 +196,12 @@ export default function ComprasPage() {
     } catch (err) {
       console.error("Error actualizando orden:", err)
     }
+  }
+
+  async function handleDownloadAdjunto(path: string) {
+    const supabase = createClient()
+    const { data } = await supabase.storage.from("comprobantes").createSignedUrl(path, 60)
+    if (data?.signedUrl) window.open(data.signedUrl, "_blank")
   }
 
   // --- Export ---
@@ -379,6 +386,11 @@ export default function ComprasPage() {
                         <td className="px-2 py-2 text-gray-600 truncate text-xs">{c.nro_nota_pedido || "-"}</td>
                         <td className="px-1 py-2 text-center">
                           <div className="flex items-center justify-center gap-0.5">
+                            {c.cotizacion_ref && (
+                              <button onClick={() => handleDownloadAdjunto(c.cotizacion_ref)} className="p-1 hover:bg-blue-100 rounded" title="Ver presupuesto adjunto">
+                                <Paperclip className="h-3.5 w-3.5 text-blue-600" />
+                              </button>
+                            )}
                             <button onClick={() => setViewingCompra(c)} className="p-1 hover:bg-gray-200 rounded" title="Ver detalle">
                               <Eye className="h-3.5 w-3.5 text-gray-600" />
                             </button>

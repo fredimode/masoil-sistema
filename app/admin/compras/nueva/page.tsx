@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { fetchProveedores, fetchCompras, fetchProducts, createCompra } from "@/lib/supabase/queries"
+import { fetchProveedores, fetchCompras, fetchProducts } from "@/lib/supabase/queries"
+import { createClient } from "@/lib/supabase/client"
 import { normalizeSearch, formatCurrency } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Paperclip, X, Plus, Search } from "lucide-react"
+import { Paperclip, X, Search, Upload, Check } from "lucide-react"
 import type { Product } from "@/lib/types"
 
 const ESTADOS_OC = ["Pendiente", "Realizado", "Recibido Completo", "Recibido Incompleto", "Factura Cargada", "Cancelado"]
@@ -36,6 +37,8 @@ export default function NuevaCompraPage() {
   const [showProdDropdown, setShowProdDropdown] = useState(false)
   const [compraItems, setCompraItems] = useState<CompraItem[]>([])
   const [articuloMode, setArticuloMode] = useState<"productos" | "texto">("productos")
+  const [presupuestoFile, setPresupuestoFile] = useState<File | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState({
     fecha: new Date().toISOString().slice(0, 10),
@@ -139,19 +142,42 @@ export default function NuevaCompraPage() {
 
     setSubmitting(true)
     try {
-      await createCompra({
-        proveedor_nombre: form.proveedor_nombre,
-        proveedor_id: form.proveedor_id || undefined,
-        articulo: articuloFinal,
-        medio_solicitud: form.medio_solicitud || undefined,
-        solicitado_por: form.solicitado_por || undefined,
-        vendedor: form.vendedor || undefined,
-        nro_cotizacion: form.nro_cotizacion || undefined,
-        nro_nota_pedido: form.nro_nota_pedido || undefined,
-        estado: form.estado || undefined,
-        fecha: form.fecha || undefined,
-        fecha_estimada_ingreso: form.fecha_estimada_ingreso || undefined,
-      })
+      const supabase = createClient()
+
+      // Insert compra and get ID back
+      const { data: compraData, error: compraError } = await supabase
+        .from("compras")
+        .insert({
+          proveedor_nombre: form.proveedor_nombre,
+          proveedor_id: form.proveedor_id || null,
+          articulo: articuloFinal,
+          medio_solicitud: form.medio_solicitud || null,
+          solicitado_por: form.solicitado_por || null,
+          vendedor: form.vendedor || null,
+          nro_cotizacion: form.nro_cotizacion || null,
+          nro_nota_pedido: form.nro_nota_pedido || null,
+          estado: form.estado || null,
+          fecha: form.fecha || null,
+          fecha_estimada_ingreso: form.fecha_estimada_ingreso || null,
+        })
+        .select("id")
+        .single()
+
+      if (compraError) throw compraError
+
+      // Upload presupuesto if file selected
+      if (presupuestoFile && compraData?.id) {
+        const ext = presupuestoFile.name.split(".").pop()
+        const path = `compras/${compraData.id}/${Date.now()}.${ext}`
+        const { error: uploadError } = await supabase.storage
+          .from("comprobantes")
+          .upload(path, presupuestoFile)
+
+        if (!uploadError) {
+          await supabase.from("compras").update({ cotizacion_ref: path }).eq("id", compraData.id)
+        }
+      }
+
       router.push("/admin/compras")
     } catch (err) {
       console.error("Error creando compra:", err)
@@ -291,10 +317,26 @@ export default function NuevaCompraPage() {
                 </TabsContent>
               </Tabs>
 
-              <Button type="button" variant="outline" size="sm" className="text-xs" onClick={() => alert("TODO: Integrar con Supabase Storage para adjuntar presupuesto")}>
-                <Paperclip className="h-3 w-3 mr-1" />
-                Adjuntar presupuesto
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) setPresupuestoFile(f) }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={`text-xs ${presupuestoFile ? "bg-green-50 border-green-300 text-green-700" : ""}`}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                {presupuestoFile ? <Check className="h-3 w-3 mr-1" /> : <Upload className="h-3 w-3 mr-1" />}
+                {presupuestoFile ? presupuestoFile.name : "Adjuntar presupuesto (PDF, JPG, PNG)"}
               </Button>
+              {presupuestoFile && (
+                <button type="button" onClick={() => setPresupuestoFile(null)} className="text-xs text-red-500 ml-2 hover:underline">Quitar</button>
+              )}
             </div>
 
             {/* Medio de solicitud + Solicitado por */}

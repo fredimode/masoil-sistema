@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { error: emailError } = await resend.emails.send({
-      from: "Masoil Pagos <onboarding@resend.dev>",
+      from: "Masoil <proveedores@masoil.com.ar>",
       to: emailDestino,
       subject: `Comprobante de pago - ${pago.proveedor_nombre || "Proveedor"} - ${fecha}`,
       html: `
