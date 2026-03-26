@@ -1,11 +1,12 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { fetchProveedores, createPagoProveedor } from "@/lib/supabase/queries"
+import { createClient } from "@/lib/supabase/client"
 import { normalizeSearch } from "@/lib/utils"
-import { Paperclip, Mail } from "lucide-react"
+import { Paperclip, Mail, Upload, Check } from "lucide-react"
 
 const EMPRESAS = ["Masoil", "Aquiles", "Conancap"]
 
@@ -16,6 +17,10 @@ export default function NuevoPagoPage() {
   const [guardando, setGuardando] = useState(false)
   const [provSearch, setProvSearch] = useState("")
   const [showProvDropdown, setShowProvDropdown] = useState(false)
+  const [comprobanteFile, setComprobanteFile] = useState<File | null>(null)
+  const [uploadingFile, setUploadingFile] = useState(false)
+  const [enviandoEmail, setEnviandoEmail] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState({
     proveedor_id: "",
@@ -89,22 +94,62 @@ export default function NuevoPagoPage() {
     e.preventDefault()
     setGuardando(true)
     try {
-      await createPagoProveedor({
-        proveedor_id: form.proveedor_id || null,
-        proveedor_nombre: form.proveedor_nombre,
-        cuit: form.cuit || null,
-        empresa: form.empresa || null,
-        fecha_fc: form.fecha_fc || null,
-        numero_fc: form.numero_fc || null,
-        importe: Number(form.importe) || 0,
-        forma_pago: form.forma_pago || null,
-        cbu: form.cbu || null,
-        observaciones: form.observaciones || null,
-        estado_pago: form.estado_pago,
-        nro_cheque: form.nro_cheque || null,
-        banco: form.banco || null,
-        origen: form.origen || null,
-      })
+      const supabase = createClient()
+
+      // Create pago and get ID
+      const { data: pagoData, error: pagoError } = await supabase
+        .from("pagos_proveedores")
+        .insert({
+          proveedor_id: form.proveedor_id || null,
+          proveedor_nombre: form.proveedor_nombre,
+          cuit: form.cuit || null,
+          empresa: form.empresa || null,
+          fecha_fc: form.fecha_fc || null,
+          numero_fc: form.numero_fc || null,
+          importe: Number(form.importe) || 0,
+          forma_pago: form.forma_pago || null,
+          cbu: form.cbu || null,
+          observaciones: form.observaciones || null,
+          estado_pago: form.estado_pago,
+          nro_cheque: form.nro_cheque || null,
+          banco: form.banco || null,
+          origen: form.origen || null,
+        })
+        .select("id")
+        .single()
+
+      if (pagoError) throw pagoError
+      const pagoId = pagoData.id
+
+      // Upload comprobante if file selected
+      if (comprobanteFile && pagoId) {
+        setUploadingFile(true)
+        const ext = comprobanteFile.name.split(".").pop()
+        const path = `pagos/${pagoId}/${Date.now()}.${ext}`
+        const { error: uploadError } = await supabase.storage
+          .from("comprobantes")
+          .upload(path, comprobanteFile)
+
+        if (!uploadError) {
+          const { data: urlData } = supabase.storage.from("comprobantes").getPublicUrl(path)
+          await supabase.from("pagos_proveedores").update({ comprobante_url: path }).eq("id", pagoId)
+        }
+        setUploadingFile(false)
+      }
+
+      // Send email if email provided
+      if (form.email_pagos && pagoId) {
+        try {
+          await fetch("/api/admin/pagos/enviar-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pagoId, email: form.email_pagos }),
+          })
+        } catch {
+          // Email failure is non-blocking
+        }
+      }
+
       router.push("/admin/pagos")
     } catch (error) {
       console.error("Error creando pago:", error)
@@ -385,14 +430,27 @@ export default function NuevoPagoPage() {
 
         {/* Adjuntar comprobante */}
         <div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) setComprobanteFile(file)
+            }}
+          />
           <button
             type="button"
-            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm flex items-center gap-2"
-            onClick={() => alert("TODO: Integrar con Google Drive para adjuntar comprobante")}
+            className={`px-4 py-2 rounded-lg text-sm flex items-center gap-2 ${comprobanteFile ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700 hover:bg-gray-200"}`}
+            onClick={() => fileInputRef.current?.click()}
           >
-            <Paperclip className="h-4 w-4" />
-            Adjuntar comprobante
+            {comprobanteFile ? <Check className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
+            {comprobanteFile ? comprobanteFile.name : "Adjuntar comprobante (PDF, JPG, PNG)"}
           </button>
+          {comprobanteFile && (
+            <button type="button" onClick={() => setComprobanteFile(null)} className="text-xs text-red-500 ml-2 hover:underline">Quitar</button>
+          )}
         </div>
 
         {/* Botones */}

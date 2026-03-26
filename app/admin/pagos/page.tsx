@@ -26,7 +26,8 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog"
-import { Eye, Pencil, Trash2 } from "lucide-react"
+import { Eye, Pencil, Trash2, Paperclip, Mail, RefreshCw } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
 
 export default function PagosPage() {
   const [loading, setLoading] = useState(true)
@@ -70,6 +71,36 @@ export default function PagosPage() {
   const [editingReclamo, setEditingReclamo] = useState<any | null>(null)
   const [editReclamoForm, setEditReclamoForm] = useState<any>({})
   const [deletingReclamo, setDeletingReclamo] = useState<any | null>(null)
+  const [enviandoEmail, setEnviandoEmail] = useState<string | null>(null)
+
+  async function handleReenviarEmail(pago: any) {
+    setEnviandoEmail(pago.id)
+    try {
+      const res = await fetch("/api/admin/pagos/enviar-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pagoId: pago.id }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setPagos((prev) => prev.map((p) => p.id === pago.id ? { ...p, email_enviado: true, email_enviado_at: new Date().toISOString() } : p))
+        alert(`Email enviado a ${data.email}`)
+      } else {
+        alert(data.error || "Error al enviar email")
+      }
+    } catch {
+      alert("Error al enviar email")
+    } finally {
+      setEnviandoEmail(null)
+    }
+  }
+
+  async function handleDownloadComprobante(pago: any) {
+    if (!pago.comprobante_url) return
+    const supabase = createClient()
+    const { data } = await supabase.storage.from("comprobantes").createSignedUrl(pago.comprobante_url, 60)
+    if (data?.signedUrl) window.open(data.signedUrl, "_blank")
+  }
 
   useEffect(() => {
     cargarDatos()
@@ -356,9 +387,10 @@ export default function PagosPage() {
                       <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[80px]">Nro FC</th>
                       <th className="px-3 py-3 text-right font-semibold text-gray-700 w-[100px]">Importe</th>
                       <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[100px]">Forma pago</th>
-                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[100px]">Estado</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[80px]">Banco</th>
-                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[120px]">Acciones</th>
+                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[90px]">Estado</th>
+                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[50px]" title="Comprobante">Adj</th>
+                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[80px]">Email</th>
+                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[100px]">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -371,10 +403,35 @@ export default function PagosPage() {
                         <td className="px-3 py-3 text-gray-600 truncate">{p.numero_fc || "-"}</td>
                         <td className="px-3 py-3 text-right font-bold text-gray-900">{formatCurrency(Number(p.importe) || 0)}</td>
                         <td className="px-3 py-3 text-gray-600 truncate" title={p.forma_pago || ""}>{p.forma_pago || "-"}</td>
-                        <td className="px-3 py-3 text-center" title={p.estado_pago || ""}>
-                          <div className="max-w-[120px] mx-auto truncate">{estadoBadge(p.estado_pago || "")}</div>
+                        <td className="px-3 py-3 text-center">
+                          <div className="max-w-[90px] mx-auto truncate">{estadoBadge(p.estado_pago || "")}</div>
                         </td>
-                        <td className="px-3 py-3 text-gray-600 truncate">{p.banco || "-"}</td>
+                        <td className="px-2 py-3 text-center">
+                          {p.comprobante_url ? (
+                            <button onClick={() => handleDownloadComprobante(p)} className="p-1 hover:bg-gray-200 rounded" title="Ver comprobante">
+                              <Paperclip className="h-4 w-4 text-blue-600" />
+                            </button>
+                          ) : <span className="text-gray-300">-</span>}
+                        </td>
+                        <td className="px-2 py-3 text-center">
+                          {p.email_enviado ? (
+                            <div className="flex items-center justify-center gap-1">
+                              <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px] px-1">Enviado</Badge>
+                              <button onClick={() => handleReenviarEmail(p)} className="p-0.5 hover:bg-gray-200 rounded" title="Reenviar email" disabled={enviandoEmail === p.id}>
+                                <RefreshCw className={`h-3 w-3 text-gray-500 ${enviandoEmail === p.id ? "animate-spin" : ""}`} />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => handleReenviarEmail(p)}
+                              className="p-1 hover:bg-blue-100 rounded text-xs text-blue-600"
+                              title="Enviar email"
+                              disabled={enviandoEmail === p.id}
+                            >
+                              {enviandoEmail === p.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                            </button>
+                          )}
+                        </td>
                         <td className="px-3 py-3 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <button onClick={() => setViewingPago(p)} className="p-1 hover:bg-gray-200 rounded" title="Ver detalle">

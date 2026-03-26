@@ -330,35 +330,34 @@ export default function ComprasPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm table-fixed">
+                <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
                   <thead className="bg-gray-100">
                     <tr>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[90px]">Fecha</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[160px]">Proveedor</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[200px] max-w-[200px]">Articulo</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[100px]">Vendedor</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[170px]">Estado</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[100px]">Nro Cotiz.</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[100px]">Nro NP</th>
-                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[100px]">Acciones</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 85 }}>Fecha</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 130 }}>Proveedor</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 180 }}>Articulo</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 90 }}>Vendedor</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 140 }}>Estado</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>Nro NP</th>
+                      <th className="px-2 py-3 text-center font-semibold text-gray-700" style={{ width: 80 }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     {paginatedCompras.map((c, idx) => (
                       <tr key={c.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                        <td className="px-3 py-3 text-gray-600">
+                        <td className="px-2 py-2 text-gray-600 text-xs">
                           {c.fecha ? formatDate(new Date(c.fecha)) : "-"}
                         </td>
-                        <td className="px-3 py-3 font-medium text-gray-900 truncate" title={c.proveedor_nombre || ""}>
+                        <td className="px-2 py-2 font-medium text-gray-900 truncate" title={c.proveedor_nombre || ""}>
                           {c.proveedor_nombre || "-"}
                         </td>
-                        <td className="px-3 py-3 text-gray-600 truncate max-w-[200px]" title={c.articulo || ""}>
+                        <td className="px-2 py-2 text-gray-600 truncate" title={c.articulo || ""}>
                           {c.articulo || "-"}
                         </td>
-                        <td className="px-3 py-3 text-gray-600 truncate" title={c.vendedor || ""}>
+                        <td className="px-2 py-2 text-gray-600 truncate" title={c.vendedor || ""}>
                           {c.vendedor || "-"}
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-2 py-1">
                           <select
                             value={c.estado || ""}
                             onChange={async (e) => {
@@ -377,16 +376,11 @@ export default function ComprasPage() {
                             ))}
                           </select>
                         </td>
-                        <td className="px-3 py-3 text-gray-600 truncate">{c.nro_cotizacion || "-"}</td>
-                        <td className="px-3 py-3 text-gray-600 truncate">{c.nro_nota_pedido || "-"}</td>
-                        <td className="px-3 py-3 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              onClick={() => setViewingCompra(c)}
-                              className="p-1 hover:bg-gray-200 rounded"
-                              title="Ver detalle"
-                            >
-                              <Eye className="h-4 w-4 text-gray-600" />
+                        <td className="px-2 py-2 text-gray-600 truncate text-xs">{c.nro_nota_pedido || "-"}</td>
+                        <td className="px-1 py-2 text-center">
+                          <div className="flex items-center justify-center gap-0.5">
+                            <button onClick={() => setViewingCompra(c)} className="p-1 hover:bg-gray-200 rounded" title="Ver detalle">
+                              <Eye className="h-3.5 w-3.5 text-gray-600" />
                             </button>
                             <button
                               onClick={() => {
@@ -400,17 +394,12 @@ export default function ComprasPage() {
                                   nro_nota_pedido: c.nro_nota_pedido || "",
                                 })
                               }}
-                              className="p-1 hover:bg-gray-200 rounded"
-                              title="Editar"
+                              className="p-1 hover:bg-gray-200 rounded" title="Editar"
                             >
-                              <Pencil className="h-4 w-4 text-blue-600" />
+                              <Pencil className="h-3.5 w-3.5 text-blue-600" />
                             </button>
-                            <button
-                              onClick={() => setDeletingCompra(c)}
-                              className="p-1 hover:bg-gray-200 rounded"
-                              title="Eliminar"
-                            >
-                              <Trash2 className="h-4 w-4 text-red-600" />
+                            <button onClick={() => setDeletingCompra(c)} className="p-1 hover:bg-gray-200 rounded" title="Eliminar">
+                              <Trash2 className="h-3.5 w-3.5 text-red-600" />
                             </button>
                           </div>
                         </td>
@@ -491,32 +480,31 @@ export default function ComprasPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm table-fixed">
+                <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
                   <thead className="bg-gray-100">
                     <tr>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[90px]">Fecha</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[160px]">Proveedor</th>
-                      <th className="px-3 py-3 text-right font-semibold text-gray-700 w-[110px]">Importe Total</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[170px]">Estado</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[90px]">Nro OC</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[140px]">Razon Social</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Ubicacion</th>
-                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[100px]">Acciones</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 85 }}>Fecha</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 140 }}>Proveedor</th>
+                      <th className="px-2 py-3 text-right font-semibold text-gray-700" style={{ width: 100 }}>Importe</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 140 }}>Estado</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>Nro OC</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 120 }}>Razon Social</th>
+                      <th className="px-2 py-3 text-center font-semibold text-gray-700" style={{ width: 80 }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     {paginatedOrdenes.map((o, idx) => (
                       <tr key={o.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                        <td className="px-3 py-3 text-gray-600">
+                        <td className="px-2 py-2 text-gray-600 text-xs">
                           {o.fecha ? formatDate(new Date(o.fecha)) : "-"}
                         </td>
-                        <td className="px-3 py-3 font-medium text-gray-900 truncate" title={o.proveedor_nombre || ""}>
+                        <td className="px-2 py-2 font-medium text-gray-900 truncate" title={o.proveedor_nombre || ""}>
                           {o.proveedor_nombre || "-"}
                         </td>
-                        <td className="px-3 py-3 text-right font-bold text-gray-900">
+                        <td className="px-2 py-2 text-right font-bold text-gray-900">
                           {formatCurrency(Number(o.importe_total) || 0)}
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-2 py-1">
                           <select
                             value={o.estado || ""}
                             onChange={async (e) => {
@@ -535,10 +523,9 @@ export default function ComprasPage() {
                             ))}
                           </select>
                         </td>
-                        <td className="px-3 py-3 text-gray-600 truncate">{o.nro_oc || "-"}</td>
-                        <td className="px-3 py-3 text-gray-600 truncate" title={o.razon_social || ""}>{o.razon_social || "-"}</td>
-                        <td className="px-3 py-3 text-gray-600 truncate" title={o.ubicacion_oc || ""}>{o.ubicacion_oc || "-"}</td>
-                        <td className="px-3 py-3 text-center">
+                        <td className="px-2 py-2 text-gray-600 truncate text-xs">{o.nro_oc || "-"}</td>
+                        <td className="px-2 py-2 text-gray-600 truncate" title={o.razon_social || ""}>{o.razon_social || "-"}</td>
+                        <td className="px-1 py-2 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <button
                               onClick={() => setViewingOrden(o)}
