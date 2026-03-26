@@ -495,12 +495,11 @@ export default function ComprasPage() {
                 <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
                   <thead className="bg-gray-100">
                     <tr>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 85 }}>Fecha</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 140 }}>Proveedor</th>
-                      <th className="px-2 py-3 text-right font-semibold text-gray-700" style={{ width: 100 }}>Importe</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 140 }}>Estado</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>Nro OC</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 120 }}>Razon Social</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>Fecha</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 130 }}>Proveedor</th>
+                      <th className="px-2 py-3 text-right font-semibold text-gray-700" style={{ width: 90 }}>Importe</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 130 }}>Estado</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 70 }}>Nro OC</th>
                       <th className="px-2 py-3 text-center font-semibold text-gray-700" style={{ width: 80 }}>Acciones</th>
                     </tr>
                   </thead>
@@ -536,7 +535,6 @@ export default function ComprasPage() {
                           </select>
                         </td>
                         <td className="px-2 py-2 text-gray-600 truncate text-xs">{o.nro_oc || "-"}</td>
-                        <td className="px-2 py-2 text-gray-600 truncate" title={o.razon_social || ""}>{o.razon_social || "-"}</td>
                         <td className="px-1 py-2 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <button

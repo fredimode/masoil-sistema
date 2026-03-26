@@ -318,13 +318,13 @@ export default function AdminProveedoresPage() {
                         onCheckedChange={() => toggleAll()}
                       />
                     </TableHead>
-                    <TableHead>Nombre</TableHead>
+                    <TableHead className="max-w-[180px]">Nombre</TableHead>
                     <TableHead>CUIT</TableHead>
                     <TableHead>Empresa</TableHead>
                     <TableHead className="w-[150px]">Condicion de pago</TableHead>
                     <TableHead>Telefono</TableHead>
                     <TableHead>Email</TableHead>
-                    <TableHead>Categoria</TableHead>
+                    <TableHead className="max-w-[100px]">Categoria</TableHead>
                     <TableHead className="text-right">Saldo</TableHead>
                     <TableHead>Cond. IVA</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
@@ -339,7 +339,7 @@ export default function AdminProveedoresPage() {
                           onCheckedChange={() => toggleSelect(p.id)}
                         />
                       </TableCell>
-                      <TableCell className="font-medium">{p.nombre}</TableCell>
+                      <TableCell className="max-w-[180px] truncate font-medium" title={p.nombre || ""}>{p.nombre}</TableCell>
                       <TableCell>{p.cuit || "-"}</TableCell>
                       <TableCell>
                         {p.empresa ? (
