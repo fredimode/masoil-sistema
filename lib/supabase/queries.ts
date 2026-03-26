@@ -31,10 +31,10 @@ function mapOrder(row: any): Order {
 function mapOrderItem(row: any): OrderProduct {
   return {
     productId: row.product_id,
-    productCode: row.product_code,
-    productName: row.product_name,
+    productCode: row.products?.code || row.product_code || "",
+    productName: row.products?.name || row.product_name || "",
     quantity: row.quantity,
-    price: Number(row.price),
+    price: Number(row.unit_price ?? 0),
   }
 }
 
@@ -112,7 +112,7 @@ export async function fetchOrders(): Promise<Order[]> {
   const supabase = createSupabaseClient()
   const { data, error } = await supabase
     .from("orders")
-    .select("*, order_items(*), order_status_history(*)")
+    .select("*, order_items(*, products(code, name)), order_status_history(*)")
     .order("created_at", { ascending: false })
     .limit(50000)
 
@@ -124,7 +124,7 @@ export async function fetchOrderById(id: string): Promise<Order | null> {
   const supabase = createSupabaseClient()
   const { data, error } = await supabase
     .from("orders")
-    .select("*, order_items(*), order_status_history(*)")
+    .select("*, order_items(*, products(code, name)), order_status_history(*)")
     .eq("id", id)
     .single()
 
@@ -136,7 +136,7 @@ export async function fetchOrdersByVendedor(vendedorId: string): Promise<Order[]
   const supabase = createSupabaseClient()
   const { data, error } = await supabase
     .from("orders")
-    .select("*, order_items(*), order_status_history(*)")
+    .select("*, order_items(*, products(code, name)), order_status_history(*)")
     .eq("vendedor_id", vendedorId)
     .order("created_at", { ascending: false })
     .limit(50000)
@@ -159,10 +159,16 @@ export async function createOrder(order: {
 }): Promise<string> {
   const supabase = createSupabaseClient()
 
+  // Generate order number (timestamp + random suffix for uniqueness)
+  const now = new Date()
+  const rand = Math.floor(Math.random() * 10000).toString().padStart(4, "0")
+  const orderNumber = `ORD-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${Date.now().toString().slice(-6)}${rand}`
+
   // Insert order
   const { data: orderData, error: orderError } = await supabase
     .from("orders")
     .insert({
+      order_number: orderNumber,
       client_id: order.clientId,
       client_name: order.clientName,
       vendedor_id: order.vendedorId,
@@ -184,10 +190,8 @@ export async function createOrder(order: {
   const items = order.items.map((item) => ({
     order_id: orderData.id,
     product_id: item.productId,
-    product_code: item.productCode,
-    product_name: item.productName,
     quantity: item.quantity,
-    price: item.price,
+    unit_price: item.price,
   }))
 
   const { error: itemsError } = await supabase.from("order_items").insert(items)
