@@ -8,6 +8,7 @@ import type { Order, OrderProduct, StatusChange, Product, Client, Vendedor, Orde
 function mapOrder(row: any): Order {
   return {
     id: row.id,
+    orderNumber: row.order_number_serial || row.order_number || row.id.slice(0, 8),
     clientId: row.client_id,
     clientName: row.client_name,
     vendedorId: row.vendedor_id,
@@ -164,11 +165,24 @@ export async function createOrder(order: {
   const rand = Math.floor(Math.random() * 10000).toString().padStart(4, "0")
   const orderNumber = `ORD-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${Date.now().toString().slice(-6)}${rand}`
 
+  // Generate correlative serial number PED-0001, PED-0002, etc.
+  const { data: lastOrder } = await supabase
+    .from("orders")
+    .select("order_number_serial")
+    .not("order_number_serial", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single()
+  const lastSerial = lastOrder?.order_number_serial
+  const lastNum = lastSerial ? parseInt(lastSerial.replace("PED-", ""), 10) : 0
+  const orderNumberSerial = `PED-${String((lastNum || 0) + 1).padStart(4, "0")}`
+
   // Insert order
   const { data: orderData, error: orderError } = await supabase
     .from("orders")
     .insert({
       order_number: orderNumber,
+      order_number_serial: orderNumberSerial,
       client_id: order.clientId,
       client_name: order.clientName,
       vendedor_id: order.vendedorId,

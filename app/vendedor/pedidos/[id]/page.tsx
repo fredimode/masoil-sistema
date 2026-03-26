@@ -58,7 +58,7 @@ export default function VendedorPedidoDetailPage({ params }: { params: Promise<{
             </Link>
           </Button>
           <div className="flex-1">
-            <h1 className="text-xl font-bold">Pedido #{order.id}</h1>
+            <h1 className="text-xl font-bold">Pedido {order.orderNumber}</h1>
             <p className="text-sm text-primary-foreground/80">{formatDateTime(order.createdAt)}</p>
           </div>
           <div className="flex flex-col items-end gap-1">

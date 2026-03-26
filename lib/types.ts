@@ -49,6 +49,7 @@ export interface StatusChange {
 
 export interface Order {
   id: string
+  orderNumber: string
   clientId: string
   clientName: string
   vendedorId: string

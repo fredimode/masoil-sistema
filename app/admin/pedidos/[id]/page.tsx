@@ -193,7 +193,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         </Button>
         <div className="flex-1">
           <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold">Pedido #{o.id}</h1>
+            <h1 className="text-2xl font-bold">Pedido {o.orderNumber}</h1>
             {o.isUrgent && (
               <Badge variant="destructive" className="text-xs">
                 URGENTE

@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { fetchClients, fetchProducts, fetchVendedores, createOrder } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/client"
+import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import type { Client, Product, Vendedor } from "@/lib/types"
 import { formatCurrency } from "@/lib/utils"
 import { ArrowLeft, Plus, Trash2, Search, AlertTriangle, PackagePlus } from "lucide-react"
@@ -31,6 +32,7 @@ interface OrderItem {
 export default function AdminNuevoPedidoPage() {
   const router = useRouter()
   const supabase = createClient()
+  const { vendedor: currentUser } = useCurrentVendedor()
 
   const [clients, setClients] = useState<Client[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -65,15 +67,11 @@ export default function AdminNuevoPedidoPage() {
   const activeVendedores = vendedores.filter((v) => v.role === "vendedor" && v.isActive)
   const selectedClient = clients.find((c) => c.id === selectedClientId)
 
-  // Filter clients
+  // Filter clients (solo por búsqueda, no por vendedor seleccionado)
   const filteredClients = clients.filter((c) => {
-    let match = true
-    if (selectedVendedorId) match = c.vendedorId === selectedVendedorId
-    if (match && clientSearch) {
-      const q = clientSearch.toLowerCase()
-      match = c.businessName.toLowerCase().includes(q) || c.contactName.toLowerCase().includes(q)
-    }
-    return match
+    if (!clientSearch) return true
+    const q = clientSearch.toLowerCase()
+    return c.businessName.toLowerCase().includes(q) || c.contactName.toLowerCase().includes(q)
   }).slice(0, 20)
 
   // Filter products for search
@@ -125,8 +123,8 @@ export default function AdminNuevoPedidoPage() {
   }
 
   async function handleCreateProduct() {
-    if (!newProduct.code || !newProduct.name || !newProduct.price) {
-      alert("Completá código, nombre y precio")
+    if (!newProduct.name) {
+      alert("Completá al menos la descripción del producto")
       return
     }
     setCreatingProduct(true)
@@ -134,9 +132,9 @@ export default function AdminNuevoPedidoPage() {
       const { data, error } = await supabase
         .from("products")
         .insert({
-          code: newProduct.code,
+          code: newProduct.code || null,
           name: newProduct.name,
-          price: newProduct.price,
+          price: newProduct.price || 0,
           category: newProduct.category || null,
           stock: 0,
           is_customizable: false,
@@ -191,8 +189,8 @@ export default function AdminNuevoPedidoPage() {
       const orderId = await createOrder({
         clientId: selectedClientId,
         clientName: client.businessName,
-        vendedorId: selectedVendedorId || "admin1",
-        vendedorName: vendedor?.name || "Admin Masoil",
+        vendedorId: selectedVendedorId || currentUser?.id || "",
+        vendedorName: vendedor?.name || currentUser?.name || "Admin",
         zona: client.zona,
         notes,
         isCustom,
@@ -449,16 +447,16 @@ export default function AdminNuevoPedidoPage() {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label>Código *</Label>
-              <Input value={newProduct.code} onChange={(e) => setNewProduct((p) => ({ ...p, code: e.target.value }))} placeholder="Ej: LUB-001" />
-            </div>
-            <div>
-              <Label>Nombre *</Label>
+              <Label>Descripción *</Label>
               <Input value={newProduct.name} onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))} placeholder="Nombre del producto" />
             </div>
             <div>
-              <Label>Precio *</Label>
-              <Input type="number" min={0} step={0.01} value={newProduct.price || ""} onChange={(e) => setNewProduct((p) => ({ ...p, price: parseFloat(e.target.value) || 0 }))} />
+              <Label>Código <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+              <Input value={newProduct.code} onChange={(e) => setNewProduct((p) => ({ ...p, code: e.target.value }))} placeholder="Ej: LUB-001 (se puede completar después)" />
+            </div>
+            <div>
+              <Label>Precio <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+              <Input type="number" min={0} step={0.01} value={newProduct.price || ""} onChange={(e) => setNewProduct((p) => ({ ...p, price: parseFloat(e.target.value) || 0 }))} placeholder="Se puede completar después" />
             </div>
             <div>
               <Label>Categoría</Label>
@@ -470,6 +468,7 @@ export default function AdminNuevoPedidoPage() {
                   <SelectItem value="Selladores">Selladores</SelectItem>
                   <SelectItem value="Belleza">Belleza</SelectItem>
                   <SelectItem value="Higiene">Higiene</SelectItem>
+                  <SelectItem value="Otro">Otro</SelectItem>
                 </SelectContent>
               </Select>
             </div>

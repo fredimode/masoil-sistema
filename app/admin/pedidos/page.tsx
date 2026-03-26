@@ -50,6 +50,7 @@ export default function AdminPedidosPage() {
     filteredOrders = filteredOrders.filter(
       (o) =>
         normalizeSearch(o.clientName).includes(q) ||
+        normalizeSearch(o.orderNumber).includes(q) ||
         normalizeSearch(o.id).includes(q) ||
         normalizeSearch(o.vendedorName).includes(q),
     )
@@ -72,7 +73,7 @@ export default function AdminPedidosPage() {
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => {
             const data = filteredOrders.map((o) => ({
-              ID: o.id,
+              ID: o.orderNumber,
               Cliente: o.clientName,
               Vendedor: o.vendedorName,
               Zona: o.zona,
