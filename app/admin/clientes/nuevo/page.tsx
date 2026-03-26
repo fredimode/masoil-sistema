@@ -36,7 +36,7 @@ export default function AdminNuevoClientePage() {
     load()
   }, [])
 
-  const activeVendedores = vendedores.filter((v) => v.role === "vendedor" && v.isActive)
+  const activeVendedores = vendedores.filter((v) => v.role !== "admin" && v.isActive)
 
   const [formData, setFormData] = useState({
     businessName: "",

@@ -225,7 +225,7 @@ export default function AdminClientesPage() {
           <SelectContent>
             <SelectItem value="todos">Todos los vendedores</SelectItem>
             {vendedores
-              .filter((v) => v.role === "vendedor")
+              .filter((v) => v.role !== "admin")
               .map((v) => (
                 <SelectItem key={v.id} value={v.id}>
                   {v.name}

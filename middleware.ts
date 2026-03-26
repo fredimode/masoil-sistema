@@ -2,17 +2,12 @@ import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
 // Route permissions by role
+// usuario can access everything EXCEPT Finanzas and Sistema
 const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/admin/finanzas": ["admin"],
   "/admin/configuracion": ["admin"],
   "/admin/facturacion/logs": ["admin"],
-  "/admin/estadisticas": ["admin"],
-  "/admin/compras": ["admin", "operaciones"],
-  "/admin/proveedores": ["admin", "operaciones"],
-  "/admin/pagos": ["admin", "operaciones"],
-  "/admin/cotizaciones": ["admin", "operaciones"],
-  "/admin/cobranzas": ["admin", "cobranzas"],
-  // /admin/pedidos, /admin/clientes, /admin/stock, /admin/facturacion → all roles
+  // Everything else (pedidos, clientes, stock, compras, proveedores, pagos, cobranzas, facturacion, estadisticas) → all roles
 }
 
 function checkRoutePermission(pathname: string, role: string): boolean {
@@ -82,21 +77,7 @@ export async function middleware(request: NextRequest) {
 
     const role = vendedor.role
 
-    // Vendedor role → vendedor routes only
-    if (role === "vendedor" && pathname.startsWith("/admin")) {
-      const url = request.nextUrl.clone()
-      url.pathname = "/vendedor"
-      return NextResponse.redirect(url)
-    }
-
-    // Non-vendedor roles accessing vendedor routes → admin
-    if (role !== "vendedor" && pathname.startsWith("/vendedor")) {
-      const url = request.nextUrl.clone()
-      url.pathname = "/admin"
-      return NextResponse.redirect(url)
-    }
-
-    // Check specific admin route permissions
+    // Check specific admin route permissions (Finanzas/Sistema → admin only)
     if (pathname.startsWith("/admin") && pathname !== "/admin") {
       if (!checkRoutePermission(pathname, role)) {
         const url = request.nextUrl.clone()
@@ -117,7 +98,7 @@ export async function middleware(request: NextRequest) {
 
     if (vendedor) {
       const url = request.nextUrl.clone()
-      url.pathname = vendedor.role === "vendedor" ? "/vendedor" : "/admin"
+      url.pathname = "/admin"
       return NextResponse.redirect(url)
     }
   }

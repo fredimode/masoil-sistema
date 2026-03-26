@@ -64,7 +64,7 @@ export default function AdminNuevoPedidoPage() {
 
   if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
 
-  const activeVendedores = vendedores.filter((v) => v.role === "vendedor" && v.isActive)
+  const activeVendedores = vendedores.filter((v) => v.role !== "admin" && v.isActive)
   const selectedClient = clients.find((c) => c.id === selectedClientId)
 
   // Filter clients (solo por búsqueda, no por vendedor seleccionado)

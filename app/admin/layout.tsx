@@ -10,13 +10,14 @@ import { AdminSidebarContent } from "@/components/admin/sidebar-nav"
 import { AiChat } from "@/components/chat/ai-chat"
 import { createClient } from "@/lib/supabase/client"
 
-type UserRole = "admin" | "vendedor" | "operaciones" | "cobranzas"
+type UserRole = "admin" | "usuario"
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const [userRole, setUserRole] = useState<UserRole>("admin")
+  const [userName, setUserName] = useState<string>("")
 
   useEffect(() => {
     async function loadRole() {
@@ -25,11 +26,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       if (user) {
         const { data: vendedor } = await supabase
           .from("vendedores")
-          .select("role")
+          .select("role, name")
           .eq("auth_user_id", user.id)
           .single()
-        if (vendedor?.role) {
+        if (vendedor) {
           setUserRole(vendedor.role as UserRole)
+          setUserName(vendedor.name || "")
         }
       }
     }
@@ -48,7 +50,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="flex min-h-screen bg-background">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-64 bg-sidebar border-r border-sidebar-border flex-col">
-        <AdminSidebarContent userRole={userRole} />
+        <AdminSidebarContent userRole={userRole} userName={userName} />
       </aside>
 
       {/* Main Content */}
@@ -64,7 +66,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </Button>
             </SheetTrigger>
             <SheetContent side="left" className="p-0 w-64">
-              <AdminSidebarContent onNavigate={() => setSidebarOpen(false)} userRole={userRole} />
+              <AdminSidebarContent onNavigate={() => setSidebarOpen(false)} userRole={userRole} userName={userName} />
             </SheetContent>
           </Sheet>
 

@@ -26,11 +26,11 @@ export default function AdminConfiguracionPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const activeVendedores = vendedoresList.filter((v) => v.role === "vendedor")
+  const activeVendedores = vendedoresList.filter((v) => v.role !== "admin")
 
   // Agregar usuario dialog
   const [addUserOpen, setAddUserOpen] = useState(false)
-  const [newUser, setNewUser] = useState({ name: "", email: "", role: "vendedor" })
+  const [newUser, setNewUser] = useState({ name: "", email: "", role: "usuario" })
 
   // Editar zonas dialog
   const [zonasOpen, setZonasOpen] = useState(false)
@@ -41,12 +41,12 @@ export default function AdminConfiguracionPage() {
   function handleAddUser() {
     console.log("Nuevo usuario:", newUser)
     setAddUserOpen(false)
-    setNewUser({ name: "", email: "", role: "vendedor" })
+    setNewUser({ name: "", email: "", role: "usuario" })
   }
 
   function handleChangeRole(id: string, newRole: string) {
     setVendedoresList((prev) =>
-      prev.map((v) => (v.id === id ? { ...v, role: newRole as "admin" | "vendedor" } : v))
+      prev.map((v) => (v.id === id ? { ...v, role: newRole as "admin" | "usuario" } : v))
     )
   }
 
@@ -140,9 +140,9 @@ export default function AdminConfiguracionPage() {
               </div>
               <div className="flex items-center gap-2 md:gap-3 flex-wrap ml-13 md:ml-0">
                 <Badge variant={vendedor.role === "admin" ? "default" : "secondary"} className="text-xs">
-                  {vendedor.role === "admin" ? "Admin" : "Vendedor"}
+                  {vendedor.role === "admin" ? "Admin" : "Usuario"}
                 </Badge>
-                {vendedor.role === "vendedor" && (
+                {vendedor.role !== "admin" && (
                   <div className="text-xs md:text-sm text-muted-foreground hidden md:block">{vendedor.zonas.join(", ")}</div>
                 )}
                 <Badge variant={vendedor.isActive ? "outline" : "secondary"} className="text-xs">
@@ -159,9 +159,9 @@ export default function AdminConfiguracionPage() {
                       <Edit className="h-4 w-4 mr-2" />
                       Editar
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleChangeRole(vendedor.id, vendedor.role === "admin" ? "vendedor" : "admin")}>
+                    <DropdownMenuItem onClick={() => handleChangeRole(vendedor.id, vendedor.role === "admin" ? "usuario" : "admin")}>
                       <ShieldCheck className="h-4 w-4 mr-2" />
-                      Cambiar a {vendedor.role === "admin" ? "Vendedor" : "Admin"}
+                      Cambiar a {vendedor.role === "admin" ? "Usuario" : "Admin"}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleToggleActive(vendedor.id)}>
                       <UserX className="h-4 w-4 mr-2" />
@@ -257,7 +257,7 @@ export default function AdminConfiguracionPage() {
                 onChange={(e) => setNewUser((u) => ({ ...u, role: e.target.value }))}
                 className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
               >
-                <option value="vendedor">Vendedor</option>
+                <option value="usuario">Usuario</option>
                 <option value="admin">Administrador</option>
               </select>
             </div>

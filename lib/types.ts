@@ -12,7 +12,7 @@ export type OrderStatus =
 
 export type ProductCategory = "Limpiadores" | "Lubricantes" | "Selladores" | "Belleza" | "Higiene"
 
-export type UserRole = "admin" | "vendedor" | "operaciones" | "cobranzas"
+export type UserRole = "admin" | "usuario"
 
 export interface Product {
   id: string

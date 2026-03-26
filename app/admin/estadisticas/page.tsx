@@ -141,7 +141,7 @@ export default function AdminEstadisticasPage() {
 
   // Sales by vendedor
   const salesByVendedor = vendedores
-    .filter((v) => v.role === "vendedor")
+    .filter((v) => v.role !== "admin")
     .map((vendedor) => ({
       name: vendedor.name.split(" ")[0],
       ventas: currentOrders
