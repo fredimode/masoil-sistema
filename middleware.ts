@@ -88,21 +88,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // If user is logged in and visits the login page, redirect to their dashboard
-  if (user && pathname === "/") {
-    const { data: vendedor } = await supabase
-      .from("vendedores")
-      .select("role")
-      .eq("auth_user_id", user.id)
-      .single()
-
-    if (vendedor) {
-      const url = request.nextUrl.clone()
-      url.pathname = "/admin"
-      return NextResponse.redirect(url)
-    }
-  }
-
+  // Allow logged-in users to stay on "/" (module selector screen)
   return supabaseResponse
 }
 
