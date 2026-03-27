@@ -88,7 +88,6 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Allow logged-in users to stay on "/" (module selector screen)
   return supabaseResponse
 }
 

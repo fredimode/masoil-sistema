@@ -6,62 +6,12 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, ClipboardList, DollarSign, LogOut } from "lucide-react"
+import { Loader2, ClipboardList, Users } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import Image from "next/image"
+import { cn } from "@/lib/utils"
 
-interface UserInfo {
-  name: string
-  role: string
-}
-
-function ModuleSelector({ user, onLogout }: { user: UserInfo; onLogout: () => void }) {
-  const router = useRouter()
-
-  return (
-    <div className="space-y-6">
-      <div className="text-center space-y-1">
-        <p className="text-sm text-muted-foreground">Bienvenido/a,</p>
-        <p className="text-lg font-semibold">{user.name}</p>
-      </div>
-
-      <div className="grid gap-4">
-        <button
-          onClick={() => router.push("/admin")}
-          className="flex items-center gap-4 p-5 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/5 transition-all text-left group"
-        >
-          <div className="w-12 h-12 rounded-lg bg-primary/10 text-primary flex items-center justify-center group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-            <ClipboardList className="h-6 w-6" />
-          </div>
-          <div>
-            <p className="font-semibold text-base">Administración</p>
-            <p className="text-sm text-muted-foreground">Pedidos, clientes, stock, compras, facturación</p>
-          </div>
-        </button>
-
-        {user.role === "admin" && (
-          <button
-            onClick={() => router.push("/admin/finanzas/egresos")}
-            className="flex items-center gap-4 p-5 rounded-xl border-2 border-border hover:border-emerald-500 hover:bg-emerald-50 transition-all text-left group"
-          >
-            <div className="w-12 h-12 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-500 group-hover:text-white transition-colors">
-              <DollarSign className="h-6 w-6" />
-            </div>
-            <div>
-              <p className="font-semibold text-base">Finanzas</p>
-              <p className="text-sm text-muted-foreground">Egresos, ingresos, comisiones</p>
-            </div>
-          </button>
-        )}
-      </div>
-
-      <Button variant="ghost" size="sm" onClick={onLogout} className="w-full text-muted-foreground">
-        <LogOut className="h-4 w-4 mr-2" />
-        Cerrar sesión
-      </Button>
-    </div>
-  )
-}
+type Modulo = "admin" | "vendedor"
 
 function LoginForm() {
   const router = useRouter()
@@ -71,9 +21,9 @@ function LoginForm() {
   const [loading, setLoading] = useState(true)
   const [loggingIn, setLoggingIn] = useState(false)
   const [error, setError] = useState(searchParams.get("error") || "")
-  const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
+  const [modulo, setModulo] = useState<Modulo>("admin")
 
-  // Check if already logged in
+  // Check if already logged in → redirect directly
   useEffect(() => {
     async function checkSession() {
       const supabase = createClient()
@@ -81,17 +31,18 @@ function LoginForm() {
       if (user) {
         const { data: vendedor } = await supabase
           .from("vendedores")
-          .select("name, role")
+          .select("role")
           .eq("auth_user_id", user.id)
           .single()
         if (vendedor) {
-          setUserInfo({ name: vendedor.name, role: vendedor.role })
+          router.push("/admin")
+          return
         }
       }
       setLoading(false)
     }
     checkSession()
-  }, [])
+  }, [router])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -120,7 +71,7 @@ function LoginForm() {
 
     const { data: vendedor } = await supabase
       .from("vendedores")
-      .select("name, role")
+      .select("role")
       .eq("auth_user_id", user.id)
       .single()
 
@@ -131,16 +82,7 @@ function LoginForm() {
       return
     }
 
-    setUserInfo({ name: vendedor.name, role: vendedor.role })
-    setLoggingIn(false)
-  }
-
-  const handleLogout = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    setUserInfo(null)
-    setEmail("")
-    setPassword("")
+    router.push(modulo === "admin" ? "/admin" : "/vendedor")
     router.refresh()
   }
 
@@ -152,12 +94,41 @@ function LoginForm() {
     )
   }
 
-  if (userInfo) {
-    return <ModuleSelector user={userInfo} onLogout={handleLogout} />
-  }
-
   return (
-    <form onSubmit={handleLogin} className="space-y-4 pt-4">
+    <form onSubmit={handleLogin} className="space-y-5 pt-2">
+      {/* Module selector */}
+      <div>
+        <Label className="text-sm font-medium mb-2 block">Módulo</Label>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setModulo("admin")}
+            className={cn(
+              "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all",
+              modulo === "admin"
+                ? "border-primary bg-primary/5 text-primary"
+                : "border-border text-muted-foreground hover:border-muted-foreground/30"
+            )}
+          >
+            <ClipboardList className="h-6 w-6" />
+            <span className="text-sm font-semibold">Administración</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setModulo("vendedor")}
+            className={cn(
+              "flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all",
+              modulo === "vendedor"
+                ? "border-primary bg-primary/5 text-primary"
+                : "border-border text-muted-foreground hover:border-muted-foreground/30"
+            )}
+          >
+            <Users className="h-6 w-6" />
+            <span className="text-sm font-semibold">Vendedores</span>
+          </button>
+        </div>
+      </div>
+
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <Input
@@ -223,7 +194,7 @@ export default function LoginPage() {
           <LoginForm />
         </Suspense>
 
-        <div className="text-xs text-muted-foreground text-center pt-4">
+        <div className="text-xs text-muted-foreground text-center pt-2">
           <p>20+ años distribuyendo calidad</p>
         </div>
       </Card>
