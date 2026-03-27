@@ -30,6 +30,7 @@ export default function AdminNuevoProveedorPage() {
     empresa: "",
     condicion_pago: "",
     cbu: "",
+    email_comercial: "",
     contactos: "",
     observaciones: "",
   })
@@ -67,6 +68,7 @@ export default function AdminNuevoProveedorPage() {
         empresa: formData.empresa || undefined,
         condicion_pago: formData.condicion_pago || undefined,
         cbu: formData.cbu || undefined,
+        email_comercial: formData.email_comercial || undefined,
         contactos: formData.contactos || undefined,
         observaciones: formData.observaciones || undefined,
       })
@@ -161,7 +163,7 @@ export default function AdminNuevoProveedorPage() {
               />
             </div>
 
-            <div className="space-y-2 md:col-span-2">
+            <div className="space-y-2">
               <Label htmlFor="cbu">CBU</Label>
               <Input
                 id="cbu"
@@ -169,6 +171,18 @@ export default function AdminNuevoProveedorPage() {
                 onChange={(e) => handleChange("cbu", e.target.value)}
                 placeholder="Ej: 0000000000000000000000"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email_comercial">Email Comercial</Label>
+              <Input
+                id="email_comercial"
+                type="email"
+                value={formData.email_comercial}
+                onChange={(e) => handleChange("email_comercial", e.target.value)}
+                placeholder="comercial@proveedor.com"
+              />
+              <p className="text-xs text-muted-foreground">Para enviar órdenes de compra</p>
             </div>
           </div>
         </Card>

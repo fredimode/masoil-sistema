@@ -422,7 +422,7 @@ export async function fetchProveedorById(id: string): Promise<any | null> {
 
 export async function createProveedor(prov: {
   nombre: string; cuit?: string; empresa?: string; condicion_pago?: string;
-  cbu?: string; contactos?: string; observaciones?: string;
+  cbu?: string; email_comercial?: string; contactos?: string; observaciones?: string;
 }): Promise<void> {
   const supabase = createSupabaseClient()
   const { error } = await supabase.from("proveedores").insert(prov)

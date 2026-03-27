@@ -340,13 +340,13 @@ export default function ComprasPage() {
                 <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
                   <thead className="bg-gray-100">
                     <tr>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 85 }}>Fecha</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 130 }}>Proveedor</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 75 }}>Fecha</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 120 }}>Proveedor</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 180 }}>Articulo</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 90 }}>Vendedor</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 140 }}>Estado</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>Nro NP</th>
-                      <th className="px-2 py-3 text-center font-semibold text-gray-700" style={{ width: 80 }}>Acciones</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 75 }}>Vendedor</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 120 }}>Estado</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 70 }}>Nro NP</th>
+                      <th className="px-2 py-3 text-center font-semibold text-gray-700" style={{ width: 70 }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -554,6 +554,7 @@ export default function ComprasPage() {
                                   razon_social: o.razon_social || "",
                                   importe_total: o.importe_total || 0,
                                   ubicacion_oc: o.ubicacion_oc || "",
+                                  email_comercial: o.email_comercial || "",
                                 })
                               }}
                               className="p-1 hover:bg-gray-200 rounded"
@@ -714,6 +715,10 @@ export default function ComprasPage() {
             <div>
               <label className="text-sm text-gray-600 block mb-1">Ubicacion</label>
               <input type="text" value={editOrdenForm.ubicacion_oc || ""} onChange={(e) => setEditOrdenForm((f: any) => ({ ...f, ubicacion_oc: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Email Comercial (para enviar OC)</label>
+              <input type="email" value={editOrdenForm.email_comercial || ""} onChange={(e) => setEditOrdenForm((f: any) => ({ ...f, email_comercial: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" placeholder="comercial@proveedor.com" />
             </div>
           </div>
           <DialogFooter>

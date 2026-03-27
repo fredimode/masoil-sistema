@@ -386,6 +386,7 @@ export default function AdminProveedoresPage() {
                                 empresa: p.empresa || "",
                                 condicion_pago: p.condicion_pago || "",
                                 cbu: p.cbu || "",
+                                email_comercial: p.email_comercial || "",
                                 contactos: p.contactos || "",
                                 observaciones: p.observaciones || "",
                               })
@@ -450,6 +451,10 @@ export default function AdminProveedoresPage() {
             <div>
               <label className="text-sm text-gray-600 block mb-1">CBU</label>
               <input type="text" value={editForm.cbu || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, cbu: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Email Comercial <span className="text-gray-400 font-normal">(para enviar OC)</span></label>
+              <input type="email" value={editForm.email_comercial || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, email_comercial: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" placeholder="comercial@proveedor.com" />
             </div>
             <div>
               <label className="text-sm text-gray-600 block mb-1">Contactos</label>

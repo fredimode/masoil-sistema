@@ -53,6 +53,7 @@ export default function NuevaCompraPage() {
     estado: "Pendiente",
     fecha_estimada_ingreso: "",
     observaciones_incompleto: "",
+    email_comercial: "",
   })
 
   useEffect(() => {
@@ -102,6 +103,7 @@ export default function NuevaCompraPage() {
       ...prev,
       proveedor_id: String(prov.id),
       proveedor_nombre: prov.nombre || prov.razon_social || "",
+      email_comercial: prov.email_comercial || prev.email_comercial || "",
     }))
     setProvSearch(prov.nombre || prov.razon_social || "")
     setShowProvDropdown(false)
@@ -159,6 +161,7 @@ export default function NuevaCompraPage() {
           estado: form.estado || null,
           fecha: form.fecha || null,
           fecha_estimada_ingreso: form.fecha_estimada_ingreso || null,
+          email_comercial: form.email_comercial || null,
         })
         .select("id")
         .single()
@@ -244,6 +247,20 @@ export default function NuevaCompraPage() {
                 </div>
               )}
               {form.proveedor_nombre && <p className="text-xs text-green-600">Seleccionado: {form.proveedor_nombre}</p>}
+            </div>
+
+            {/* Email comercial */}
+            <div className="space-y-2">
+              <Label>Email Comercial <span className="text-gray-400 font-normal text-xs">(opcional, para enviar OC)</span></Label>
+              <Input
+                type="email"
+                value={form.email_comercial}
+                onChange={(e) => setForm((prev) => ({ ...prev, email_comercial: e.target.value }))}
+                placeholder="comercial@proveedor.com"
+              />
+              {form.proveedor_nombre && !form.email_comercial && (
+                <p className="text-xs text-amber-600">Sin email comercial cargado para este proveedor</p>
+              )}
             </div>
 
             {/* Articulo - Tabs: Buscar producto / Pegar texto */}
