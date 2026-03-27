@@ -5,8 +5,10 @@
 -- (same as admin, minus finanzas which is handled at app level).
 -- ============================================================
 
--- 1. Update get_current_user_role() to return TEXT (avoids enum dependency issues)
-CREATE OR REPLACE FUNCTION get_current_user_role()
+-- 1. Drop and recreate get_current_user_role() returning TEXT (cannot change return type in-place)
+DROP FUNCTION IF EXISTS get_current_user_role();
+
+CREATE FUNCTION get_current_user_role()
 RETURNS TEXT AS $$
   SELECT role::TEXT FROM vendedores WHERE auth_user_id = auth.uid()
 $$ LANGUAGE sql SECURITY DEFINER STABLE;
