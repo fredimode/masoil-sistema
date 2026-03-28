@@ -766,3 +766,127 @@ export async function createMovimientoCajaChica(mov: Record<string, any>): Promi
   const { error } = await supabase.from("movimientos_caja_chica").insert(mov)
   if (error) throw error
 }
+
+// ---------------------------------------------------------------------------
+// Facturas Proveedor
+// ---------------------------------------------------------------------------
+
+export async function fetchFacturasProveedor(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("facturas_proveedor")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(5000)
+  if (error) throw error
+  return data || []
+}
+
+export async function createFacturaProveedor(factura: Record<string, any>): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("facturas_proveedor")
+    .insert(factura)
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+export async function updateFacturaProveedor(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("facturas_proveedor").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+export async function deleteFacturaProveedor(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("facturas_proveedor").delete().eq("id", id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
+// Cheques Emitidos
+// ---------------------------------------------------------------------------
+
+export async function fetchChequesEmitidos(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("cheques_emitidos")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(5000)
+  if (error) throw error
+  return data || []
+}
+
+export async function createChequeEmitido(cheque: Record<string, any>): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("cheques_emitidos")
+    .insert(cheque)
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+export async function updateChequeEmitido(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("cheques_emitidos").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
+// Cuenta Corriente Cliente
+// ---------------------------------------------------------------------------
+
+export async function fetchCuentaCorrienteCliente(clientId?: string): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  let query = supabase
+    .from("cuenta_corriente_cliente")
+    .select("*")
+    .order("fecha", { ascending: false })
+    .limit(5000)
+  if (clientId) query = query.eq("client_id", clientId)
+  const { data, error } = await query
+  if (error) throw error
+  return data || []
+}
+
+export async function createMovimientoCuentaCorriente(mov: Record<string, any>): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("cuenta_corriente_cliente")
+    .insert(mov)
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+// ---------------------------------------------------------------------------
+// Retenciones
+// ---------------------------------------------------------------------------
+
+export async function fetchRetenciones(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("retenciones")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(5000)
+  if (error) throw error
+  return data || []
+}
+
+export async function createRetencion(retencion: Record<string, any>): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("retenciones")
+    .insert(retencion)
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id
+}
