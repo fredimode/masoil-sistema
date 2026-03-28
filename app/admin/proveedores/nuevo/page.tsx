@@ -31,6 +31,7 @@ export default function AdminNuevoProveedorPage() {
     condicion_pago: "",
     cbu: "",
     email_comercial: "",
+    email_pagos: "",
     contactos: "",
     observaciones: "",
   })
@@ -69,6 +70,7 @@ export default function AdminNuevoProveedorPage() {
         condicion_pago: formData.condicion_pago || undefined,
         cbu: formData.cbu || undefined,
         email_comercial: formData.email_comercial || undefined,
+        email_pagos: formData.email_pagos || undefined,
         contactos: formData.contactos || undefined,
         observaciones: formData.observaciones || undefined,
       })
@@ -183,6 +185,18 @@ export default function AdminNuevoProveedorPage() {
                 placeholder="comercial@proveedor.com"
               />
               <p className="text-xs text-muted-foreground">Para enviar órdenes de compra</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="email_pagos">Email Pagos</Label>
+              <Input
+                id="email_pagos"
+                type="email"
+                value={formData.email_pagos}
+                onChange={(e) => handleChange("email_pagos", e.target.value)}
+                placeholder="pagos@proveedor.com"
+              />
+              <p className="text-xs text-muted-foreground">Para enviar comprobantes de pago</p>
             </div>
           </div>
         </Card>

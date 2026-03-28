@@ -320,13 +320,10 @@ export default function AdminProveedoresPage() {
                     </TableHead>
                     <TableHead className="max-w-[180px]">Nombre</TableHead>
                     <TableHead>CUIT</TableHead>
-                    <TableHead>Empresa</TableHead>
                     <TableHead className="w-[150px]">Condicion de pago</TableHead>
                     <TableHead>Telefono</TableHead>
                     <TableHead>Email</TableHead>
-                    <TableHead className="max-w-[100px]">Categoria</TableHead>
                     <TableHead className="text-right">Saldo</TableHead>
-                    <TableHead>Cond. IVA</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -341,13 +338,6 @@ export default function AdminProveedoresPage() {
                       </TableCell>
                       <TableCell className="max-w-[180px] truncate font-medium" title={p.nombre || ""}>{p.nombre}</TableCell>
                       <TableCell>{p.cuit || "-"}</TableCell>
-                      <TableCell>
-                        {p.empresa ? (
-                          <Badge variant="outline">{p.empresa}</Badge>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
                       <TableCell className="max-w-[150px] truncate" title={p.condicion_pago || ""}>
                         {p.condicion_pago || "-"}
                       </TableCell>
@@ -357,14 +347,8 @@ export default function AdminProveedoresPage() {
                       <TableCell className="max-w-[150px] truncate" title={p.email || ""}>
                         {p.email || "-"}
                       </TableCell>
-                      <TableCell className="max-w-[100px] truncate" title={p.categoria || ""}>
-                        {p.categoria || "-"}
-                      </TableCell>
                       <TableCell className="text-right font-medium">
                         {p.saldo != null ? formatCurrency(p.saldo) : "-"}
-                      </TableCell>
-                      <TableCell className="max-w-[120px] truncate text-sm" title={p.condicion_iva || ""}>
-                        {p.condicion_iva || "-"}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -387,6 +371,7 @@ export default function AdminProveedoresPage() {
                                 condicion_pago: p.condicion_pago || "",
                                 cbu: p.cbu || "",
                                 email_comercial: p.email_comercial || "",
+                                email_pagos: p.email_pagos || "",
                                 contactos: p.contactos || "",
                                 observaciones: p.observaciones || "",
                               })
@@ -455,6 +440,10 @@ export default function AdminProveedoresPage() {
             <div>
               <label className="text-sm text-gray-600 block mb-1">Email Comercial <span className="text-gray-400 font-normal">(para enviar OC)</span></label>
               <input type="email" value={editForm.email_comercial || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, email_comercial: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" placeholder="comercial@proveedor.com" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Email Pagos <span className="text-gray-400 font-normal">(para comprobantes de pago)</span></label>
+              <input type="email" value={editForm.email_pagos || ""} onChange={(e) => setEditForm((f: any) => ({ ...f, email_pagos: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" placeholder="pagos@proveedor.com" />
             </div>
             <div>
               <label className="text-sm text-gray-600 block mb-1">Contactos</label>

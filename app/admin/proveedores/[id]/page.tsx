@@ -174,6 +174,22 @@ export default function AdminProveedorDetailPage({
             </p>
           </div>
           <div>
+            <p className="text-sm text-muted-foreground mb-1">Email Comercial</p>
+            <p className="font-medium">{proveedor.email_comercial || "-"}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground mb-1">Email Pagos</p>
+            <p className="font-medium">{proveedor.email_pagos || "-"}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground mb-1">Categoría</p>
+            <p className="font-medium">{proveedor.categoria || "-"}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground mb-1">Condición de IVA</p>
+            <p className="font-medium">{proveedor.condicion_iva || "-"}</p>
+          </div>
+          <div>
             <p className="text-sm text-muted-foreground mb-1">Contactos</p>
             <p className="font-medium">{proveedor.contactos || "-"}</p>
           </div>
