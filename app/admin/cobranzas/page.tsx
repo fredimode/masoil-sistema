@@ -1,896 +1,954 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table"
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
-import {
-  fetchCobranzasPendientes,
-  fetchClientesConCobranza,
-  createCobro,
+  fetchCobranzasPendientes, fetchClients, fetchCuentaCorrienteCliente,
+  fetchRetenciones, createCobro, createRetencion, createMovimientoCuentaCorriente,
   deleteCobranzaPendiente,
-  fetchRecibos,
 } from "@/lib/supabase/queries"
 import { formatCurrency, normalizeSearch, formatDateStr } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
-import {
-  Search,
-  Download,
-  Users,
-  DollarSign,
-  Building2,
-  Plus,
-  ArrowUpDown,
-  AlertCircle,
-  Eye,
-  Trash2,
-  FileText,
-} from "lucide-react"
+import { Search, Download, Plus, Trash2 } from "lucide-react"
 import * as XLSX from "xlsx"
 
-interface CobranzaPendiente {
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+type MedioPago = {
   id: string
-  client_id: string
-  cliente_nombre: string
-  comprobante: string
-  fecha_comprobante: string
-  total: number
-  saldo: number
-  saldo_acumulado: number
-  razon_social: string
+  tipo: "Efectivo" | "Transferencia" | "Cheque" | "Echeq" | "Compensación"
+  importe: number
+  referencia: string
+  numero: string
+  banco: string
+  fecha_emision: string
+  fecha_deposito: string
 }
 
-interface ClienteCobranza {
+type RetencionForm = {
   id: string
-  business_name: string
-  razon_social: string
-  zona: string
-  condicion_pago: string
-  canal_facturacion: string
-  canal_observaciones: string
-  telefono: string
-  email: string
-}
-
-interface Recibo {
-  id: string
-  fecha: string
-  sucursal: string
+  tipo: string
   nro_comprobante: string
-  cod_cliente: string
-  razon_social: string
-  documento: string
-  vendedor: string
+  fecha: string
   importe: number
 }
 
-type SortField =
-  | "cliente_nombre"
-  | "comprobante"
-  | "fecha_comprobante"
-  | "total"
-  | "saldo"
-  | "saldo_acumulado"
-  | "razon_social"
-type SortDir = "asc" | "desc"
+const TIPOS_RETENCION = ["ARBA", "ARCA", "IIBB_CABA", "IIBB_BSAS", "IVA", "Otro"]
+const RAZONES_SOCIALES = ["Masoil", "Aquiles", "Conancap", "Todas"]
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10)
+}
+
+function emptyMedio(): MedioPago {
+  return { id: uid(), tipo: "Efectivo", importe: 0, referencia: "", numero: "", banco: "", fecha_emision: "", fecha_deposito: "" }
+}
+
+function emptyRetencion(): RetencionForm {
+  return { id: uid(), tipo: "ARBA", nro_comprobante: "", fecha: "", importe: 0 }
+}
+
+// ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function CobranzasPage() {
   const [loading, setLoading] = useState(true)
-  const [cobranzas, setCobranzas] = useState<CobranzaPendiente[]>([])
-  const [clientes, setClientes] = useState<ClienteCobranza[]>([])
-  const [recibos, setRecibos] = useState<Recibo[]>([])
-
-  // Active tab
-  const [activeTab, setActiveTab] = useState<"cobranzas" | "recibos">("cobranzas")
-
-  // Filters - clients table
-  const [searchTerm, setSearchTerm] = useState("")
-  const [razonSocialFilter, setRazonSocialFilter] = useState("todas")
-  const [zonaFilter, setZonaFilter] = useState("todas")
-  const [canalFilter, setCanalFilter] = useState("todos")
-
-  // Filters - comprobantes table
-  const [comprobantesSearch, setComprobantesSearch] = useState("")
-  const [comprobantesRazonFilter, setComprobantesRazonFilter] = useState("todas")
-  const [sortField, setSortField] = useState<SortField>("fecha_comprobante")
-  const [sortDir, setSortDir] = useState<SortDir>("desc")
-
-  // Filters - recibos tab
-  const [recibosSearch, setRecibosSearch] = useState("")
-  const [recibosVendedorFilter, setRecibosVendedorFilter] = useState("todos")
-  const [recibosPage, setRecibosPage] = useState(1)
-
-  // Dialog - registrar cobro
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [cobroForm, setCobroForm] = useState({
-    clienteId: "",
-    monto: "",
-    medioPago: "",
-    referencia: "",
-    notas: "",
-    fecha: new Date().toISOString().slice(0, 10),
-  })
-  const [submitting, setSubmitting] = useState(false)
-  const [successMsg, setSuccessMsg] = useState("")
-
-  // Action dialogs - Clientes
-  const [viewingCliente, setViewingCliente] = useState<ClienteCobranza | null>(null)
-
-  // Action dialogs - Comprobantes
-  const [viewingComprobante, setViewingComprobante] = useState<CobranzaPendiente | null>(null)
-  const [deletingComprobante, setDeletingComprobante] = useState<CobranzaPendiente | null>(null)
-
-  async function loadAllData() {
-    try {
-      const [cob, cli, rec] = await Promise.all([
-        fetchCobranzasPendientes(),
-        fetchClientesConCobranza(),
-        fetchRecibos(),
-      ])
-      setCobranzas(cob ?? [])
-      setClientes(cli ?? [])
-      setRecibos(rec ?? [])
-    } catch (err) {
-      console.error("Error loading cobranzas:", err)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const [clients, setClients] = useState<any[]>([])
+  const [cobranzas, setCobranzas] = useState<any[]>([])
+  const [retenciones, setRetenciones] = useState<any[]>([])
 
   useEffect(() => {
-    loadAllData()
+    async function load() {
+      try {
+        const [cl, cp, ret] = await Promise.all([
+          fetchClients(),
+          fetchCobranzasPendientes(),
+          fetchRetenciones(),
+        ])
+        setClients(cl)
+        setCobranzas(cp)
+        setRetenciones(ret)
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
   }, [])
 
   if (loading) {
     return (
-      <div className="p-8 flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center justify-center h-96">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
       </div>
     )
   }
 
-  // --- Stats ---
-  const uniqueClientsWithDebt = new Set(cobranzas.map((c) => c.client_id)).size
-  const totalPendiente = cobranzas.reduce((sum, c) => sum + (c.saldo ?? 0), 0)
-  const breakdownByRazonSocial = cobranzas.reduce<Record<string, number>>(
-    (acc, c) => {
-      const key = c.razon_social || "Sin razon social"
-      acc[key] = (acc[key] ?? 0) + (c.saldo ?? 0)
-      return acc
-    },
-    {}
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Cobranzas</h1>
+
+      <Tabs defaultValue="cuenta-corriente">
+        <TabsList>
+          <TabsTrigger value="cuenta-corriente">Cuenta Corriente</TabsTrigger>
+          <TabsTrigger value="registrar-cobro">Registrar Cobro</TabsTrigger>
+          <TabsTrigger value="retenciones">Retenciones</TabsTrigger>
+          <TabsTrigger value="informe">Informe Cobranzas Pendientes</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="cuenta-corriente">
+          <TabCuentaCorriente clients={clients} />
+        </TabsContent>
+
+        <TabsContent value="registrar-cobro">
+          <TabRegistrarCobro clients={clients} cobranzas={cobranzas} setCobranzas={setCobranzas} />
+        </TabsContent>
+
+        <TabsContent value="retenciones">
+          <TabRetenciones retenciones={retenciones} clients={clients} />
+        </TabsContent>
+
+        <TabsContent value="informe">
+          <TabInforme cobranzas={cobranzas} clients={clients} />
+        </TabsContent>
+      </Tabs>
+    </div>
   )
+}
 
-  // --- Unique filter options ---
-  const uniqueRazonesSociales = [...new Set(clientes.map((c) => c.razon_social).filter(Boolean))].sort()
-  const uniqueZonas = [...new Set(clientes.map((c) => c.zona).filter(Boolean))].sort()
-  const uniqueCanales = [...new Set(clientes.map((c) => c.canal_facturacion).filter(Boolean))].sort()
-  const uniqueRazonesCobranzas = [...new Set(cobranzas.map((c) => c.razon_social).filter(Boolean))].sort()
+// ─── Tab 1: Cuenta Corriente ────────────────────────────────────────────────
 
-  // --- Filter clients ---
-  let filteredClients = [...clientes]
-  if (searchTerm) {
-    const q = normalizeSearch(searchTerm)
-    filteredClients = filteredClients.filter(
-      (c) =>
-        normalizeSearch(c.business_name ?? "").includes(q) ||
-        normalizeSearch(c.razon_social ?? "").includes(q) ||
-        normalizeSearch(c.email ?? "").includes(q) ||
-        normalizeSearch(c.telefono ?? "").includes(q)
-    )
-  }
-  if (razonSocialFilter !== "todas") {
-    filteredClients = filteredClients.filter((c) => c.razon_social === razonSocialFilter)
-  }
-  if (zonaFilter !== "todas") {
-    filteredClients = filteredClients.filter((c) => c.zona === zonaFilter)
-  }
-  if (canalFilter !== "todos") {
-    filteredClients = filteredClients.filter((c) => c.canal_facturacion === canalFilter)
-  }
+function TabCuentaCorriente({ clients }: { clients: any[] }) {
+  const [search, setSearch] = useState("")
+  const [selectedClient, setSelectedClient] = useState<any | null>(null)
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [movimientos, setMovimientos] = useState<any[]>([])
+  const [loadingMov, setLoadingMov] = useState(false)
+  const [desde, setDesde] = useState("")
+  const [hasta, setHasta] = useState("")
+  const [todos, setTodos] = useState(false)
+  const [page, setPage] = useState(1)
 
-  // --- Filter & sort comprobantes ---
-  let filteredCobranzas = [...cobranzas]
-  if (comprobantesSearch) {
-    const q = normalizeSearch(comprobantesSearch)
-    filteredCobranzas = filteredCobranzas.filter(
-      (c) =>
-        normalizeSearch(c.cliente_nombre ?? "").includes(q) ||
-        normalizeSearch(c.comprobante ?? "").includes(q)
-    )
-  }
-  if (comprobantesRazonFilter !== "todas") {
-    filteredCobranzas = filteredCobranzas.filter((c) => c.razon_social === comprobantesRazonFilter)
-  }
-  filteredCobranzas.sort((a, b) => {
-    let valA: string | number = a[sortField] ?? ""
-    let valB: string | number = b[sortField] ?? ""
-    if (typeof valA === "number" && typeof valB === "number") {
-      return sortDir === "asc" ? valA - valB : valB - valA
-    }
-    valA = String(valA)
-    valB = String(valB)
-    return sortDir === "asc" ? valA.localeCompare(valB) : valB.localeCompare(valA)
-  })
+  const filteredClients = useMemo(() => {
+    if (!search.trim()) return []
+    const norm = normalizeSearch(search)
+    return clients.filter((c) => normalizeSearch(c.businessName || "").includes(norm)).slice(0, 10)
+  }, [search, clients])
 
-  function toggleSort(field: SortField) {
-    if (sortField === field) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"))
-    } else {
-      setSortField(field)
-      setSortDir("asc")
-    }
-  }
-
-  // --- Export XLSX (clients) ---
-  function exportClients() {
-    const data = filteredClients.map((c) => ({
-      Cliente: c.business_name,
-      "Razon Social": c.razon_social,
-      Zona: c.zona,
-      "Condicion de Pago": c.condicion_pago,
-      "Canal Facturacion": c.canal_facturacion,
-      "Observaciones Canal": c.canal_observaciones,
-      Telefono: c.telefono,
-      Email: c.email,
-    }))
-    const ws = XLSX.utils.json_to_sheet(data)
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Clientes Cobranza")
-    XLSX.writeFile(wb, `cobranzas_clientes_${new Date().toISOString().slice(0, 10)}.xlsx`)
-  }
-
-  // --- Canal badge color ---
-  function canalBadge(canal: string) {
-    const upper = (canal ?? "").toUpperCase()
-    if (upper === "MAIL")
-      return <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-100">{canal}</Badge>
-    if (upper === "WEB")
-      return <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100">{canal}</Badge>
-    if (upper === "PORTAL")
-      return <Badge variant="secondary" className="bg-purple-100 text-purple-700 hover:bg-purple-100">{canal}</Badge>
-    return <Badge variant="secondary">{canal || "-"}</Badge>
-  }
-
-  // --- Submit cobro ---
-  async function handleSubmitCobro() {
-    if (!cobroForm.monto || !cobroForm.medioPago) return
-    setSubmitting(true)
+  async function loadMovimientos(clientId?: string) {
+    setLoadingMov(true)
     try {
-      await createCobro({
-        fecha: cobroForm.fecha,
-        monto: parseFloat(cobroForm.monto),
-        medio_pago: cobroForm.medioPago,
-        referencia: cobroForm.referencia || undefined,
-        notas: cobroForm.notas || undefined,
-      })
-      setSuccessMsg("Cobro registrado correctamente")
-      setTimeout(() => setSuccessMsg(""), 4000)
-      setDialogOpen(false)
-      setCobroForm({
-        clienteId: "",
-        monto: "",
-        medioPago: "",
-        referencia: "",
-        notas: "",
-        fecha: new Date().toISOString().slice(0, 10),
-      })
-      setLoading(true)
-      await loadAllData()
-    } catch (err) {
-      console.error("Error registrando cobro:", err)
-      alert("Error al registrar el cobro. Intente nuevamente.")
+      const data = await fetchCuentaCorrienteCliente(clientId)
+      setMovimientos(data)
+    } catch (e) {
+      console.error(e)
     } finally {
-      setSubmitting(false)
+      setLoadingMov(false)
     }
   }
 
-  // --- Delete comprobante ---
-  async function handleDeleteComprobante() {
-    if (!deletingComprobante) return
-    try {
-      await deleteCobranzaPendiente(deletingComprobante.id)
-      setDeletingComprobante(null)
-      setLoading(true)
-      await loadAllData()
-    } catch (err) {
-      console.error("Error eliminando comprobante:", err)
+  function handleSelectClient(client: any) {
+    setSelectedClient(client)
+    setSearch(client.businessName)
+    setShowDropdown(false)
+    setTodos(false)
+    loadMovimientos(client.id)
+  }
+
+  function handleTodosChange(checked: boolean) {
+    setTodos(checked)
+    if (checked) {
+      setSelectedClient(null)
+      setSearch("")
+      loadMovimientos()
+    } else {
+      setMovimientos([])
     }
   }
 
-  const hasCobranzas = cobranzas.length > 0
+  const filtered = useMemo(() => {
+    let rows = movimientos
+    if (desde) rows = rows.filter((m) => (m.fecha || "") >= desde)
+    if (hasta) rows = rows.filter((m) => (m.fecha || "") <= hasta)
+    return rows
+  }, [movimientos, desde, hasta])
 
-  // --- Recibos: stats, filters, pagination ---
-  const recibosTotal = recibos.length
-  const recibosMontoCobrado = recibos.reduce((sum, r) => sum + (r.importe ?? 0), 0)
-  const recibosVendedorTotals = recibos.reduce<Record<string, number>>((acc, r) => {
-    const key = r.vendedor || "Sin vendedor"
-    acc[key] = (acc[key] ?? 0) + (r.importe ?? 0)
-    return acc
-  }, {})
-  const recibosTopVendedores = Object.entries(recibosVendedorTotals)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
+  const pag = usePagination(filtered, 50)
 
-  const uniqueRecibosVendedores = [...new Set(recibos.map((r) => r.vendedor).filter(Boolean))].sort()
+  // Running saldo
+  const withSaldo = useMemo(() => {
+    const sorted = [...filtered].sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""))
+    let saldo = 0
+    return sorted.map((m) => {
+      saldo += (m.debe || 0) - (m.haber || 0)
+      return { ...m, saldo }
+    }).reverse()
+  }, [filtered])
 
-  let filteredRecibos = [...recibos]
-  if (recibosSearch) {
-    const q = normalizeSearch(recibosSearch)
-    filteredRecibos = filteredRecibos.filter((r) =>
-      normalizeSearch(r.razon_social ?? "").includes(q)
+  const pageRows = pag.getPage(page)
+  // map pageRows to withSaldo by index offset
+  const startIdx = (page - 1) * 50
+  const displayRows = withSaldo.slice(startIdx, startIdx + 50)
+
+  function exportXLSX() {
+    const ws = XLSX.utils.json_to_sheet(
+      withSaldo.map((m) => ({
+        Fecha: formatDateStr(m.fecha),
+        "Tipo Comprobante": m.tipo_comprobante || "",
+        "PV-Número": m.pv_numero || "",
+        Debe: m.debe || 0,
+        Haber: m.haber || 0,
+        Saldo: m.saldo,
+      }))
     )
-  }
-  if (recibosVendedorFilter !== "todos") {
-    filteredRecibos = filteredRecibos.filter((r) => r.vendedor === recibosVendedorFilter)
-  }
-
-  const recibosPagination = usePagination(filteredRecibos, 50)
-  const recibosPageData = recibosPagination.getPage(recibosPage)
-
-  function exportRecibos() {
-    const data = filteredRecibos.map((r) => ({
-      Fecha: formatDateStr(r.fecha),
-      "Nro Comprobante": r.nro_comprobante,
-      Cliente: r.razon_social,
-      Vendedor: r.vendedor,
-      Importe: r.importe,
-    }))
-    const ws = XLSX.utils.json_to_sheet(data)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Recibos")
-    XLSX.writeFile(wb, `recibos_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    XLSX.utils.book_append_sheet(wb, ws, "Cuenta Corriente")
+    XLSX.writeFile(wb, "cuenta_corriente.xlsx")
   }
 
   return (
-    <div className="p-8 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+    <Card className="p-4 space-y-4">
+      <div className="flex flex-wrap gap-3 items-end">
+        <div className="relative flex-1 min-w-[250px]">
+          <label className="text-sm font-medium mb-1 block">Buscar cliente</label>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setShowDropdown(true) }}
+              onFocus={() => setShowDropdown(true)}
+              placeholder="Razón social..."
+              className="w-full pl-9 pr-3 py-2 border rounded-md text-sm"
+              disabled={todos}
+            />
+          </div>
+          {showDropdown && filteredClients.length > 0 && (
+            <div className="absolute z-50 mt-1 w-full bg-white border rounded-md shadow-lg max-h-48 overflow-auto">
+              {filteredClients.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => handleSelectClient(c)}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                >
+                  {c.businessName}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div>
-          <h1 className="text-3xl font-bold mb-2">Cobranzas</h1>
-          <p className="text-muted-foreground">Gestiona cobros pendientes y facturacion de clientes</p>
+          <label className="text-sm font-medium mb-1 block">Desde</label>
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="border rounded-md px-3 py-2 text-sm" />
         </div>
-        <div className="flex gap-2">
-          {activeTab === "cobranzas" && (
-            <>
-              <Button variant="outline" onClick={exportClients}>
-                <Download className="h-4 w-4 mr-2" />
-                Exportar
-              </Button>
-              <Button onClick={() => setDialogOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Registrar Cobro
-              </Button>
-            </>
-          )}
-          {activeTab === "recibos" && (
-            <Button variant="outline" onClick={exportRecibos}>
-              <Download className="h-4 w-4 mr-2" />
-              Exportar Recibos
-            </Button>
-          )}
+        <div>
+          <label className="text-sm font-medium mb-1 block">Hasta</label>
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="border rounded-md px-3 py-2 text-sm" />
         </div>
-      </div>
-
-      {/* Success toast */}
-      {successMsg && (
-        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg">{successMsg}</div>
-      )}
-
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-6 w-fit">
-        <button
-          onClick={() => setActiveTab("cobranzas")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === "cobranzas" ? "bg-primary text-white" : "text-gray-600 hover:bg-gray-200"}`}
-        >
-          Cobranzas
-        </button>
-        <button
-          onClick={() => setActiveTab("recibos")}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === "recibos" ? "bg-primary text-white" : "text-gray-600 hover:bg-gray-200"}`}
-        >
-          Recibos
+        <label className="flex items-center gap-2 text-sm cursor-pointer pb-2">
+          <input type="checkbox" checked={todos} onChange={(e) => handleTodosChange(e.target.checked)} />
+          Todos los clientes
+        </label>
+        <button onClick={exportXLSX} className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700" disabled={withSaldo.length === 0}>
+          <Download className="h-4 w-4" /> XLSX
         </button>
       </div>
 
-      {/* ==================== TAB: COBRANZAS ==================== */}
-      {activeTab === "cobranzas" && (
+      {loadingMov ? (
+        <div className="flex justify-center py-8">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+        </div>
+      ) : displayRows.length > 0 ? (
         <>
-          {/* Empty cobranzas notice */}
-          {!hasCobranzas && (
-            <Card className="p-6">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="font-semibold text-lg">Sin datos de cobranzas cargados</p>
-                  <p className="text-muted-foreground mt-1">
-                    No hay comprobantes pendientes de cobro en el sistema. Cuando se carguen facturas o comprobantes, apareceran aqui con el detalle de saldos pendientes.
-                  </p>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Stats cards */}
-          {hasCobranzas && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                    <Users className="h-6 w-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Clientes con deuda</p>
-                    <p className="text-3xl font-bold">{uniqueClientsWithDebt}</p>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                    <DollarSign className="h-6 w-6 text-red-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Monto total pendiente</p>
-                    <p className="text-3xl font-bold">{formatCurrency(totalPendiente)}</p>
-                  </div>
-                </div>
-              </Card>
-              <Card className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                    <Building2 className="h-6 w-6 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground mb-1">Deuda por razon social</p>
-                    <div className="space-y-0.5">
-                      {Object.entries(breakdownByRazonSocial).map(([razon, monto]) => (
-                        <div key={razon} className="flex justify-between text-sm gap-4">
-                          <span className="truncate">{razon}</span>
-                          <span className="font-semibold whitespace-nowrap">{formatCurrency(monto)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            </div>
-          )}
-
-          {/* Clients Table */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Clientes</h2>
-
-            {/* Filters */}
-            <div className="flex flex-wrap gap-4">
-              <div className="relative flex-1 min-w-[200px] max-w-md">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por cliente, email, telefono..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-              <Select value={razonSocialFilter} onValueChange={setRazonSocialFilter}>
-                <SelectTrigger className="w-52"><SelectValue placeholder="Razon Social" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas las razones sociales</SelectItem>
-                  {uniqueRazonesSociales.map((r) => (
-                    <SelectItem key={r} value={r}>{r}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={zonaFilter} onValueChange={setZonaFilter}>
-                <SelectTrigger className="w-40"><SelectValue placeholder="Zona" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas">Todas las zonas</SelectItem>
-                  {uniqueZonas.map((z) => (
-                    <SelectItem key={z} value={z}>{z}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={canalFilter} onValueChange={setCanalFilter}>
-                <SelectTrigger className="w-48"><SelectValue placeholder="Canal Facturacion" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todos">Todos los canales</SelectItem>
-                  {uniqueCanales.map((c) => (
-                    <SelectItem key={c} value={c}>{c}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Table */}
-            <div className="border rounded-lg overflow-hidden">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Razon Social</TableHead>
-                      <TableHead>Zona</TableHead>
-                      <TableHead>Condicion de pago</TableHead>
-                      <TableHead>Canal Facturacion</TableHead>
-                      <TableHead className="w-[150px]">Telefono</TableHead>
-                      <TableHead className="w-[150px]">Email</TableHead>
-                      <TableHead className="text-center w-[70px]">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredClients.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No se encontraron clientes</TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredClients.map((c) => (
-                        <TableRow key={c.id}>
-                          <TableCell className="font-medium">{c.business_name}</TableCell>
-                          <TableCell>{c.razon_social || "-"}</TableCell>
-                          <TableCell>{c.zona || "-"}</TableCell>
-                          <TableCell>{c.condicion_pago || "-"}</TableCell>
-                          <TableCell>{canalBadge(c.canal_facturacion)}</TableCell>
-                          <TableCell className="max-w-[150px] truncate" title={c.telefono || ""}>{c.telefono || "-"}</TableCell>
-                          <TableCell className="max-w-[150px] truncate" title={c.email || ""}>{c.email || "-"}</TableCell>
-                          <TableCell className="text-center">
-                            <button onClick={() => setViewingCliente(c)} className="p-1 hover:bg-gray-200 rounded" title="Ver detalle">
-                              <Eye className="h-4 w-4 text-gray-600" />
-                            </button>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          </div>
-
-          {/* Comprobantes Pendientes Table */}
-          {hasCobranzas && (
-            <div className="space-y-4">
-              <h2 className="text-xl font-semibold">Comprobantes Pendientes</h2>
-
-              {/* Filters */}
-              <div className="flex flex-wrap gap-4">
-                <div className="relative flex-1 min-w-[200px] max-w-md">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar por cliente o comprobante..."
-                    value={comprobantesSearch}
-                    onChange={(e) => setComprobantesSearch(e.target.value)}
-                    className="pl-10"
-                  />
-                </div>
-                <Select value={comprobantesRazonFilter} onValueChange={setComprobantesRazonFilter}>
-                  <SelectTrigger className="w-52"><SelectValue placeholder="Razon Social" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todas">Todas las razones sociales</SelectItem>
-                    {uniqueRazonesCobranzas.map((r) => (
-                      <SelectItem key={r} value={r}>{r}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Table */}
-              <div className="border rounded-lg overflow-hidden">
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("cliente_nombre")}>
-                          <span className="flex items-center gap-1">Cliente<ArrowUpDown className="h-3 w-3" /></span>
-                        </TableHead>
-                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("comprobante")}>
-                          <span className="flex items-center gap-1">Comprobante<ArrowUpDown className="h-3 w-3" /></span>
-                        </TableHead>
-                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("fecha_comprobante")}>
-                          <span className="flex items-center gap-1">Fecha<ArrowUpDown className="h-3 w-3" /></span>
-                        </TableHead>
-                        <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("total")}>
-                          <span className="flex items-center justify-end gap-1">Total<ArrowUpDown className="h-3 w-3" /></span>
-                        </TableHead>
-                        <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("saldo")}>
-                          <span className="flex items-center justify-end gap-1">Saldo<ArrowUpDown className="h-3 w-3" /></span>
-                        </TableHead>
-                        <TableHead className="cursor-pointer select-none text-right" onClick={() => toggleSort("saldo_acumulado")}>
-                          <span className="flex items-center justify-end gap-1">Saldo Acum.<ArrowUpDown className="h-3 w-3" /></span>
-                        </TableHead>
-                        <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("razon_social")}>
-                          <span className="flex items-center gap-1">Razon Social<ArrowUpDown className="h-3 w-3" /></span>
-                        </TableHead>
-                        <TableHead className="text-center w-[80px]">Acciones</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredCobranzas.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No se encontraron comprobantes</TableCell>
-                        </TableRow>
-                      ) : (
-                        filteredCobranzas.map((c) => (
-                          <TableRow key={c.id}>
-                            <TableCell className="font-medium">{c.cliente_nombre}</TableCell>
-                            <TableCell>{c.comprobante}</TableCell>
-                            <TableCell>
-                              {c.fecha_comprobante
-                                ? new Date(c.fecha_comprobante + "T00:00:00").toLocaleDateString("es-AR")
-                                : "-"}
-                            </TableCell>
-                            <TableCell className="text-right">{formatCurrency(c.total ?? 0)}</TableCell>
-                            <TableCell className="text-right font-semibold">{formatCurrency(c.saldo ?? 0)}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(c.saldo_acumulado ?? 0)}</TableCell>
-                            <TableCell>{c.razon_social || "-"}</TableCell>
-                            <TableCell className="text-center">
-                              <div className="flex items-center justify-center gap-1">
-                                <button onClick={() => setViewingComprobante(c)} className="p-1 hover:bg-gray-200 rounded" title="Ver detalle">
-                                  <Eye className="h-4 w-4 text-gray-600" />
-                                </button>
-                                <button onClick={() => setDeletingComprobante(c)} className="p-1 hover:bg-gray-200 rounded" title="Eliminar">
-                                  <Trash2 className="h-4 w-4 text-red-600" />
-                                </button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ==================== TAB: RECIBOS ==================== */}
-      {activeTab === "recibos" && (
-        <>
-          {/* Stats cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
-                  <FileText className="h-6 w-6 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Total recibos</p>
-                  <p className="text-3xl font-bold">{recibosTotal}</p>
-                </div>
-              </div>
-            </Card>
-            <Card className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                  <DollarSign className="h-6 w-6 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Monto total cobrado</p>
-                  <p className="text-3xl font-bold">{formatCurrency(recibosMontoCobrado)}</p>
-                </div>
-              </div>
-            </Card>
-            <Card className="p-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
-                  <Users className="h-6 w-6 text-purple-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground mb-1">Top vendedores</p>
-                  <div className="space-y-0.5">
-                    {recibosTopVendedores.map(([vendedor, monto]) => (
-                      <div key={vendedor} className="flex justify-between text-sm gap-4">
-                        <span className="truncate">{vendedor}</span>
-                        <span className="font-semibold whitespace-nowrap">{formatCurrency(monto)}</span>
-                      </div>
-                    ))}
-                    {recibosTopVendedores.length === 0 && (
-                      <p className="text-sm text-muted-foreground">Sin datos</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          {/* Filters */}
-          <div className="flex flex-wrap gap-4">
-            <div className="relative flex-1 min-w-[200px] max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por razon social..."
-                value={recibosSearch}
-                onChange={(e) => { setRecibosSearch(e.target.value); setRecibosPage(1) }}
-                className="pl-10"
-              />
-            </div>
-            <Select value={recibosVendedorFilter} onValueChange={(v) => { setRecibosVendedorFilter(v); setRecibosPage(1) }}>
-              <SelectTrigger className="w-52"><SelectValue placeholder="Vendedor" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="todos">Todos los vendedores</SelectItem>
-                {uniqueRecibosVendedores.map((v) => (
-                  <SelectItem key={v} value={v}>{v}</SelectItem>
+          <div className="border rounded-md overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Tipo Comprobante</TableHead>
+                  <TableHead>PV-Número</TableHead>
+                  <TableHead className="text-right">Debe</TableHead>
+                  <TableHead className="text-right">Haber</TableHead>
+                  <TableHead className="text-right">Saldo</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {displayRows.map((m, i) => (
+                  <TableRow key={m.id || i}>
+                    <TableCell>{formatDateStr(m.fecha)}</TableCell>
+                    <TableCell>{m.tipo_comprobante || "-"}</TableCell>
+                    <TableCell>{m.pv_numero || "-"}</TableCell>
+                    <TableCell className="text-right">{m.debe ? formatCurrency(m.debe) : "-"}</TableCell>
+                    <TableCell className="text-right">{m.haber ? formatCurrency(m.haber) : "-"}</TableCell>
+                    <TableCell className="text-right font-medium">{formatCurrency(m.saldo)}</TableCell>
+                  </TableRow>
                 ))}
-              </SelectContent>
-            </Select>
+              </TableBody>
+            </Table>
           </div>
+          <TablePagination currentPage={page} totalPages={pag.totalPages} totalItems={pag.totalItems} pageSize={pag.pageSize} onPageChange={setPage} />
+        </>
+      ) : (
+        <p className="text-sm text-gray-500 text-center py-8">
+          {selectedClient || todos ? "Sin movimientos" : "Seleccione un cliente o marque \"Todos los clientes\""}
+        </p>
+      )}
+    </Card>
+  )
+}
 
-          {/* Table */}
-          <div className="border rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
+// ─── Tab 2: Registrar Cobro ─────────────────────────────────────────────────
+
+function TabRegistrarCobro({
+  clients, cobranzas, setCobranzas,
+}: {
+  clients: any[]; cobranzas: any[]; setCobranzas: (c: any[]) => void
+}) {
+  const [search, setSearch] = useState("")
+  const [showDropdown, setShowDropdown] = useState(false)
+  const [selectedClient, setSelectedClient] = useState<any | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [medios, setMedios] = useState<MedioPago[]>([emptyMedio()])
+  const [rets, setRets] = useState<RetencionForm[]>([])
+  const [confirmando, setConfirmando] = useState(false)
+
+  const filteredClients = useMemo(() => {
+    if (!search.trim()) return []
+    const norm = normalizeSearch(search)
+    return clients.filter((c) => normalizeSearch(c.businessName || "").includes(norm)).slice(0, 10)
+  }, [search, clients])
+
+  const pendientesCliente = useMemo(() => {
+    if (!selectedClient) return []
+    return cobranzas.filter((c) => c.client_id === selectedClient.id)
+  }, [cobranzas, selectedClient])
+
+  const totalSeleccionado = useMemo(() => {
+    return pendientesCliente
+      .filter((c) => selectedIds.has(c.id))
+      .reduce((sum, c) => sum + (c.saldo_pendiente || c.total || 0), 0)
+  }, [pendientesCliente, selectedIds])
+
+  const totalMedios = useMemo(() => medios.reduce((s, m) => s + (m.importe || 0), 0), [medios])
+  const totalRets = useMemo(() => rets.reduce((s, r) => s + (r.importe || 0), 0), [rets])
+  const totalValores = totalMedios + totalRets
+
+  function handleSelectClient(client: any) {
+    setSelectedClient(client)
+    setSearch(client.businessName)
+    setShowDropdown(false)
+    setSelectedIds(new Set())
+  }
+
+  function toggleFactura(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function updateMedio(id: string, field: string, value: any) {
+    setMedios((prev) => prev.map((m) => m.id === id ? { ...m, [field]: value } : m))
+  }
+
+  function removeMedio(id: string) {
+    setMedios((prev) => prev.filter((m) => m.id !== id))
+  }
+
+  function updateRet(id: string, field: string, value: any) {
+    setRets((prev) => prev.map((r) => r.id === id ? { ...r, [field]: value } : r))
+  }
+
+  function removeRet(id: string) {
+    setRets((prev) => prev.filter((r) => r.id !== id))
+  }
+
+  async function handleConfirmar() {
+    if (!selectedClient || totalValores < totalSeleccionado) return
+    setConfirmando(true)
+    try {
+      // Generate recibo number
+      const reciboNum = `REC-${String(Date.now()).slice(-6)}`
+
+      // Create cobro
+      await createCobro({
+        fecha: new Date().toISOString().slice(0, 10),
+        monto: totalValores,
+        medio_pago: medios.map((m) => m.tipo).join(", "),
+        referencia: reciboNum,
+        notas: `Cobro a ${selectedClient.businessName}`,
+      })
+
+      // Create retenciones
+      for (const r of rets) {
+        if (r.importe > 0) {
+          await createRetencion({
+            client_id: selectedClient.id,
+            tipo: r.tipo,
+            nro_comprobante: r.nro_comprobante,
+            fecha: r.fecha || new Date().toISOString().slice(0, 10),
+            importe: r.importe,
+          })
+        }
+      }
+
+      // Create movimiento en cuenta corriente
+      await createMovimientoCuentaCorriente({
+        client_id: selectedClient.id,
+        fecha: new Date().toISOString().slice(0, 10),
+        tipo_comprobante: "RECIBO",
+        pv_numero: reciboNum,
+        haber: totalValores,
+        debe: 0,
+      })
+
+      // Update local cobranzas state - remove fully paid, update partial
+      const updatedCobranzas = cobranzas.map((c) => {
+        if (!selectedIds.has(c.id)) return c
+        return { ...c, saldo_pendiente: 0 }
+      })
+      setCobranzas(updatedCobranzas)
+
+      // Reset form
+      setSelectedClient(null)
+      setSearch("")
+      setSelectedIds(new Set())
+      setMedios([emptyMedio()])
+      setRets([])
+      alert("Cobro registrado exitosamente")
+    } catch (e: any) {
+      console.error(e)
+      alert("Error al registrar cobro: " + (e.message || ""))
+    } finally {
+      setConfirmando(false)
+    }
+  }
+
+  const diff = totalValores - totalSeleccionado
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* LEFT - Cuenta Corriente del Cliente */}
+      <Card className="p-4 space-y-4">
+        <h3 className="font-semibold text-lg">Cuenta Corriente del Cliente</h3>
+
+        <div className="relative">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setShowDropdown(true) }}
+            onFocus={() => setShowDropdown(true)}
+            placeholder="Buscar cliente por razón social..."
+            className="w-full pl-9 pr-3 py-2 border rounded-md text-sm"
+          />
+          {showDropdown && filteredClients.length > 0 && (
+            <div className="absolute z-50 mt-1 w-full bg-white border rounded-md shadow-lg max-h-48 overflow-auto">
+              {filteredClients.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => handleSelectClient(c)}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                >
+                  {c.businessName}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {selectedClient && pendientesCliente.length > 0 ? (
+          <>
+            <div className="border rounded-md overflow-auto max-h-[400px]">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10"></TableHead>
                     <TableHead>Fecha</TableHead>
-                    <TableHead>Nro Comprobante</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Vendedor</TableHead>
-                    <TableHead className="text-right">Importe</TableHead>
+                    <TableHead>Comprobante</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Saldo Pend.</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {recibosPageData.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No se encontraron recibos</TableCell>
+                  {pendientesCliente.map((c) => (
+                    <TableRow key={c.id} className={selectedIds.has(c.id) ? "bg-blue-50" : ""}>
+                      <TableCell>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(c.id)}
+                          onChange={() => toggleFactura(c.id)}
+                        />
+                      </TableCell>
+                      <TableCell>{formatDateStr(c.fecha || c.created_at)}</TableCell>
+                      <TableCell>{c.comprobante || c.tipo_comprobante || "-"}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(c.total || 0)}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(c.saldo_pendiente || c.total || 0)}</TableCell>
                     </TableRow>
-                  ) : (
-                    recibosPageData.map((r) => (
-                      <TableRow key={r.id}>
-                        <TableCell>{formatDateStr(r.fecha)}</TableCell>
-                        <TableCell>{r.nro_comprobante || "-"}</TableCell>
-                        <TableCell className="max-w-[200px] truncate" title={r.razon_social || ""}>{r.razon_social || "-"}</TableCell>
-                        <TableCell>{r.vendedor || "-"}</TableCell>
-                        <TableCell className="text-right font-semibold">{formatCurrency(r.importe ?? 0)}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
+                  ))}
                 </TableBody>
               </Table>
             </div>
+            <div className="text-right font-semibold text-sm">
+              Total seleccionado: {formatCurrency(totalSeleccionado)}
+            </div>
+          </>
+        ) : selectedClient ? (
+          <p className="text-sm text-gray-500 py-4">Sin facturas pendientes para este cliente</p>
+        ) : (
+          <p className="text-sm text-gray-500 py-4">Seleccione un cliente para ver sus facturas pendientes</p>
+        )}
+      </Card>
+
+      {/* RIGHT - Valores de Pago */}
+      <Card className="p-4 space-y-4">
+        <h3 className="font-semibold text-lg">Valores de Pago</h3>
+
+        {/* Medios de pago */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">Medios de pago</label>
+            <button
+              onClick={() => setMedios((prev) => [...prev, emptyMedio()])}
+              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+            >
+              <Plus className="h-3 w-3" /> Agregar medio de pago
+            </button>
           </div>
 
-          <TablePagination
-            currentPage={recibosPage}
-            totalPages={recibosPagination.totalPages}
-            totalItems={recibosPagination.totalItems}
-            pageSize={recibosPagination.pageSize}
-            onPageChange={setRecibosPage}
-          />
-        </>
-      )}
+          {medios.map((m) => (
+            <div key={m.id} className="border rounded-md p-3 space-y-2 bg-gray-50">
+              <div className="flex items-center gap-2">
+                <select
+                  value={m.tipo}
+                  onChange={(e) => updateMedio(m.id, "tipo", e.target.value)}
+                  className="border rounded-md px-2 py-1.5 text-sm flex-1"
+                >
+                  <option value="Efectivo">Efectivo</option>
+                  <option value="Transferencia">Transferencia</option>
+                  <option value="Cheque">Cheque</option>
+                  <option value="Echeq">Echeq</option>
+                  <option value="Compensación">Compensación</option>
+                </select>
+                {medios.length > 1 && (
+                  <button onClick={() => removeMedio(m.id)} className="text-red-500 hover:text-red-700">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
 
-      {/* ========== DIALOGS ========== */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500">Importe</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={m.importe || ""}
+                    onChange={(e) => updateMedio(m.id, "importe", parseFloat(e.target.value) || 0)}
+                    className="w-full border rounded-md px-2 py-1.5 text-sm"
+                    placeholder="0.00"
+                  />
+                </div>
 
-      {/* View Cliente */}
-      <Dialog open={!!viewingCliente} onOpenChange={(open) => !open && setViewingCliente(null)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>Detalle de Cliente</DialogTitle></DialogHeader>
-          {viewingCliente && (
-            <div className="space-y-2 text-sm">
-              <div><strong>Cliente:</strong> {viewingCliente.business_name || "-"}</div>
-              <div><strong>Razon Social:</strong> {viewingCliente.razon_social || "-"}</div>
-              <div><strong>Zona:</strong> {viewingCliente.zona || "-"}</div>
-              <div><strong>Condicion de pago:</strong> {viewingCliente.condicion_pago || "-"}</div>
-              <div><strong>Canal Facturacion:</strong> {viewingCliente.canal_facturacion || "-"}</div>
-              <div><strong>Observaciones canal:</strong> {viewingCliente.canal_observaciones || "-"}</div>
-              <div><strong>Telefono:</strong> {viewingCliente.telefono || "-"}</div>
-              <div><strong>Email:</strong> {viewingCliente.email || "-"}</div>
+                {(m.tipo === "Transferencia" || m.tipo === "Compensación") && (
+                  <div>
+                    <label className="text-xs text-gray-500">Referencia</label>
+                    <input
+                      type="text"
+                      value={m.referencia}
+                      onChange={(e) => updateMedio(m.id, "referencia", e.target.value)}
+                      className="w-full border rounded-md px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {(m.tipo === "Cheque" || m.tipo === "Echeq") && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-500">Número</label>
+                    <input
+                      type="text"
+                      value={m.numero}
+                      onChange={(e) => updateMedio(m.id, "numero", e.target.value)}
+                      className="w-full border rounded-md px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Banco</label>
+                    <input
+                      type="text"
+                      value={m.banco}
+                      onChange={(e) => updateMedio(m.id, "banco", e.target.value)}
+                      className="w-full border rounded-md px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Fecha emisión</label>
+                    <input
+                      type="date"
+                      value={m.fecha_emision}
+                      onChange={(e) => updateMedio(m.id, "fecha_emision", e.target.value)}
+                      className="w-full border rounded-md px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500">Fecha depósito</label>
+                    <input
+                      type="date"
+                      value={m.fecha_deposito}
+                      onChange={(e) => updateMedio(m.id, "fecha_deposito", e.target.value)}
+                      className="w-full border rounded-md px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </DialogContent>
-      </Dialog>
+          ))}
+        </div>
 
-      {/* View Comprobante */}
-      <Dialog open={!!viewingComprobante} onOpenChange={(open) => !open && setViewingComprobante(null)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader><DialogTitle>Detalle de Comprobante</DialogTitle></DialogHeader>
-          {viewingComprobante && (
-            <div className="space-y-2 text-sm">
-              <div><strong>Cliente:</strong> {viewingComprobante.cliente_nombre || "-"}</div>
-              <div><strong>Comprobante:</strong> {viewingComprobante.comprobante || "-"}</div>
-              <div><strong>Fecha:</strong> {viewingComprobante.fecha_comprobante ? new Date(viewingComprobante.fecha_comprobante + "T00:00:00").toLocaleDateString("es-AR") : "-"}</div>
-              <div><strong>Total:</strong> {formatCurrency(viewingComprobante.total ?? 0)}</div>
-              <div><strong>Saldo:</strong> {formatCurrency(viewingComprobante.saldo ?? 0)}</div>
-              <div><strong>Saldo Acumulado:</strong> {formatCurrency(viewingComprobante.saldo_acumulado ?? 0)}</div>
-              <div><strong>Razon Social:</strong> {viewingComprobante.razon_social || "-"}</div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+        {/* Retenciones */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">Retenciones</label>
+            <button
+              onClick={() => setRets((prev) => [...prev, emptyRetencion()])}
+              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+            >
+              <Plus className="h-3 w-3" /> Agregar retención
+            </button>
+          </div>
 
-      {/* Delete Comprobante */}
-      <Dialog open={!!deletingComprobante} onOpenChange={(open) => !open && setDeletingComprobante(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader><DialogTitle>Confirmar eliminacion</DialogTitle></DialogHeader>
-          <p className="text-sm text-gray-600">Esta seguro que desea eliminar el comprobante <strong>{deletingComprobante?.comprobante}</strong> de {deletingComprobante?.cliente_nombre}?</p>
-          <DialogFooter>
-            <button onClick={() => setDeletingComprobante(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
-            <button onClick={handleDeleteComprobante} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">Eliminar</button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Registrar Cobro Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Registrar Cobro</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 mt-2">
-            <div className="space-y-2">
-              <Label htmlFor="cobro-cliente">Cliente</Label>
-              <Select value={cobroForm.clienteId} onValueChange={(v) => setCobroForm((f) => ({ ...f, clienteId: v }))}>
-                <SelectTrigger id="cobro-cliente"><SelectValue placeholder="Seleccionar cliente" /></SelectTrigger>
-                <SelectContent>
-                  {clientes.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.business_name}</SelectItem>
+          {rets.map((r) => (
+            <div key={r.id} className="border rounded-md p-3 space-y-2 bg-gray-50">
+              <div className="flex items-center gap-2">
+                <select
+                  value={r.tipo}
+                  onChange={(e) => updateRet(r.id, "tipo", e.target.value)}
+                  className="border rounded-md px-2 py-1.5 text-sm flex-1"
+                >
+                  {TIPOS_RETENCION.map((t) => (
+                    <option key={t} value={t}>{t}</option>
                   ))}
-                </SelectContent>
-              </Select>
+                </select>
+                <button onClick={() => removeRet(r.id)} className="text-red-500 hover:text-red-700">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="text-xs text-gray-500">Nro Comprobante</label>
+                  <input
+                    type="text"
+                    value={r.nro_comprobante}
+                    onChange={(e) => updateRet(r.id, "nro_comprobante", e.target.value)}
+                    className="w-full border rounded-md px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">Fecha</label>
+                  <input
+                    type="date"
+                    value={r.fecha}
+                    onChange={(e) => updateRet(r.id, "fecha", e.target.value)}
+                    className="w-full border rounded-md px-2 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500">Importe</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={r.importe || ""}
+                    onChange={(e) => updateRet(r.id, "importe", parseFloat(e.target.value) || 0)}
+                    className="w-full border rounded-md px-2 py-1.5 text-sm"
+                  />
+                </div>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="cobro-fecha">Fecha</Label>
-              <Input id="cobro-fecha" type="date" value={cobroForm.fecha} onChange={(e) => setCobroForm((f) => ({ ...f, fecha: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cobro-monto">Monto <span className="text-red-500">*</span></Label>
-              <Input id="cobro-monto" type="number" step="0.01" min="0" placeholder="0.00" value={cobroForm.monto} onChange={(e) => setCobroForm((f) => ({ ...f, monto: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cobro-medio">Medio de pago <span className="text-red-500">*</span></Label>
-              <Select value={cobroForm.medioPago} onValueChange={(v) => setCobroForm((f) => ({ ...f, medioPago: v }))}>
-                <SelectTrigger id="cobro-medio"><SelectValue placeholder="Seleccionar medio" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Efectivo">Efectivo</SelectItem>
-                  <SelectItem value="Transferencia">Transferencia</SelectItem>
-                  <SelectItem value="Cheque">Cheque</SelectItem>
-                  <SelectItem value="Cuenta Corriente">Cuenta Corriente</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cobro-referencia">Referencia</Label>
-              <Input id="cobro-referencia" placeholder="Nro. de transferencia, cheque, etc." value={cobroForm.referencia} onChange={(e) => setCobroForm((f) => ({ ...f, referencia: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cobro-notas">Notas</Label>
-              <Textarea id="cobro-notas" placeholder="Observaciones adicionales..." rows={3} value={cobroForm.notas} onChange={(e) => setCobroForm((f) => ({ ...f, notas: e.target.value }))} />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={submitting}>Cancelar</Button>
-              <Button onClick={handleSubmitCobro} disabled={submitting || !cobroForm.monto || !cobroForm.medioPago}>
-                {submitting ? "Registrando..." : "Registrar Cobro"}
-              </Button>
-            </div>
+          ))}
+        </div>
+
+        {/* Totals */}
+        <div className="border-t pt-3 space-y-2">
+          <div className="flex justify-between text-sm">
+            <span>Total medios de pago:</span>
+            <span className="font-medium">{formatCurrency(totalMedios)}</span>
           </div>
-        </DialogContent>
-      </Dialog>
+          {totalRets > 0 && (
+            <div className="flex justify-between text-sm">
+              <span>Total retenciones:</span>
+              <span className="font-medium">{formatCurrency(totalRets)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-sm font-bold">
+            <span>Total valores:</span>
+            <span>{formatCurrency(totalValores)}</span>
+          </div>
+        </div>
+
+        {/* Validation messages */}
+        {selectedIds.size > 0 && totalValores > 0 && diff > 0 && (
+          <div className="bg-green-50 border border-green-200 rounded-md px-3 py-2 text-sm text-green-700">
+            Saldo a favor: {formatCurrency(diff)} — se registrará como pago a cuenta
+          </div>
+        )}
+        {selectedIds.size > 0 && totalValores > 0 && diff < 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-md px-3 py-2 text-sm text-red-600">
+            El total de valores no cubre las facturas seleccionadas
+          </div>
+        )}
+
+        {/* Confirm */}
+        <button
+          onClick={handleConfirmar}
+          disabled={confirmando || !selectedClient || selectedIds.size === 0 || totalValores < totalSeleccionado}
+          className="w-full py-2.5 bg-primary text-white rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {confirmando ? "Registrando..." : "Confirmar Cobro"}
+        </button>
+      </Card>
     </div>
+  )
+}
+
+// ─── Tab 3: Retenciones ─────────────────────────────────────────────────────
+
+function TabRetenciones({ retenciones, clients }: { retenciones: any[]; clients: any[] }) {
+  const [search, setSearch] = useState("")
+  const [filtroTipo, setFiltroTipo] = useState("Todos")
+  const [desde, setDesde] = useState("")
+  const [hasta, setHasta] = useState("")
+  const [page, setPage] = useState(1)
+
+  const clientMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    clients.forEach((c) => { map[c.id] = c.businessName })
+    return map
+  }, [clients])
+
+  const filtered = useMemo(() => {
+    let rows = retenciones
+    if (filtroTipo !== "Todos") rows = rows.filter((r) => r.tipo === filtroTipo)
+    if (search.trim()) {
+      const norm = normalizeSearch(search)
+      rows = rows.filter((r) => normalizeSearch(clientMap[r.client_id] || "").includes(norm))
+    }
+    if (desde) rows = rows.filter((r) => (r.fecha || "") >= desde)
+    if (hasta) rows = rows.filter((r) => (r.fecha || "") <= hasta)
+    return rows
+  }, [retenciones, filtroTipo, search, desde, hasta, clientMap])
+
+  const pag = usePagination(filtered, 50)
+
+  function exportXLSX() {
+    const ws = XLSX.utils.json_to_sheet(
+      filtered.map((r) => ({
+        Fecha: formatDateStr(r.fecha),
+        Cliente: clientMap[r.client_id] || "-",
+        Tipo: r.tipo || "",
+        "Nro Comprobante": r.nro_comprobante || "",
+        Importe: r.importe || 0,
+      }))
+    )
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Retenciones")
+    XLSX.writeFile(wb, "retenciones.xlsx")
+  }
+
+  return (
+    <Card className="p-4 space-y-4">
+      <div className="flex flex-wrap gap-3 items-end">
+        <div className="relative flex-1 min-w-[200px]">
+          <label className="text-sm font-medium mb-1 block">Buscar cliente</label>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Razón social..."
+              className="w-full pl-9 pr-3 py-2 border rounded-md text-sm"
+            />
+          </div>
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1 block">Tipo</label>
+          <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)} className="border rounded-md px-3 py-2 text-sm">
+            <option value="Todos">Todos</option>
+            {TIPOS_RETENCION.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1 block">Desde</label>
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="border rounded-md px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1 block">Hasta</label>
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="border rounded-md px-3 py-2 text-sm" />
+        </div>
+        <button onClick={exportXLSX} className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700" disabled={filtered.length === 0}>
+          <Download className="h-4 w-4" /> XLSX
+        </button>
+      </div>
+
+      <div className="border rounded-md overflow-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Fecha</TableHead>
+              <TableHead>Cliente</TableHead>
+              <TableHead>Tipo</TableHead>
+              <TableHead>Nro Comprobante</TableHead>
+              <TableHead className="text-right">Importe</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {pag.getPage(page).length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-gray-500 py-8">Sin retenciones</TableCell>
+              </TableRow>
+            ) : (
+              pag.getPage(page).map((r: any, i: number) => (
+                <TableRow key={r.id || i}>
+                  <TableCell>{formatDateStr(r.fecha)}</TableCell>
+                  <TableCell>{clientMap[r.client_id] || "-"}</TableCell>
+                  <TableCell><Badge variant="outline">{r.tipo}</Badge></TableCell>
+                  <TableCell>{r.nro_comprobante || "-"}</TableCell>
+                  <TableCell className="text-right font-medium">{formatCurrency(r.importe || 0)}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      <TablePagination currentPage={page} totalPages={pag.totalPages} totalItems={pag.totalItems} pageSize={pag.pageSize} onPageChange={setPage} />
+    </Card>
+  )
+}
+
+// ─── Tab 4: Informe Cobranzas Pendientes ────────────────────────────────────
+
+function TabInforme({ cobranzas, clients }: { cobranzas: any[]; clients: any[] }) {
+  const [filtroRS, setFiltroRS] = useState("Todas")
+  const [desde, setDesde] = useState("")
+  const [hasta, setHasta] = useState("")
+  const [page, setPage] = useState(1)
+
+  const clientMap = useMemo(() => {
+    const map: Record<string, string> = {}
+    clients.forEach((c) => { map[c.id] = c.businessName })
+    return map
+  }, [clients])
+
+  const filtered = useMemo(() => {
+    let rows = cobranzas
+    if (filtroRS !== "Todas") {
+      rows = rows.filter((c) => (c.razon_social || "").toLowerCase() === filtroRS.toLowerCase())
+    }
+    if (desde) rows = rows.filter((c) => (c.fecha || c.created_at || "") >= desde)
+    if (hasta) rows = rows.filter((c) => (c.fecha || c.created_at || "") <= hasta)
+    return rows
+  }, [cobranzas, filtroRS, desde, hasta])
+
+  const totals = useMemo(() => {
+    return filtered.reduce(
+      (acc, c) => ({
+        total: acc.total + (c.total || 0),
+        saldo: acc.saldo + (c.saldo_pendiente || c.total || 0),
+      }),
+      { total: 0, saldo: 0 }
+    )
+  }, [filtered])
+
+  const pag = usePagination(filtered, 50)
+
+  function exportXLSX() {
+    const ws = XLSX.utils.json_to_sheet(
+      filtered.map((c) => ({
+        Cliente: clientMap[c.client_id] || c.client_name || "-",
+        Comprobante: c.comprobante || c.tipo_comprobante || "",
+        Fecha: formatDateStr(c.fecha || c.created_at),
+        Total: c.total || 0,
+        "Saldo Pendiente": c.saldo_pendiente || c.total || 0,
+      }))
+    )
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Cobranzas Pendientes")
+    XLSX.writeFile(wb, "cobranzas_pendientes.xlsx")
+  }
+
+  return (
+    <Card className="p-4 space-y-4">
+      <div className="flex flex-wrap gap-3 items-end">
+        <div>
+          <label className="text-sm font-medium mb-1 block">Razón Social</label>
+          <select value={filtroRS} onChange={(e) => setFiltroRS(e.target.value)} className="border rounded-md px-3 py-2 text-sm">
+            {RAZONES_SOCIALES.map((rs) => (
+              <option key={rs} value={rs}>{rs}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1 block">Desde</label>
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="border rounded-md px-3 py-2 text-sm" />
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1 block">Hasta</label>
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="border rounded-md px-3 py-2 text-sm" />
+        </div>
+        <button onClick={exportXLSX} className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700" disabled={filtered.length === 0}>
+          <Download className="h-4 w-4" /> XLSX
+        </button>
+      </div>
+
+      <div className="border rounded-md overflow-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Cliente</TableHead>
+              <TableHead>Comprobante</TableHead>
+              <TableHead>Fecha</TableHead>
+              <TableHead className="text-right">Total</TableHead>
+              <TableHead className="text-right">Saldo Pendiente</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {pag.getPage(page).length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-gray-500 py-8">Sin cobranzas pendientes</TableCell>
+              </TableRow>
+            ) : (
+              pag.getPage(page).map((c: any, i: number) => (
+                <TableRow key={c.id || i}>
+                  <TableCell>{clientMap[c.client_id] || c.client_name || "-"}</TableCell>
+                  <TableCell>{c.comprobante || c.tipo_comprobante || "-"}</TableCell>
+                  <TableCell>{formatDateStr(c.fecha || c.created_at)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(c.total || 0)}</TableCell>
+                  <TableCell className="text-right font-medium">{formatCurrency(c.saldo_pendiente || c.total || 0)}</TableCell>
+                </TableRow>
+              ))
+            )}
+            {filtered.length > 0 && (
+              <TableRow className="bg-gray-50 font-bold">
+                <TableCell colSpan={3}>TOTALES</TableCell>
+                <TableCell className="text-right">{formatCurrency(totals.total)}</TableCell>
+                <TableCell className="text-right">{formatCurrency(totals.saldo)}</TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      <TablePagination currentPage={page} totalPages={pag.totalPages} totalItems={pag.totalItems} pageSize={pag.pageSize} onPageChange={setPage} />
+    </Card>
   )
 }
