@@ -16,8 +16,9 @@ import { createClient } from "@/lib/supabase/client"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import type { Client, Product, Vendedor } from "@/lib/types"
 import { formatCurrency } from "@/lib/utils"
-import { ArrowLeft, Plus, Trash2, Search, AlertTriangle, PackagePlus } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, Search, AlertTriangle, PackagePlus, History, CircleDot } from "lucide-react"
 import Link from "next/link"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface OrderItem {
   productId: string
@@ -54,6 +55,45 @@ export default function AdminNuevoPedidoPage() {
   const [showNewProductDialog, setShowNewProductDialog] = useState(false)
   const [newProduct, setNewProduct] = useState({ code: "", name: "", price: 0, category: "" })
   const [creatingProduct, setCreatingProduct] = useState(false)
+
+  // Price history per product
+  const [priceHistory, setPriceHistory] = useState<Record<string, { fecha: string; precio: number }[]>>({})
+
+  async function loadPriceHistory(productId: string) {
+    if (priceHistory[productId]) return
+    try {
+      const { data } = await supabase
+        .from("order_items")
+        .select("unit_price, created_at, order_id")
+        .eq("product_id", productId)
+        .order("created_at", { ascending: false })
+        .limit(5)
+      setPriceHistory((prev) => ({
+        ...prev,
+        [productId]: (data || []).map((d: any) => ({
+          fecha: new Date(d.created_at).toLocaleDateString("es-AR"),
+          precio: Number(d.unit_price),
+        })),
+      }))
+    } catch {
+      // non-blocking
+    }
+  }
+
+  // Pending OC for stock indicator (yellow = mercadería en camino)
+  const [pendingOCProducts, setPendingOCProducts] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    supabase
+      .from("compras")
+      .select("articulo")
+      .in("estado", ["Pendiente", "Realizado"])
+      .then(({ data }) => {
+        if (data) {
+          const arts = new Set(data.map((c: any) => (c.articulo || "").toLowerCase()))
+          setPendingOCProducts(arts as any)
+        }
+      })
+  }, [])
 
   useEffect(() => {
     Promise.all([fetchClients(), fetchProducts(), fetchVendedores()])
@@ -272,10 +312,15 @@ export default function AdminNuevoPedidoPage() {
               <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                 <div>
                   <p className="font-medium">{selectedClient.businessName}</p>
-                  <p className="text-sm text-muted-foreground">{selectedClient.contactName} • {selectedClient.zona}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedClient.contactName} • {selectedClient.zona}
+                    {selectedClient.condicionPago && <span className="ml-2">• Pago: {selectedClient.condicionPago}</span>}
+                  </p>
                 </div>
                 <Button variant="outline" size="sm" onClick={() => setSelectedClientId("")}>Cambiar</Button>
               </div>
+              {/* Client last orders */}
+              <ClientOrderHistory clientId={selectedClient.id} />
             </div>
           )}
         </Card>
@@ -301,30 +346,39 @@ export default function AdminNuevoPedidoPage() {
               className="pl-10"
             />
             {showProductResults && filteredProducts.length > 0 && (
-              <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
+              <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-64 overflow-y-auto">
                 {filteredProducts.map((p) => {
-                  const lowStock = p.stock <= 0
+                  const noStock = p.stock <= 0
+                  const hasOCPending = pendingOCProducts.has((p.name || "").toLowerCase()) || pendingOCProducts.has((p.code || "").toLowerCase())
+                  const stockColor = noStock
+                    ? "bg-red-100 text-red-700 border-red-200"
+                    : hasOCPending && p.stock < 10
+                    ? "bg-amber-100 text-amber-700 border-amber-200"
+                    : "bg-green-100 text-green-700 border-green-200"
+                  const stockIcon = noStock ? "🔴" : hasOCPending && p.stock < 10 ? "🟡" : "🟢"
                   return (
                     <button
                       key={p.id}
                       onClick={() => addProduct(p)}
-                      className="w-full text-left px-4 py-2 hover:bg-gray-50 border-b last:border-b-0 flex items-center justify-between"
+                      className="w-full text-left px-4 py-2 hover:bg-gray-50 border-b last:border-b-0"
                     >
-                      <div>
-                        <span className="font-medium">{p.name}</span>
-                        <span className="text-xs text-muted-foreground ml-2">{p.code}</span>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-medium">{p.name}</span>
+                          <span className="text-xs text-muted-foreground ml-2">{p.code}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs">{stockIcon}</span>
+                          <Badge variant="outline" className={`${stockColor} text-xs`}>
+                            {noStock ? "Sin stock" : `Stock: ${p.stock}`}
+                          </Badge>
+                          <span className="text-sm font-medium">{formatCurrency(p.price)}</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {lowStock ? (
-                          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">
-                            Sin stock
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
-                            Stock: {p.stock}
-                          </Badge>
-                        )}
-                        <span className="text-sm font-medium">{formatCurrency(p.price)}</span>
+                      <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
+                        {p.costoNeto != null && <span>Costo: {formatCurrency(p.costoNeto)}</span>}
+                        <span>Venta: {formatCurrency(p.price)}</span>
+                        {hasOCPending && <span className="text-amber-600">Mercadería en camino</span>}
                       </div>
                     </button>
                   )
@@ -336,26 +390,53 @@ export default function AdminNuevoPedidoPage() {
           {/* Items list */}
           {orderItems.length > 0 ? (
             <div className="border rounded-lg">
-              <div className="grid grid-cols-[1fr,80px,80px,100px,40px] gap-2 p-3 bg-muted text-xs font-medium">
+              <div className="grid grid-cols-[1fr,60px,70px,90px,100px,40px] gap-2 p-3 bg-muted text-xs font-medium">
                 <span>Producto</span>
                 <span className="text-center">Stock</span>
                 <span className="text-center">Cant.</span>
+                <span className="text-center">Precio</span>
                 <span className="text-right">Subtotal</span>
                 <span></span>
               </div>
               {orderItems.map((item) => {
                 const stockOk = item.stock >= item.quantity
+                const product = products.find((p) => p.id === item.productId)
+                const history = priceHistory[item.productId]
                 return (
-                  <div key={item.productId} className={`grid grid-cols-[1fr,80px,80px,100px,40px] gap-2 p-3 border-t items-center ${item.requiereCotizacion ? "bg-amber-50" : ""}`}>
+                  <div key={item.productId} className={`grid grid-cols-[1fr,60px,70px,90px,100px,40px] gap-2 p-3 border-t items-center ${item.requiereCotizacion ? "bg-amber-50" : ""}`}>
                     <div>
                       <p className="font-medium text-sm">{item.productName}</p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-muted-foreground">{item.productCode} • {formatCurrency(item.price)} c/u</span>
-                        {item.requiereCotizacion && (
-                          <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 text-xs">
-                            Cotizar
-                          </Badge>
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        <span className="text-xs text-muted-foreground">{item.productCode}</span>
+                        {product?.costoNeto != null && (
+                          <span className="text-xs text-gray-400">Costo: {formatCurrency(product.costoNeto)}</span>
                         )}
+                        {item.requiereCotizacion && (
+                          <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 text-xs">Cotizar</Badge>
+                        )}
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
+                                onMouseEnter={() => loadPriceHistory(item.productId)}
+                              >
+                                <History className="h-3 w-3" /> Historial
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-xs">
+                              <p className="font-semibold text-xs mb-1">Últimas ventas:</p>
+                              {!history || history.length === 0 ? (
+                                <p className="text-xs text-gray-400">Sin historial</p>
+                              ) : (
+                                history.map((h, i) => (
+                                  <p key={i} className="text-xs">{h.fecha}: {formatCurrency(h.precio)}</p>
+                                ))
+                              )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </div>
                     </div>
                     <div className="text-center">
@@ -371,6 +452,19 @@ export default function AdminNuevoPedidoPage() {
                       value={item.quantity}
                       onChange={(e) => updateItemQuantity(item.productId, parseInt(e.target.value) || 0)}
                       className="w-16 h-8 text-center text-sm mx-auto"
+                    />
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      value={item.price}
+                      onChange={(e) => {
+                        const newPrice = parseFloat(e.target.value) || 0
+                        setOrderItems(orderItems.map((i) =>
+                          i.productId === item.productId ? { ...i, price: newPrice } : i
+                        ))
+                      }}
+                      className="w-20 h-8 text-center text-sm mx-auto"
                     />
                     <p className="font-semibold text-right text-sm">{formatCurrency(item.price * item.quantity)}</p>
                     <Button variant="ghost" size="icon" onClick={() => setOrderItems(orderItems.filter((i) => i.productId !== item.productId))} className="h-8 w-8 text-destructive">
@@ -481,6 +575,44 @@ export default function AdminNuevoPedidoPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+function ClientOrderHistory({ clientId }: { clientId: string }) {
+  const [orders, setOrders] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const supabase = createClient()
+
+  useEffect(() => {
+    supabase
+      .from("orders")
+      .select("id, order_number_serial, status, total, created_at")
+      .eq("client_id", clientId)
+      .order("created_at", { ascending: false })
+      .limit(5)
+      .then(({ data }) => {
+        setOrders(data || [])
+        setLoading(false)
+      })
+  }, [clientId])
+
+  if (loading) return null
+  if (orders.length === 0) return null
+
+  return (
+    <div className="mt-2 p-3 bg-gray-50 rounded-lg border">
+      <p className="text-xs font-semibold text-gray-500 mb-2">Últimos pedidos del cliente:</p>
+      <div className="space-y-1">
+        {orders.map((o) => (
+          <div key={o.id} className="flex items-center justify-between text-xs">
+            <span className="font-medium">{o.order_number_serial || o.id.slice(0, 8)}</span>
+            <span className="text-gray-500">{new Date(o.created_at).toLocaleDateString("es-AR")}</span>
+            <Badge variant="outline" className="text-xs">{o.status}</Badge>
+            <span className="font-medium">{formatCurrency(Number(o.total) || 0)}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
