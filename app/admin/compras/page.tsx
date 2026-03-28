@@ -100,7 +100,6 @@ export default function ComprasPage() {
   }, [])
 
   // --- Compras derived data ---
-  const estadosCompras = [...new Set(compras.map((c) => c.estado).filter(Boolean))]
   const vendedoresUnicos = [...new Set(compras.map((c) => c.vendedor).filter(Boolean))]
 
   const comprasFiltradas = compras.filter((c) => {
@@ -127,7 +126,6 @@ export default function ComprasPage() {
   const otrasCompras = totalComprasCount - pendientesCompras - recibidasCompras
 
   // --- Ordenes derived data ---
-  const estadosOrdenes = [...new Set(ordenes.map((o) => o.estado).filter(Boolean))]
   const razonesSociales = [...new Set(ordenes.map((o) => o.razon_social).filter(Boolean))]
 
   const ordenesFiltradas = ordenes.filter((o) => {
@@ -307,7 +305,7 @@ export default function ComprasPage() {
               className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
             >
               <option value="">Todos los estados</option>
-              {estadosCompras.map((e) => (
+              {ESTADOS_OC.map((e) => (
                 <option key={e} value={e}>{e}</option>
               ))}
             </select>
@@ -342,10 +340,12 @@ export default function ComprasPage() {
                     <tr>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 75 }}>Fecha</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 120 }}>Proveedor</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 180 }}>Articulo</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 160 }}>Articulo</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 75 }}>Vendedor</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 120 }}>Estado</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 70 }}>Nro NP</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>Nro Fact. Prov.</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>F. Recepción</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 60 }}>Nro NP</th>
                       <th className="px-2 py-3 text-center font-semibold text-gray-700" style={{ width: 70 }}>Acciones</th>
                     </tr>
                   </thead>
@@ -382,6 +382,45 @@ export default function ComprasPage() {
                               <option key={e} value={e}>{e}</option>
                             ))}
                           </select>
+                        </td>
+                        <td className="px-2 py-1">
+                          {(c.estado === "Recibido Completo" || c.estado === "Recibido Incompleto" || c.estado === "Factura Cargada") ? (
+                            <input
+                              type="text"
+                              value={c.nro_factura_proveedor || ""}
+                              placeholder="Nro factura..."
+                              onChange={async (e) => {
+                                const val = e.target.value
+                                setCompras((prev) => prev.map((x) => x.id === c.id ? { ...x, nro_factura_proveedor: val } : x))
+                              }}
+                              onBlur={async (e) => {
+                                try {
+                                  await updateCompra(c.id, { nro_factura_proveedor: e.target.value })
+                                } catch (err) {
+                                  console.error("Error guardando nro factura:", err)
+                                }
+                              }}
+                              className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
+                            />
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-1">
+                          <input
+                            type="date"
+                            value={c.fecha_recepcion || ""}
+                            onChange={async (e) => {
+                              const val = e.target.value
+                              setCompras((prev) => prev.map((x) => x.id === c.id ? { ...x, fecha_recepcion: val } : x))
+                              try {
+                                await updateCompra(c.id, { fecha_recepcion: val || null })
+                              } catch (err) {
+                                console.error("Error guardando fecha recepción:", err)
+                              }
+                            }}
+                            className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
+                          />
                         </td>
                         <td className="px-2 py-2 text-gray-600 truncate text-xs">{c.nro_nota_pedido || "-"}</td>
                         <td className="px-1 py-2 text-center">
@@ -472,7 +511,7 @@ export default function ComprasPage() {
               className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
             >
               <option value="">Todos los estados</option>
-              {estadosOrdenes.map((e) => (
+              {ESTADOS_OC.map((e) => (
                 <option key={e} value={e}>{e}</option>
               ))}
             </select>
@@ -495,12 +534,14 @@ export default function ComprasPage() {
                 <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
                   <thead className="bg-gray-100">
                     <tr>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>Fecha</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 130 }}>Proveedor</th>
-                      <th className="px-2 py-3 text-right font-semibold text-gray-700" style={{ width: 90 }}>Importe</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 130 }}>Estado</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 70 }}>Nro OC</th>
-                      <th className="px-2 py-3 text-center font-semibold text-gray-700" style={{ width: 80 }}>Acciones</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 75 }}>Fecha</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 120 }}>Proveedor</th>
+                      <th className="px-2 py-3 text-right font-semibold text-gray-700" style={{ width: 85 }}>Importe</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 120 }}>Estado</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>Nro Fact. Prov.</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>F. Recepción</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 60 }}>Nro OC</th>
+                      <th className="px-2 py-3 text-center font-semibold text-gray-700" style={{ width: 75 }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -533,6 +574,45 @@ export default function ComprasPage() {
                               <option key={e} value={e}>{e}</option>
                             ))}
                           </select>
+                        </td>
+                        <td className="px-2 py-1">
+                          {(o.estado === "Recibido Completo" || o.estado === "Recibido Incompleto" || o.estado === "Factura Cargada") ? (
+                            <input
+                              type="text"
+                              value={o.nro_factura_proveedor || ""}
+                              placeholder="Nro factura..."
+                              onChange={async (e) => {
+                                const val = e.target.value
+                                setOrdenes((prev) => prev.map((x) => x.id === o.id ? { ...x, nro_factura_proveedor: val } : x))
+                              }}
+                              onBlur={async (e) => {
+                                try {
+                                  await updateOrdenCompra(o.id, { nro_factura_proveedor: e.target.value })
+                                } catch (err) {
+                                  console.error("Error guardando nro factura:", err)
+                                }
+                              }}
+                              className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
+                            />
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-1">
+                          <input
+                            type="date"
+                            value={o.fecha_recepcion || ""}
+                            onChange={async (e) => {
+                              const val = e.target.value
+                              setOrdenes((prev) => prev.map((x) => x.id === o.id ? { ...x, fecha_recepcion: val } : x))
+                              try {
+                                await updateOrdenCompra(o.id, { fecha_recepcion: val || null })
+                              } catch (err) {
+                                console.error("Error guardando fecha recepción:", err)
+                              }
+                            }}
+                            className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
+                          />
                         </td>
                         <td className="px-2 py-2 text-gray-600 truncate text-xs">{o.nro_oc || "-"}</td>
                         <td className="px-1 py-2 text-center">
