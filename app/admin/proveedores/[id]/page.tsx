@@ -18,9 +18,10 @@ import {
   fetchCompras,
   fetchPagosProveedores,
   fetchReclamos,
+  updateProveedor,
 } from "@/lib/supabase/queries"
 import { formatCurrency } from "@/lib/utils"
-import { ArrowLeft, Edit, MessageCircle } from "lucide-react"
+import { ArrowLeft, Edit, MessageCircle, Save } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
@@ -37,6 +38,8 @@ export default function AdminProveedorDetailPage({
   const [reclamos, setReclamos] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [notFoundState, setNotFoundState] = useState(false)
+  const [observacionesPagos, setObservacionesPagos] = useState("")
+  const [savingObs, setSavingObs] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -55,6 +58,7 @@ export default function AdminProveedorDetailPage({
         }
 
         setProveedor(proveedorData)
+        setObservacionesPagos(proveedorData.observaciones_pagos || "")
 
         // Filter by proveedor_id or proveedor_nombre
         setCompras(
@@ -282,6 +286,39 @@ export default function AdminProveedorDetailPage({
             <p>No hay pagos registrados</p>
           </div>
         )}
+      </Card>
+
+      {/* Observaciones de Pagos */}
+      <Card className="p-6">
+        <h3 className="text-lg font-semibold mb-4">Observaciones de Pagos</h3>
+        <textarea
+          value={observacionesPagos}
+          onChange={(e) => setObservacionesPagos(e.target.value)}
+          className="w-full p-3 border rounded-lg text-sm focus:ring-2 focus:ring-primary min-h-[100px]"
+          placeholder="Notas sobre pagos a este proveedor..."
+          rows={4}
+        />
+        <div className="mt-3 flex justify-end">
+          <Button
+            size="sm"
+            disabled={savingObs}
+            onClick={async () => {
+              setSavingObs(true)
+              try {
+                await updateProveedor(id, { observaciones_pagos: observacionesPagos })
+                alert("Observaciones guardadas")
+              } catch (err) {
+                console.error("Error guardando observaciones:", err)
+                alert("Error al guardar")
+              } finally {
+                setSavingObs(false)
+              }
+            }}
+          >
+            <Save className="h-4 w-4 mr-2" />
+            {savingObs ? "Guardando..." : "Guardar Observaciones"}
+          </Button>
+        </div>
       </Card>
 
       {/* Reclamos */}
