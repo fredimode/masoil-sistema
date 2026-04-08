@@ -309,6 +309,12 @@ export async function deleteProduct(id: string): Promise<void> {
   if (error) throw error
 }
 
+export async function deleteProducts(ids: string[]): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("products").delete().in("id", ids)
+  if (error) throw error
+}
+
 // ---------------------------------------------------------------------------
 // Clients
 // ---------------------------------------------------------------------------

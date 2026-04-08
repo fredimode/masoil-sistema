@@ -8,10 +8,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
-import { fetchProducts, fetchProductsCount, updateProduct, deleteProduct } from "@/lib/supabase/queries"
+import { fetchProducts, fetchProductsCount, updateProduct, deleteProduct, deleteProducts } from "@/lib/supabase/queries"
 import { normalizeSearch } from "@/lib/utils"
 import type { Product } from "@/lib/types"
-import { Search, Plus, Download, Upload } from "lucide-react"
+import { Search, Plus, Download, Upload, Trash2 } from "lucide-react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
 
@@ -25,6 +25,9 @@ export default function AdminStockPage() {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
   const [totalProductsCount, setTotalProductsCount] = useState(0)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -52,8 +55,26 @@ export default function AdminStockPage() {
       await deleteProduct(id)
       const updated = await fetchProducts()
       setLocalProducts(updated)
+      selectedIds.delete(id)
+      setSelectedIds(new Set(selectedIds))
     } catch (err) {
       console.error("Error deleting product:", err)
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return
+    setBulkDeleting(true)
+    try {
+      await deleteProducts(Array.from(selectedIds))
+      const updated = await fetchProducts()
+      setLocalProducts(updated)
+      setSelectedIds(new Set())
+      setShowBulkDeleteConfirm(false)
+    } catch (err) {
+      console.error("Error deleting products:", err)
+    } finally {
+      setBulkDeleting(false)
     }
   }
 
@@ -247,10 +268,32 @@ export default function AdminStockPage() {
         </Select>
       </div>
 
+      {/* Bulk Actions Bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <span className="text-sm font-medium">
+            {selectedIds.size} producto{selectedIds.size !== 1 ? "s" : ""} seleccionado{selectedIds.size !== 1 ? "s" : ""}
+          </span>
+          <Button variant="destructive" size="sm" onClick={() => setShowBulkDeleteConfirm(true)}>
+            <Trash2 className="h-4 w-4 mr-2" />
+            Eliminar seleccionados
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+            Deseleccionar todo
+          </Button>
+        </div>
+      )}
+
       {/* Products Table */}
       {paginatedProducts.length > 0 ? (
         <>
-          <ProductTable products={paginatedProducts} onUpdate={handleUpdateProduct} onDelete={handleDeleteProduct} />
+          <ProductTable
+            products={paginatedProducts}
+            onUpdate={handleUpdateProduct}
+            onDelete={handleDeleteProduct}
+            selectedIds={selectedIds}
+            onSelectionChange={setSelectedIds}
+          />
           <TablePagination
             currentPage={currentPage}
             totalPages={totalPages}
@@ -264,6 +307,24 @@ export default function AdminStockPage() {
           <p>No se encontraron productos</p>
         </div>
       )}
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <Dialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar productos</DialogTitle>
+            <DialogDescription>
+              Estas seguro de eliminar <strong>{selectedIds.size}</strong> producto{selectedIds.size !== 1 ? "s" : ""}? Esta accion no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkDeleteConfirm(false)} disabled={bulkDeleting}>Cancelar</Button>
+            <Button variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleting}>
+              {bulkDeleting ? "Eliminando..." : `Eliminar ${selectedIds.size}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* CSV Preview Dialog */}
       <Dialog open={!!csvPreview} onOpenChange={(open) => !open && setCsvPreview(null)}>

@@ -3,6 +3,7 @@ import { useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { StockIndicator } from "@/components/vendedor/stock-indicator"
 import { formatCurrency, cn } from "@/lib/utils"
@@ -13,13 +14,39 @@ interface ProductTableProps {
   products: Product[]
   onUpdate?: (id: string, data: { price: number; stock: number }) => void
   onDelete?: (id: string) => void
+  selectedIds?: Set<string>
+  onSelectionChange?: (ids: Set<string>) => void
 }
 
-export function ProductTable({ products, onUpdate, onDelete }: ProductTableProps) {
+export function ProductTable({ products, onUpdate, onDelete, selectedIds, onSelectionChange }: ProductTableProps) {
   const [editProduct, setEditProduct] = useState<Product | null>(null)
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null)
   const [editPrice, setEditPrice] = useState("")
   const [editStock, setEditStock] = useState("")
+
+  const allSelected = products.length > 0 && selectedIds != null && products.every((p) => selectedIds.has(p.id))
+  const someSelected = selectedIds != null && products.some((p) => selectedIds.has(p.id)) && !allSelected
+
+  function toggleAll() {
+    if (!onSelectionChange) return
+    if (allSelected) {
+      const next = new Set(selectedIds)
+      products.forEach((p) => next.delete(p.id))
+      onSelectionChange(next)
+    } else {
+      const next = new Set(selectedIds)
+      products.forEach((p) => next.add(p.id))
+      onSelectionChange(next)
+    }
+  }
+
+  function toggleOne(id: string) {
+    if (!onSelectionChange || !selectedIds) return
+    const next = new Set(selectedIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    onSelectionChange(next)
+  }
 
   function openEdit(product: Product) {
     setEditProduct(product)
@@ -48,6 +75,15 @@ export function ProductTable({ products, onUpdate, onDelete }: ProductTableProps
         <Table>
           <TableHeader>
             <TableRow>
+              {onSelectionChange && (
+                <TableHead className="w-12">
+                  <Checkbox
+                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                    onCheckedChange={toggleAll}
+                    aria-label="Seleccionar todos"
+                  />
+                </TableHead>
+              )}
               <TableHead className="w-32">Codigo</TableHead>
               <TableHead>Nombre</TableHead>
               <TableHead>Categoria</TableHead>
@@ -73,8 +109,18 @@ export function ProductTable({ products, onUpdate, onDelete }: ProductTableProps
                     isCritical && "bg-red-50",
                     isLow && "bg-yellow-50",
                     isOutOfStock && "bg-gray-50 opacity-60",
+                    selectedIds?.has(product.id) && "bg-blue-50",
                   )}
                 >
+                  {onSelectionChange && (
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedIds?.has(product.id) ?? false}
+                        onCheckedChange={() => toggleOne(product.id)}
+                        aria-label={`Seleccionar ${product.name}`}
+                      />
+                    </TableCell>
+                  )}
                   <TableCell className="font-mono text-sm font-medium">{product.code}</TableCell>
                   <TableCell className="font-medium">{product.name}</TableCell>
                   <TableCell>
