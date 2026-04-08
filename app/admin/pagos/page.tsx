@@ -43,6 +43,8 @@ export default function PagosPage() {
   const [filtroEstado, setFiltroEstado] = useState("Todos")
   const [filtroEmpresaPagos, setFiltroEmpresaPagos] = useState("Todos")
   const [filtroFormaPago, setFiltroFormaPago] = useState("Todos")
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState("")
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState("")
 
   // Filtros reclamos
   const [busquedaReclamos, setBusquedaReclamos] = useState("")
@@ -214,9 +216,12 @@ export default function PagosPage() {
       const matchEstado = filtroEstado === "Todos" || p.estado_pago === filtroEstado
       const matchEmpresa = filtroEmpresaPagos === "Todos" || p.empresa === filtroEmpresaPagos
       const matchForma = filtroFormaPago === "Todos" || p.forma_pago === filtroFormaPago
-      return matchBusqueda && matchEstado && matchEmpresa && matchForma
+      const fechaPago = p.created_at ? p.created_at.slice(0, 10) : ""
+      const matchFechaDesde = !filtroFechaDesde || fechaPago >= filtroFechaDesde
+      const matchFechaHasta = !filtroFechaHasta || fechaPago <= filtroFechaHasta
+      return matchBusqueda && matchEstado && matchEmpresa && matchForma && matchFechaDesde && matchFechaHasta
     })
-  }, [pagos, busquedaPagos, filtroEstado, filtroEmpresaPagos, filtroFormaPago])
+  }, [pagos, busquedaPagos, filtroEstado, filtroEmpresaPagos, filtroFormaPago, filtroFechaDesde, filtroFechaHasta])
 
   // Filtrado reclamos
   const reclamosFiltrados = useMemo(() => {
@@ -364,6 +369,12 @@ export default function PagosPage() {
                   <option key={f} value={f}>{f}</option>
                 ))}
               </select>
+              <div className="flex items-center gap-1">
+                <label className="text-xs text-gray-500 whitespace-nowrap">Fecha lote:</label>
+                <input type="date" value={filtroFechaDesde} onChange={(e) => { setFiltroFechaDesde(e.target.value); setPagosPage(1) }} className="p-2 border rounded-lg text-sm" />
+                <span className="text-xs text-gray-400">a</span>
+                <input type="date" value={filtroFechaHasta} onChange={(e) => { setFiltroFechaHasta(e.target.value); setPagosPage(1) }} className="p-2 border rounded-lg text-sm" />
+              </div>
               <button onClick={exportarPagosXLSX} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">Exportar XLSX</button>
               <Link href="/admin/pagos/nuevo" className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium">+ Nuevo Pago</Link>
             </div>
@@ -390,6 +401,7 @@ export default function PagosPage() {
                       <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[90px]">Estado</th>
                       <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[50px]" title="Comprobante">Adj</th>
                       <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[80px]">Email</th>
+                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[50px]" title="Orden de Pago">OP</th>
                       <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[100px]">Acciones</th>
                     </tr>
                   </thead>
@@ -431,6 +443,21 @@ export default function PagosPage() {
                               {enviandoEmail === p.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
                             </button>
                           )}
+                        </td>
+                        <td className="px-2 py-3 text-center">
+                          {p.orden_pago_url ? (
+                            <button
+                              onClick={async () => {
+                                const supabaseOP = createClient()
+                                const { data } = await supabaseOP.storage.from("comprobantes").createSignedUrl(p.orden_pago_url, 60)
+                                if (data?.signedUrl) window.open(data.signedUrl, "_blank")
+                              }}
+                              className="p-1 hover:bg-blue-100 rounded text-xs text-blue-600"
+                              title={`Ver ${p.orden_pago_numero || "OP"}`}
+                            >
+                              <Paperclip className="h-3.5 w-3.5" />
+                            </button>
+                          ) : <span className="text-gray-300 text-xs">-</span>}
                         </td>
                         <td className="px-3 py-3 text-center">
                           <div className="flex items-center justify-center gap-1">
@@ -636,6 +663,9 @@ export default function PagosPage() {
               <div><strong>Estado:</strong> {viewingPago.estado_pago || "-"}</div>
               <div><strong>Banco:</strong> {viewingPago.banco || "-"}</div>
               <div><strong>Origen:</strong> {viewingPago.origen || "-"}</div>
+              {viewingPago.orden_pago_numero && (
+                <div><strong>Orden de Pago:</strong> {viewingPago.orden_pago_numero}</div>
+              )}
             </div>
           )}
         </DialogContent>
