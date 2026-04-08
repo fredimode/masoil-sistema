@@ -33,6 +33,13 @@ function estadoBadge(estado: string) {
   return <Badge variant="outline">{estado || "-"}</Badge>
 }
 
+const PROVINCIAS_ARGENTINA = [
+  "Buenos Aires", "CABA", "Catamarca", "Chaco", "Chubut", "Córdoba", "Corrientes",
+  "Entre Ríos", "Formosa", "Jujuy", "La Pampa", "La Rioja", "Mendoza", "Misiones",
+  "Neuquén", "Río Negro", "Salta", "San Juan", "San Luis", "Santa Cruz", "Santa Fe",
+  "Santiago del Estero", "Tierra del Fuego", "Tucumán",
+]
+
 const INITIAL_FORM = {
   proveedor_id: "",
   proveedor_nombre: "",
@@ -45,8 +52,13 @@ const INITIAL_FORM = {
   fecha_vencimiento: "",
   neto: "",
   iva: "",
+  iva_105: "",
+  iva_27: "",
   percepciones_iva: "",
   percepciones_iibb: "",
+  jurisdiccion_iibb: "",
+  impuestos_internos: "",
+  exentos_no_gravados: "",
   otros_impuestos: "",
   total: "",
   razon_social: "",
@@ -147,37 +159,40 @@ export default function FacturasProveedorPage() {
   function handleNetoChange(value: string) {
     const neto = parseFloat(value) || 0
     const iva = Math.round(neto * 0.21 * 100) / 100
-    setForm((prev) => ({
-      ...prev,
-      neto: value,
-      iva: iva.toString(),
-      total: calcTotal(value, iva.toString(), prev.percepciones_iva, prev.percepciones_iibb, prev.otros_impuestos),
-    }))
+    setForm((prev) => {
+      const next = { ...prev, neto: value, iva: iva.toString() }
+      next.total = calcTotal(next)
+      return next
+    })
   }
 
   function handleIvaChange(value: string) {
-    setForm((prev) => ({
-      ...prev,
-      iva: value,
-      total: calcTotal(prev.neto, value, prev.percepciones_iva, prev.percepciones_iibb, prev.otros_impuestos),
-    }))
+    setForm((prev) => {
+      const next = { ...prev, iva: value }
+      next.total = calcTotal(next)
+      return next
+    })
   }
 
   function handleImpuestoChange(field: string, value: string) {
     setForm((prev) => {
       const next = { ...prev, [field]: value }
-      next.total = calcTotal(next.neto, next.iva, next.percepciones_iva, next.percepciones_iibb, next.otros_impuestos)
+      next.total = calcTotal(next)
       return next
     })
   }
 
-  function calcTotal(neto: string, iva: string, percIva: string, percIibb: string, otros: string) {
+  function calcTotal(f: typeof INITIAL_FORM) {
     const sum =
-      (parseFloat(neto) || 0) +
-      (parseFloat(iva) || 0) +
-      (parseFloat(percIva) || 0) +
-      (parseFloat(percIibb) || 0) +
-      (parseFloat(otros) || 0)
+      (parseFloat(f.neto) || 0) +
+      (parseFloat(f.iva) || 0) +
+      (parseFloat(f.iva_105) || 0) +
+      (parseFloat(f.iva_27) || 0) +
+      (parseFloat(f.percepciones_iva) || 0) +
+      (parseFloat(f.percepciones_iibb) || 0) +
+      (parseFloat(f.impuestos_internos) || 0) +
+      (parseFloat(f.exentos_no_gravados) || 0) +
+      (parseFloat(f.otros_impuestos) || 0)
     return (Math.round(sum * 100) / 100).toString()
   }
 
@@ -213,8 +228,13 @@ export default function FacturasProveedorPage() {
         fecha_vencimiento: form.fecha_vencimiento || null,
         neto: parseFloat(form.neto) || 0,
         iva: parseFloat(form.iva) || 0,
+        iva_105: parseFloat(form.iva_105) || 0,
+        iva_27: parseFloat(form.iva_27) || 0,
         percepciones_iva: parseFloat(form.percepciones_iva) || 0,
         percepciones_iibb: parseFloat(form.percepciones_iibb) || 0,
+        jurisdiccion_iibb: form.jurisdiccion_iibb || null,
+        impuestos_internos: parseFloat(form.impuestos_internos) || 0,
+        exentos_no_gravados: parseFloat(form.exentos_no_gravados) || 0,
         otros_impuestos: parseFloat(form.otros_impuestos) || 0,
         total: totalNum,
         saldo_pendiente: totalNum,
@@ -385,10 +405,15 @@ export default function FacturasProveedorPage() {
                       {f.tipo === "NOTA_CREDITO" && (
                         <Badge className="ml-1 bg-purple-100 text-purple-800 border-purple-200 text-[10px]">NC</Badge>
                       )}
+                      {f.tipo === "NOTA_DEBITO" && (
+                        <Badge className="ml-1 bg-orange-100 text-orange-800 border-orange-200 text-[10px]">ND</Badge>
+                      )}
                     </td>
                     <td className="px-2 py-2 text-gray-600 text-xs">
                       {f.tipo === "NOTA_CREDITO" ? (
                         <Badge className="bg-purple-100 text-purple-800 border-purple-200 text-[10px]">Nota de Credito</Badge>
+                      ) : f.tipo === "NOTA_DEBITO" ? (
+                        <Badge className="bg-orange-100 text-orange-800 border-orange-200 text-[10px]">Nota de Debito</Badge>
                       ) : (
                         "Factura"
                       )}
@@ -515,6 +540,7 @@ export default function FacturasProveedorPage() {
                 >
                   <option value="FACTURA">Factura</option>
                   <option value="NOTA_CREDITO">Nota de Credito</option>
+                  <option value="NOTA_DEBITO">Nota de Debito</option>
                 </select>
               </div>
               <div>
@@ -577,7 +603,7 @@ export default function FacturasProveedorPage() {
               </div>
             </div>
 
-            {/* Neto + IVA */}
+            {/* Neto + IVA 21% */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Neto *</label>
@@ -591,7 +617,7 @@ export default function FacturasProveedorPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">IVA (21%)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">IVA 21%</label>
                 <input
                   type="number"
                   step="0.01"
@@ -603,8 +629,34 @@ export default function FacturasProveedorPage() {
               </div>
             </div>
 
-            {/* Percepciones + Otros */}
-            <div className="grid grid-cols-3 gap-3">
+            {/* IVA 10.5% + IVA 27% */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">IVA 10.5%</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.iva_105}
+                  onChange={(e) => handleImpuestoChange("iva_105", e.target.value)}
+                  placeholder="0.00"
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">IVA 27%</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.iva_27}
+                  onChange={(e) => handleImpuestoChange("iva_27", e.target.value)}
+                  placeholder="0.00"
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Percepciones */}
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Perc. IVA</label>
                 <input
@@ -623,6 +675,49 @@ export default function FacturasProveedorPage() {
                   step="0.01"
                   value={form.percepciones_iibb}
                   onChange={(e) => handleImpuestoChange("percepciones_iibb", e.target.value)}
+                  placeholder="0.00"
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Jurisdicción IIBB */}
+            {(parseFloat(form.percepciones_iibb) || 0) > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Jurisdicción IIBB</label>
+                <select
+                  value={form.jurisdiccion_iibb}
+                  onChange={(e) => setForm((prev) => ({ ...prev, jurisdiccion_iibb: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                >
+                  <option value="">Seleccionar provincia...</option>
+                  {PROVINCIAS_ARGENTINA.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Impuestos Internos + Exentos */}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Imp. Internos</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.impuestos_internos}
+                  onChange={(e) => handleImpuestoChange("impuestos_internos", e.target.value)}
+                  placeholder="0.00"
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Exentos / No Gravados</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.exentos_no_gravados}
+                  onChange={(e) => handleImpuestoChange("exentos_no_gravados", e.target.value)}
                   placeholder="0.00"
                   className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
@@ -720,6 +815,9 @@ export default function FacturasProveedorPage() {
               {viewing?.tipo === "NOTA_CREDITO" && (
                 <Badge className="ml-2 bg-purple-100 text-purple-800 border-purple-200">(Nota de Credito)</Badge>
               )}
+              {viewing?.tipo === "NOTA_DEBITO" && (
+                <Badge className="ml-2 bg-orange-100 text-orange-800 border-orange-200">(Nota de Debito)</Badge>
+              )}
             </DialogTitle>
           </DialogHeader>
           {viewing && (
@@ -727,7 +825,7 @@ export default function FacturasProveedorPage() {
               <div className="grid grid-cols-2 gap-2">
                 <div><span className="text-gray-500">Proveedor:</span> <span className="font-medium">{viewing.proveedor_nombre}</span></div>
                 <div><span className="text-gray-500">CUIT:</span> <span className="font-medium">{viewing.cuit || "-"}</span></div>
-                <div><span className="text-gray-500">Tipo:</span> <span className="font-medium">{viewing.tipo === "NOTA_CREDITO" ? "Nota de Credito" : "Factura"}</span></div>
+                <div><span className="text-gray-500">Tipo:</span> <span className="font-medium">{viewing.tipo === "NOTA_CREDITO" ? "Nota de Credito" : viewing.tipo === "NOTA_DEBITO" ? "Nota de Debito" : "Factura"}</span></div>
                 <div><span className="text-gray-500">Letra:</span> <span className="font-medium">{viewing.letra || "-"}</span></div>
                 <div><span className="text-gray-500">PV-Numero:</span> <span className="font-medium">{viewing.punto_venta || "-"}-{viewing.numero || "-"}</span></div>
                 <div><span className="text-gray-500">Fecha:</span> <span className="font-medium">{viewing.fecha ? new Date(viewing.fecha).toLocaleDateString("es-AR") : "-"}</span></div>
@@ -737,11 +835,15 @@ export default function FacturasProveedorPage() {
               <hr />
               <div className="grid grid-cols-2 gap-2">
                 <div><span className="text-gray-500">Neto:</span> <span className="font-medium">{formatCurrency(Number(viewing.neto) || 0)}</span></div>
-                <div><span className="text-gray-500">IVA:</span> <span className="font-medium">{formatCurrency(Number(viewing.iva) || 0)}</span></div>
+                <div><span className="text-gray-500">IVA 21%:</span> <span className="font-medium">{formatCurrency(Number(viewing.iva) || 0)}</span></div>
+                {Number(viewing.iva_105) > 0 && <div><span className="text-gray-500">IVA 10.5%:</span> <span className="font-medium">{formatCurrency(Number(viewing.iva_105))}</span></div>}
+                {Number(viewing.iva_27) > 0 && <div><span className="text-gray-500">IVA 27%:</span> <span className="font-medium">{formatCurrency(Number(viewing.iva_27))}</span></div>}
                 <div><span className="text-gray-500">Perc. IVA:</span> <span className="font-medium">{formatCurrency(Number(viewing.percepciones_iva) || 0)}</span></div>
-                <div><span className="text-gray-500">Perc. IIBB:</span> <span className="font-medium">{formatCurrency(Number(viewing.percepciones_iibb) || 0)}</span></div>
+                <div><span className="text-gray-500">Perc. IIBB:</span> <span className="font-medium">{formatCurrency(Number(viewing.percepciones_iibb) || 0)}{viewing.jurisdiccion_iibb ? ` (${viewing.jurisdiccion_iibb})` : ""}</span></div>
+                {Number(viewing.impuestos_internos) > 0 && <div><span className="text-gray-500">Imp. Internos:</span> <span className="font-medium">{formatCurrency(Number(viewing.impuestos_internos))}</span></div>}
+                {Number(viewing.exentos_no_gravados) > 0 && <div><span className="text-gray-500">Exentos/No Grav.:</span> <span className="font-medium">{formatCurrency(Number(viewing.exentos_no_gravados))}</span></div>}
                 <div><span className="text-gray-500">Otros Imp.:</span> <span className="font-medium">{formatCurrency(Number(viewing.otros_impuestos) || 0)}</span></div>
-                <div><span className="text-gray-500 font-semibold">Total:</span> <span className="font-bold">{formatCurrency(Number(viewing.total) || 0)}</span></div>
+                <div className="col-span-2"><span className="text-gray-500 font-semibold">Total:</span> <span className="font-bold">{formatCurrency(Number(viewing.total) || 0)}</span></div>
               </div>
               <hr />
               <div className="grid grid-cols-2 gap-2">
