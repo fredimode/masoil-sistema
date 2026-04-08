@@ -49,6 +49,8 @@ export default function AdminNuevoPedidoPage() {
   const [notes, setNotes] = useState("")
   const [isUrgent, setIsUrgent] = useState(false)
   const [isCustom, setIsCustom] = useState(false)
+  const [razonSocial, setRazonSocial] = useState("")
+  const [observacionesIncompleto, setObservacionesIncompleto] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
   // Inline product creation
@@ -243,11 +245,23 @@ export default function AdminNuevoPedidoPage() {
           quantity: i.quantity,
           price: i.price,
         })),
+        razonSocial,
       })
 
-      // If items need cotizacion, update the order flag
-      if (hayItemsCotizacion) {
-        await supabase.from("orders").update({ requiere_cotizacion: true }).eq("id", orderId)
+      // Update additional fields
+      const updateFields: Record<string, any> = {}
+      if (hayItemsCotizacion) updateFields.requiere_cotizacion = true
+      if (razonSocial) updateFields.razon_social = razonSocial
+
+      // Check if order is incomplete (items with stock < quantity)
+      const itemsSinStock = orderItems.filter((i) => i.stock < i.quantity)
+      if (itemsSinStock.length > 0) {
+        updateFields.es_incompleto = true
+        updateFields.observaciones_incompleto = observacionesIncompleto || `Stock insuficiente para: ${itemsSinStock.map((i) => i.productName).join(", ")}`
+      }
+
+      if (Object.keys(updateFields).length > 0) {
+        await supabase.from("orders").update(updateFields).eq("id", orderId)
       }
 
       router.push(`/admin/pedidos/${orderId}`)
@@ -276,7 +290,7 @@ export default function AdminNuevoPedidoPage() {
         {/* 1. Vendedor y Cliente */}
         <Card className="p-6">
           <h2 className="text-lg font-semibold mb-4">1. Vendedor y Cliente</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div className="space-y-2">
               <Label>Vendedor</Label>
               <Select value={selectedVendedorId} onValueChange={setSelectedVendedorId}>
@@ -285,6 +299,17 @@ export default function AdminNuevoPedidoPage() {
                   {activeVendedores.map((v) => (
                     <SelectItem key={v.id} value={v.id}>{v.name} - {v.zonas.join(", ")}</SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Razón Social</Label>
+              <Select value={razonSocial} onValueChange={setRazonSocial}>
+                <SelectTrigger><SelectValue placeholder="Seleccionar empresa..." /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Masoil">Masoil</SelectItem>
+                  <SelectItem value="Aquiles">Aquiles</SelectItem>
+                  <SelectItem value="Conancap">Conancap</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -485,11 +510,21 @@ export default function AdminNuevoPedidoPage() {
           )}
 
           {hayItemsCotizacion && (
-            <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="mt-3 bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2">
               <p className="text-sm text-amber-800">
                 <AlertTriangle className="inline h-4 w-4 mr-1" />
-                Hay items con stock insuficiente marcados para cotizar. El pedido se creará con <strong>requiere_cotizacion = true</strong>.
+                Stock insuficiente para {orderItems.filter((i) => i.stock < i.quantity).length} producto(s). El pedido se marcará como <strong>INCOMPLETO</strong>.
               </p>
+              <div>
+                <Label className="text-xs text-amber-700">Observaciones del pedido incompleto</Label>
+                <Textarea
+                  value={observacionesIncompleto}
+                  onChange={(e) => setObservacionesIncompleto(e.target.value)}
+                  placeholder="Explicar qué falta o qué productos no tienen stock..."
+                  rows={2}
+                  className="mt-1 text-sm"
+                />
+              </div>
             </div>
           )}
         </Card>

@@ -65,6 +65,9 @@ export interface Order {
   updatedAt: Date
   statusHistory: StatusChange[]
   isUrgent: boolean
+  razonSocial?: string
+  esIncompleto?: boolean
+  observacionesIncompleto?: string
 }
 
 export interface Client {

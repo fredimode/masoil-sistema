@@ -19,6 +19,9 @@ function mapOrder(row: any): Order {
     notes: row.notes || "",
     isCustom: row.is_custom,
     isUrgent: row.is_urgent,
+    razonSocial: row.razon_social || undefined,
+    esIncompleto: row.es_incompleto || false,
+    observacionesIncompleto: row.observaciones_incompleto || undefined,
     estimatedDelivery: row.estimated_delivery ? new Date(row.estimated_delivery) : new Date(),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -157,6 +160,7 @@ export async function createOrder(order: {
   isUrgent: boolean
   total: number
   items: { productId: string; productCode: string; productName: string; quantity: number; price: number }[]
+  razonSocial?: string
 }): Promise<string> {
   const supabase = createSupabaseClient()
 
@@ -194,6 +198,7 @@ export async function createOrder(order: {
       is_custom: order.isCustom,
       is_urgent: order.isUrgent,
       estimated_delivery: new Date(Date.now() + (order.isCustom ? 15 : 3) * 86400000).toISOString().slice(0, 10),
+      razon_social: order.razonSocial || null,
     })
     .select("id")
     .single()

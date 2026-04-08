@@ -62,6 +62,11 @@ export function OrderTable({ orders: initialOrders }: OrderTableProps) {
                       URG
                     </Badge>
                   )}
+                  {(order as any).esIncompleto && (
+                    <Badge className="ml-1 text-xs bg-amber-100 text-amber-800 border-amber-300">
+                      INCOMPLETO
+                    </Badge>
+                  )}
                 </TableCell>
                 <TableCell className="font-medium">{order.clientName}</TableCell>
                 <TableCell>

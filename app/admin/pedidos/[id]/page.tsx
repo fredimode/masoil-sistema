@@ -204,8 +204,23 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                 CUSTOMIZADO
               </Badge>
             )}
+            {o.esIncompleto && (
+              <Badge className="text-xs bg-amber-100 text-amber-800 border-amber-300">
+                PEDIDO INCOMPLETO
+              </Badge>
+            )}
+            {o.razonSocial && (
+              <Badge variant="outline" className="text-xs">
+                {o.razonSocial}
+              </Badge>
+            )}
           </div>
           <p className="text-muted-foreground">Creado el {formatDateTime(o.createdAt)}</p>
+          {o.esIncompleto && o.observacionesIncompleto && (
+            <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1">
+              {o.observacionesIncompleto}
+            </p>
+          )}
         </div>
         <div className="flex gap-2">
           <Button variant="outline">

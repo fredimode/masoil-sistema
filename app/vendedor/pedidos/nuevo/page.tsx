@@ -63,6 +63,7 @@ function NuevoPedidoContent() {
   const [quantity, setQuantity] = useState(1)
   const [notes, setNotes] = useState("")
   const [isUrgent, setIsUrgent] = useState(false)
+  const [razonSocial, setRazonSocial] = useState("")
   const [productSearch, setProductSearch] = useState("")
 
   // Filter clients for search
@@ -154,6 +155,7 @@ function NuevoPedidoContent() {
         isUrgent,
         total: subtotal,
         items: orderItems,
+        razonSocial,
       })
       router.push("/vendedor/pedidos")
     } catch (err) {
@@ -355,6 +357,18 @@ function NuevoPedidoContent() {
             <h2 className="text-lg font-semibold mb-4">3. Opciones</h2>
 
             <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Razón Social</Label>
+                <Select value={razonSocial} onValueChange={setRazonSocial}>
+                  <SelectTrigger><SelectValue placeholder="Seleccionar empresa..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Masoil">Masoil</SelectItem>
+                    <SelectItem value="Aquiles">Aquiles</SelectItem>
+                    <SelectItem value="Conancap">Conancap</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="notes">Observaciones</Label>
                 <Textarea
