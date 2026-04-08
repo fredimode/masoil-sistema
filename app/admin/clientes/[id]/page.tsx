@@ -6,11 +6,11 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
-import { fetchClientById, fetchOrders, fetchVendedores } from "@/lib/supabase/queries"
+import { fetchClientById, fetchOrders, fetchVendedores, updateClient } from "@/lib/supabase/queries"
 import type { Client, Order, Vendedor } from "@/lib/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { getStatusConfig } from "@/lib/status-config"
-import { ArrowLeft, Edit, MessageCircle, Phone, Mail, MapPin, CreditCard, FileText } from "lucide-react"
+import { ArrowLeft, Edit, MessageCircle, Phone, Mail, MapPin, CreditCard, FileText, Globe, Save } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
@@ -31,6 +31,17 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
     email: "",
     address: "",
   })
+
+  // Contactos de Cobranzas
+  const [cobranzasForm, setCobranzasForm] = useState({
+    cobranzas_mail: "",
+    cobranzas_telefono: "",
+    cobranzas_contacto: "",
+    cobranzas_observaciones: "",
+    portal_proveedores: false,
+    portal_proveedores_url: "",
+  })
+  const [savingCobranzas, setSavingCobranzas] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -55,6 +66,14 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
           whatsapp: clientData.whatsapp,
           email: clientData.email,
           address: clientData.address,
+        })
+        setCobranzasForm({
+          cobranzas_mail: (clientData as any).cobranzas_mail || "",
+          cobranzas_telefono: (clientData as any).cobranzas_telefono || "",
+          cobranzas_contacto: (clientData as any).cobranzas_contacto || "",
+          cobranzas_observaciones: (clientData as any).cobranzas_observaciones || "",
+          portal_proveedores: (clientData as any).portal_proveedores || false,
+          portal_proveedores_url: (clientData as any).portal_proveedores_url || "",
         })
       } catch (err) {
         console.error("Error loading client:", err)
@@ -88,6 +107,20 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
       address: client.address,
     })
     setEditOpen(true)
+  }
+
+  async function handleSaveCobranzas() {
+    if (!client) return
+    setSavingCobranzas(true)
+    try {
+      await updateClient(client.id, cobranzasForm)
+      alert("Contactos de cobranzas guardados")
+    } catch (err) {
+      console.error("Error guardando contactos cobranzas:", err)
+      alert("Error al guardar")
+    } finally {
+      setSavingCobranzas(false)
+    }
   }
 
   // Calculate metrics
@@ -302,6 +335,82 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
               </div>
             </Card>
           )}
+
+          {/* Contactos de Cobranzas */}
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Contactos de Cobranzas</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm text-muted-foreground block mb-1">Mail de cobranzas</label>
+                <input
+                  type="email"
+                  value={cobranzasForm.cobranzas_mail}
+                  onChange={(e) => setCobranzasForm((f) => ({ ...f, cobranzas_mail: e.target.value }))}
+                  className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary"
+                  placeholder="cobranzas@empresa.com"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground block mb-1">Teléfono de cobranzas</label>
+                <input
+                  type="text"
+                  value={cobranzasForm.cobranzas_telefono}
+                  onChange={(e) => setCobranzasForm((f) => ({ ...f, cobranzas_telefono: e.target.value }))}
+                  className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary"
+                  placeholder="+54 11 1234-5678"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground block mb-1">Persona de contacto</label>
+                <input
+                  type="text"
+                  value={cobranzasForm.cobranzas_contacto}
+                  onChange={(e) => setCobranzasForm((f) => ({ ...f, cobranzas_contacto: e.target.value }))}
+                  className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary"
+                  placeholder="Nombre del contacto"
+                />
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground block mb-1">Observaciones cobranzas</label>
+                <textarea
+                  value={cobranzasForm.cobranzas_observaciones}
+                  onChange={(e) => setCobranzasForm((f) => ({ ...f, cobranzas_observaciones: e.target.value }))}
+                  className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary"
+                  rows={2}
+                  placeholder="Notas..."
+                />
+              </div>
+              <Separator />
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={cobranzasForm.portal_proveedores}
+                    onChange={(e) => setCobranzasForm((f) => ({ ...f, portal_proveedores: e.target.checked }))}
+                    className="rounded"
+                  />
+                  <Globe className="h-4 w-4 text-muted-foreground" />
+                  Portal de proveedores para carga de FC
+                </label>
+              </div>
+              {cobranzasForm.portal_proveedores && (
+                <div>
+                  <label className="text-sm text-muted-foreground block mb-1">URL del portal</label>
+                  <input
+                    type="url"
+                    value={cobranzasForm.portal_proveedores_url}
+                    onChange={(e) => setCobranzasForm((f) => ({ ...f, portal_proveedores_url: e.target.value }))}
+                    className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary"
+                    placeholder="https://portal.empresa.com"
+                  />
+                </div>
+              )}
+              <Button onClick={handleSaveCobranzas} disabled={savingCobranzas} className="w-full" size="sm">
+                <Save className="h-4 w-4 mr-2" />
+                {savingCobranzas ? "Guardando..." : "Guardar Contactos Cobranzas"}
+              </Button>
+            </div>
+          </Card>
         </div>
       </div>
 

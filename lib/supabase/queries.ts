@@ -343,6 +343,12 @@ export async function fetchClientById(id: string): Promise<Client | null> {
   return mapClient(data)
 }
 
+export async function updateClient(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("clients").update(updates).eq("id", id)
+  if (error) throw error
+}
+
 export async function fetchClientsByVendedor(vendedorId: string): Promise<Client[]> {
   const supabase = createSupabaseClient()
   const { data, error } = await supabase

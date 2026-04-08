@@ -38,7 +38,7 @@ type RetencionForm = {
   importe: number
 }
 
-const TIPOS_RETENCION = ["ARBA", "ARCA", "IIBB_CABA", "IIBB_BSAS", "IVA", "Otro"]
+const TIPOS_RETENCION = ["ARBA", "ARCA", "IIBB_CABA", "IIBB_BSAS", "IVA", "GANANCIAS", "Otro"]
 const RAZONES_SOCIALES = ["Masoil", "Aquiles", "Conancap", "Todas"]
 
 function uid() {
