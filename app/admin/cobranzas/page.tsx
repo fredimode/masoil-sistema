@@ -9,12 +9,14 @@ import {
 } from "@/components/ui/table"
 import {
   fetchCobranzasPendientes, fetchClients, fetchCuentaCorrienteCliente,
-  fetchRetenciones, createCobro, createRetencion, createMovimientoCuentaCorriente,
+  fetchRetenciones, fetchRecibos, createCobro, createRetencion, createMovimientoCuentaCorriente,
   deleteCobranzaPendiente,
 } from "@/lib/supabase/queries"
 import { formatCurrency, normalizeSearch, formatDateStr } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
-import { Search, Download, Plus, Trash2 } from "lucide-react"
+import { Search, Download, Plus, Trash2, Eye, Printer, Mail } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import * as XLSX from "xlsx"
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -55,23 +57,29 @@ function emptyRetencion(): RetencionForm {
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 
+const EMPRESAS = ["Todas", "Aquiles", "Conancap", "Masoil"]
+
 export default function CobranzasPage() {
   const [loading, setLoading] = useState(true)
   const [clients, setClients] = useState<any[]>([])
   const [cobranzas, setCobranzas] = useState<any[]>([])
   const [retenciones, setRetenciones] = useState<any[]>([])
+  const [recibos, setRecibos] = useState<any[]>([])
+  const [empresaFilter, setEmpresaFilter] = useState("Todas")
 
   useEffect(() => {
     async function load() {
       try {
-        const [cl, cp, ret] = await Promise.all([
+        const [cl, cp, ret, rec] = await Promise.all([
           fetchClients(),
           fetchCobranzasPendientes(),
           fetchRetenciones(),
+          fetchRecibos(),
         ])
         setClients(cl)
         setCobranzas(cp)
         setRetenciones(ret)
+        setRecibos(rec)
       } catch (e) {
         console.error(e)
       } finally {
@@ -91,12 +99,28 @@ export default function CobranzasPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Cobranzas</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Cobranzas</h1>
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-muted-foreground">Empresa:</label>
+          <Select value={empresaFilter} onValueChange={setEmpresaFilter}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {EMPRESAS.map((e) => (
+                <SelectItem key={e} value={e}>{e}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
       <Tabs defaultValue="cuenta-corriente">
         <TabsList>
           <TabsTrigger value="cuenta-corriente">Cuenta Corriente</TabsTrigger>
           <TabsTrigger value="registrar-cobro">Registrar Cobro</TabsTrigger>
+          <TabsTrigger value="cobros-realizados">Cobros Realizados</TabsTrigger>
           <TabsTrigger value="retenciones">Retenciones</TabsTrigger>
           <TabsTrigger value="informe">Informe Cobranzas Pendientes</TabsTrigger>
         </TabsList>
@@ -107,6 +131,10 @@ export default function CobranzasPage() {
 
         <TabsContent value="registrar-cobro">
           <TabRegistrarCobro clients={clients} cobranzas={cobranzas} setCobranzas={setCobranzas} />
+        </TabsContent>
+
+        <TabsContent value="cobros-realizados">
+          <TabCobrosRealizados recibos={recibos} />
         </TabsContent>
 
         <TabsContent value="retenciones">
@@ -949,6 +977,142 @@ function TabInforme({ cobranzas, clients }: { cobranzas: any[]; clients: any[] }
         </Table>
       </div>
       <TablePagination currentPage={page} totalPages={pag.totalPages} totalItems={pag.totalItems} pageSize={pag.pageSize} onPageChange={setPage} />
+    </Card>
+  )
+}
+
+// ─── Tab 5: Cobros Realizados ─────────────────────────────────────────────
+
+function TabCobrosRealizados({ recibos }: { recibos: any[] }) {
+  const [search, setSearch] = useState("")
+  const [searchFecha, setSearchFecha] = useState("")
+  const [page, setPage] = useState(1)
+  const [viewing, setViewing] = useState<any | null>(null)
+
+  const filtered = useMemo(() => {
+    let rows = recibos
+    if (search.trim()) {
+      const norm = normalizeSearch(search)
+      rows = rows.filter((r) =>
+        normalizeSearch(r.razon_social || "").includes(norm) ||
+        normalizeSearch(r.nro_comprobante || "").includes(norm)
+      )
+    }
+    if (searchFecha) {
+      rows = rows.filter((r) => (r.fecha || "").startsWith(searchFecha))
+    }
+    return rows
+  }, [recibos, search, searchFecha])
+
+  const pag = usePagination(filtered, 50)
+
+  return (
+    <Card className="p-4 space-y-4">
+      <h3 className="font-semibold text-lg">Cobros Realizados</h3>
+
+      <div className="flex flex-wrap gap-3 items-end">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+            placeholder="Buscar por cliente o nro recibo..."
+            className="w-full pl-9 pr-3 py-2 border rounded-md text-sm"
+          />
+        </div>
+        <div>
+          <input
+            type="date"
+            value={searchFecha}
+            onChange={(e) => { setSearchFecha(e.target.value); setPage(1) }}
+            className="border rounded-md px-3 py-2 text-sm"
+          />
+        </div>
+      </div>
+
+      <div className="border rounded-md overflow-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Fecha</TableHead>
+              <TableHead>Nro Recibo</TableHead>
+              <TableHead>Cliente</TableHead>
+              <TableHead className="text-right">Importe</TableHead>
+              <TableHead className="text-center">Acciones</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {pag.getPage(page).length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="text-center text-gray-500 py-8">Sin cobros registrados</TableCell>
+              </TableRow>
+            ) : (
+              pag.getPage(page).map((r: any, i: number) => (
+                <TableRow key={r.id || i}>
+                  <TableCell>{formatDateStr(r.fecha)}</TableCell>
+                  <TableCell className="font-medium">{r.nro_comprobante || "-"}</TableCell>
+                  <TableCell>{r.razon_social || "-"}</TableCell>
+                  <TableCell className="text-right font-medium">{formatCurrency(Number(r.importe) || 0)}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center justify-center gap-1">
+                      <button onClick={() => setViewing(r)} className="p-1.5 rounded hover:bg-gray-100" title="Ver Recibo">
+                        <Eye className="h-4 w-4 text-gray-600" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          const w = window.open("", "_blank")
+                          if (w) {
+                            w.document.write(`<html><head><title>Recibo ${r.nro_comprobante}</title></head><body style="font-family:sans-serif;max-width:600px;margin:40px auto;">
+                              <h2>Recibo de Cobro</h2>
+                              <p><strong>Nro:</strong> ${r.nro_comprobante || "-"}</p>
+                              <p><strong>Fecha:</strong> ${r.fecha ? new Date(r.fecha).toLocaleDateString("es-AR") : "-"}</p>
+                              <p><strong>Cliente:</strong> ${r.razon_social || "-"}</p>
+                              <p><strong>Importe:</strong> $${Number(r.importe || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                              <p><strong>Vendedor:</strong> ${r.vendedor || "-"}</p>
+                              <script>window.print()<\/script>
+                            </body></html>`)
+                          }
+                        }}
+                        className="p-1.5 rounded hover:bg-gray-100"
+                        title="Imprimir"
+                      >
+                        <Printer className="h-4 w-4 text-gray-600" />
+                      </button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+      <TablePagination currentPage={page} totalPages={pag.totalPages} totalItems={pag.totalItems} pageSize={pag.pageSize} onPageChange={setPage} />
+
+      {/* View Dialog */}
+      <Dialog open={!!viewing} onOpenChange={() => setViewing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Detalle de Recibo</DialogTitle>
+          </DialogHeader>
+          {viewing && (
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div><span className="text-muted-foreground">Nro Recibo:</span> <span className="font-medium">{viewing.nro_comprobante || "-"}</span></div>
+                <div><span className="text-muted-foreground">Fecha:</span> <span className="font-medium">{viewing.fecha ? new Date(viewing.fecha).toLocaleDateString("es-AR") : "-"}</span></div>
+                <div><span className="text-muted-foreground">Cliente:</span> <span className="font-medium">{viewing.razon_social || "-"}</span></div>
+                <div><span className="text-muted-foreground">Cod Cliente:</span> <span className="font-medium">{viewing.cod_cliente || "-"}</span></div>
+                <div><span className="text-muted-foreground">Vendedor:</span> <span className="font-medium">{viewing.vendedor || "-"}</span></div>
+                <div><span className="text-muted-foreground">Sucursal:</span> <span className="font-medium">{viewing.sucursal || "-"}</span></div>
+                <div className="col-span-2 border-t pt-2">
+                  <span className="text-muted-foreground">Importe:</span>{" "}
+                  <span className="font-bold text-lg">{formatCurrency(Number(viewing.importe) || 0)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

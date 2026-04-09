@@ -34,8 +34,8 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
 
   // Contactos de Cobranzas
   const [cobranzasForm, setCobranzasForm] = useState({
-    cobranzas_mail: "",
-    cobranzas_telefono: "",
+    cobranzas_mail: [] as string[],
+    cobranzas_telefono: [] as string[],
     cobranzas_contacto: "",
     cobranzas_observaciones: "",
     portal_proveedores: false,
@@ -67,9 +67,11 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
           email: clientData.email,
           address: clientData.address,
         })
+        const rawMail = (clientData as any).cobranzas_mail
+        const rawTel = (clientData as any).cobranzas_telefono
         setCobranzasForm({
-          cobranzas_mail: (clientData as any).cobranzas_mail || "",
-          cobranzas_telefono: (clientData as any).cobranzas_telefono || "",
+          cobranzas_mail: Array.isArray(rawMail) ? rawMail.filter(Boolean) : rawMail ? [rawMail] : [],
+          cobranzas_telefono: Array.isArray(rawTel) ? rawTel.filter(Boolean) : rawTel ? [rawTel] : [],
           cobranzas_contacto: (clientData as any).cobranzas_contacto || "",
           cobranzas_observaciones: (clientData as any).cobranzas_observaciones || "",
           portal_proveedores: (clientData as any).portal_proveedores || false,
@@ -342,23 +344,67 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
             <div className="space-y-3">
               <div>
                 <label className="text-sm text-muted-foreground block mb-1">Mail de cobranzas</label>
-                <input
-                  type="email"
-                  value={cobranzasForm.cobranzas_mail}
-                  onChange={(e) => setCobranzasForm((f) => ({ ...f, cobranzas_mail: e.target.value }))}
-                  className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary"
-                  placeholder="cobranzas@empresa.com"
-                />
+                {cobranzasForm.cobranzas_mail.map((mail, idx) => (
+                  <div key={idx} className="flex gap-2 mb-2">
+                    <input
+                      type="email"
+                      value={mail}
+                      onChange={(e) => {
+                        const arr = [...cobranzasForm.cobranzas_mail]
+                        arr[idx] = e.target.value
+                        setCobranzasForm((f) => ({ ...f, cobranzas_mail: arr }))
+                      }}
+                      className="flex-1 p-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary"
+                      placeholder="cobranzas@empresa.com"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCobranzasForm((f) => ({ ...f, cobranzas_mail: f.cobranzas_mail.filter((_, i) => i !== idx) }))}
+                      className="px-2 text-red-500 hover:text-red-700 text-sm"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setCobranzasForm((f) => ({ ...f, cobranzas_mail: [...f.cobranzas_mail, ""] }))}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  + Agregar mail
+                </button>
               </div>
               <div>
                 <label className="text-sm text-muted-foreground block mb-1">Teléfono de cobranzas</label>
-                <input
-                  type="text"
-                  value={cobranzasForm.cobranzas_telefono}
-                  onChange={(e) => setCobranzasForm((f) => ({ ...f, cobranzas_telefono: e.target.value }))}
-                  className="w-full p-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary"
-                  placeholder="+54 11 1234-5678"
-                />
+                {cobranzasForm.cobranzas_telefono.map((tel, idx) => (
+                  <div key={idx} className="flex gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={tel}
+                      onChange={(e) => {
+                        const arr = [...cobranzasForm.cobranzas_telefono]
+                        arr[idx] = e.target.value
+                        setCobranzasForm((f) => ({ ...f, cobranzas_telefono: arr }))
+                      }}
+                      className="flex-1 p-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary"
+                      placeholder="+54 11 1234-5678"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCobranzasForm((f) => ({ ...f, cobranzas_telefono: f.cobranzas_telefono.filter((_, i) => i !== idx) }))}
+                      className="px-2 text-red-500 hover:text-red-700 text-sm"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setCobranzasForm((f) => ({ ...f, cobranzas_telefono: [...f.cobranzas_telefono, ""] }))}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  + Agregar teléfono
+                </button>
               </div>
               <div>
                 <label className="text-sm text-muted-foreground block mb-1">Persona de contacto</label>
