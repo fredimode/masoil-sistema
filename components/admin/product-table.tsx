@@ -59,14 +59,19 @@ export function ProductTable({ products, onUpdate, onDelete, selectedIds, onSele
   }
 
   async function handleSaveEdit() {
-    if (!editProduct || !onUpdate) return
+    console.log("handleSaveEdit called", { editProduct: editProduct?.id, onUpdate: !!onUpdate })
+    if (!editProduct) { console.log("No editProduct"); return }
+    if (!onUpdate) { console.log("No onUpdate prop"); return }
+    const updateData = {
+      name: editName || editProduct.name,
+      code: editDescription || editProduct.code,
+      price: parseFloat(editPrice) || editProduct.price,
+      stock: parseInt(editStock) || editProduct.stock,
+    }
+    console.log("Calling onUpdate with:", editProduct.id, updateData)
     try {
-      await onUpdate(editProduct.id, {
-        name: editName || editProduct.name,
-        code: editDescription || editProduct.code,
-        price: parseFloat(editPrice) || editProduct.price,
-        stock: parseInt(editStock) || editProduct.stock,
-      })
+      await onUpdate(editProduct.id, updateData)
+      console.log("onUpdate completed successfully")
     } catch (err) {
       console.error("Error saving product:", err)
     }
@@ -222,7 +227,7 @@ export function ProductTable({ products, onUpdate, onDelete, selectedIds, onSele
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setEditProduct(null)}>Cancelar</Button>
-            <Button type="button" onClick={handleSaveEdit}>Guardar</Button>
+            <Button type="button" onClick={() => { console.log("GUARDAR clicked", editProduct?.id); handleSaveEdit() }}>Guardar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
