@@ -8,6 +8,7 @@ import {
   fetchOrdenesCompra,
   fetchFacturasProveedor,
   createFacturaProveedor,
+  createFacturaProveedorItems,
   updateOrdenCompra,
   deleteFacturaProveedor,
 } from "@/lib/supabase/queries"
@@ -85,6 +86,9 @@ export default function FacturasProveedorPage() {
   const [form, setForm] = useState({ ...INITIAL_FORM })
   const [guardando, setGuardando] = useState(false)
   const [archivo, setArchivo] = useState<File | null>(null)
+
+  // Items de la factura
+  const [formItems, setFormItems] = useState<{ id: string; nombre: string; codigo: string; cantidad: string; precio: string }[]>([])
 
   // Proveedor autocomplete
   const [proveedorSearch, setProveedorSearch] = useState("")
@@ -246,6 +250,20 @@ export default function FacturasProveedorPage() {
 
       const id = await createFacturaProveedor(facturaData)
 
+      // Save items if any
+      const validItems = formItems.filter((it) => it.nombre.trim())
+      if (validItems.length > 0) {
+        const itemsData = validItems.map((it) => ({
+          factura_id: id,
+          producto_nombre: it.nombre,
+          producto_codigo: it.codigo || null,
+          cantidad: parseFloat(it.cantidad) || 1,
+          precio_unitario: parseFloat(it.precio) || 0,
+          subtotal: (parseFloat(it.cantidad) || 1) * (parseFloat(it.precio) || 0),
+        }))
+        await createFacturaProveedorItems(itemsData)
+      }
+
       // Upload file if present
       if (archivo && id) {
         const ext = archivo.name.split(".").pop() || "pdf"
@@ -266,6 +284,7 @@ export default function FacturasProveedorPage() {
       setForm({ ...INITIAL_FORM })
       setProveedorSearch("")
       setArchivo(null)
+      setFormItems([])
       setDialogOpen(false)
       await loadData()
     } catch (err) {
@@ -311,6 +330,7 @@ export default function FacturasProveedorPage() {
             setForm({ ...INITIAL_FORM })
             setProveedorSearch("")
             setArchivo(null)
+            setFormItems([])
             setDialogOpen(true)
           }}
           className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2"
@@ -773,6 +793,79 @@ export default function FacturasProveedorPage() {
                 className="w-full p-2 border rounded-lg text-sm file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-primary file:text-white hover:file:bg-primary/90"
               />
               {archivo && <p className="text-xs text-gray-500 mt-1">{archivo.name}</p>}
+            </div>
+
+            {/* Detalle de productos/items */}
+            <div className="border rounded-lg p-3 bg-gray-50">
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">Detalle de Productos (opcional)</label>
+                <button
+                  type="button"
+                  onClick={() => setFormItems((prev) => [...prev, { id: Math.random().toString(36).slice(2), nombre: "", codigo: "", cantidad: "1", precio: "" }])}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  + Agregar item
+                </button>
+              </div>
+              {formItems.length > 0 && (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-[1fr,80px,80px,80px,30px] gap-2 text-xs font-medium text-gray-500">
+                    <span>Producto</span>
+                    <span>Código</span>
+                    <span>Cant.</span>
+                    <span>Precio Unit.</span>
+                    <span></span>
+                  </div>
+                  {formItems.map((item) => (
+                    <div key={item.id} className="grid grid-cols-[1fr,80px,80px,80px,30px] gap-2">
+                      <input
+                        type="text"
+                        value={item.nombre}
+                        onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, nombre: e.target.value } : it))}
+                        className="p-1.5 border rounded text-sm"
+                        placeholder="Nombre del producto"
+                      />
+                      <input
+                        type="text"
+                        value={item.codigo}
+                        onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, codigo: e.target.value } : it))}
+                        className="p-1.5 border rounded text-sm"
+                        placeholder="Código"
+                      />
+                      <input
+                        type="number"
+                        value={item.cantidad}
+                        onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, cantidad: e.target.value } : it))}
+                        className="p-1.5 border rounded text-sm"
+                        min="1"
+                      />
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={item.precio}
+                        onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, precio: e.target.value } : it))}
+                        className="p-1.5 border rounded text-sm"
+                        placeholder="0.00"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setFormItems((prev) => prev.filter((it) => it.id !== item.id))}
+                        className="text-red-500 hover:text-red-700 text-sm"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {formItems.some((it) => it.nombre.trim()) && (
+                    <div className="text-right text-xs text-gray-500 pt-1">
+                      Subtotal items: {formatCurrency(formItems.reduce((s, it) => s + (parseFloat(it.cantidad) || 1) * (parseFloat(it.precio) || 0), 0))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {formItems.length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-2">Sin detalle de productos</p>
+              )}
             </div>
 
             {/* Observaciones */}
