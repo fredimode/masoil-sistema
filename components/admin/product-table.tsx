@@ -12,7 +12,7 @@ import { Edit, Trash2 } from "lucide-react"
 
 interface ProductTableProps {
   products: Product[]
-  onUpdate?: (id: string, data: { name?: string; code?: string; price: number; stock: number }) => void
+  onUpdate?: (id: string, data: { name?: string; code?: string; price: number; stock: number }) => void | Promise<void>
   onDelete?: (id: string) => void
   selectedIds?: Set<string>
   onSelectionChange?: (ids: Set<string>) => void
@@ -58,14 +58,18 @@ export function ProductTable({ products, onUpdate, onDelete, selectedIds, onSele
     setEditStock(String(product.stock))
   }
 
-  function handleSaveEdit() {
-    if (!editProduct) return
-    onUpdate?.(editProduct.id, {
-      name: editName || editProduct.name,
-      code: editDescription || editProduct.code,
-      price: parseFloat(editPrice) || editProduct.price,
-      stock: parseInt(editStock) || editProduct.stock,
-    })
+  async function handleSaveEdit() {
+    if (!editProduct || !onUpdate) return
+    try {
+      await onUpdate(editProduct.id, {
+        name: editName || editProduct.name,
+        code: editDescription || editProduct.code,
+        price: parseFloat(editPrice) || editProduct.price,
+        stock: parseInt(editStock) || editProduct.stock,
+      })
+    } catch (err) {
+      console.error("Error saving product:", err)
+    }
     setEditProduct(null)
   }
 
@@ -217,8 +221,8 @@ export function ProductTable({ products, onUpdate, onDelete, selectedIds, onSele
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditProduct(null)}>Cancelar</Button>
-            <Button onClick={handleSaveEdit}>Guardar</Button>
+            <Button type="button" variant="outline" onClick={() => setEditProduct(null)}>Cancelar</Button>
+            <Button type="button" onClick={handleSaveEdit}>Guardar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
