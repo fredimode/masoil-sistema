@@ -344,56 +344,58 @@ export default function AdminStockPage() {
       {/* Edit Product Dialog */}
       <Dialog open={!!editProduct} onOpenChange={(open) => { if (!open) setEditProduct(null) }}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar Producto</DialogTitle>
-            <DialogDescription>{editProduct?.name} ({editProduct?.code})</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Nombre</label>
-              <input
-                type="text"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-              />
+          <form onSubmit={(e) => { e.preventDefault(); handleSaveEdit() }}>
+            <DialogHeader>
+              <DialogTitle>Editar Producto</DialogTitle>
+              <DialogDescription>{editProduct?.name} ({editProduct?.code})</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Nombre</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Codigo</label>
+                <input
+                  type="text"
+                  value={editCode}
+                  onChange={(e) => setEditCode(e.target.value)}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Precio</label>
+                <input
+                  type="number"
+                  value={editPrice}
+                  onChange={(e) => setEditPrice(e.target.value)}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                  step="0.01"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Stock</label>
+                <input
+                  type="number"
+                  value={editStock}
+                  onChange={(e) => setEditStock(e.target.value)}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                  step="1"
+                />
+              </div>
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Codigo</label>
-              <input
-                type="text"
-                value={editCode}
-                onChange={(e) => setEditCode(e.target.value)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Precio</label>
-              <input
-                type="number"
-                value={editPrice}
-                onChange={(e) => setEditPrice(e.target.value)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-                step="0.01"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Stock</label>
-              <input
-                type="number"
-                value={editStock}
-                onChange={(e) => setEditStock(e.target.value)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-                step="1"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setEditProduct(null)} disabled={saving}>Cancelar</Button>
-            <Button type="button" onClick={handleSaveEdit} disabled={saving}>
-              {saving ? "Guardando..." : "Guardar"}
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditProduct(null)} disabled={saving}>Cancelar</Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? "Guardando..." : "Guardar"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 
