@@ -30,6 +30,17 @@ export default function AdminStockPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Edit dialog state
+  const [editProduct, setEditProduct] = useState<Product | null>(null)
+  const [editName, setEditName] = useState("")
+  const [editCode, setEditCode] = useState("")
+  const [editPrice, setEditPrice] = useState("")
+  const [editStock, setEditStock] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  // Delete dialog state
+  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
+
   useEffect(() => {
     Promise.all([fetchProducts(), fetchProductsCount()])
       .then(([products, count]) => {
@@ -40,26 +51,45 @@ export default function AdminStockPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  async function handleUpdateProduct(id: string, data: { name?: string; code?: string; price: number; stock: number }) {
+  function openEditDialog(product: Product) {
+    setEditProduct(product)
+    setEditName(product.name)
+    setEditCode(product.code)
+    setEditPrice(String(product.price))
+    setEditStock(String(product.stock))
+  }
+
+  async function handleSaveEdit() {
+    if (!editProduct) return
+    setSaving(true)
     try {
-      const updates: Record<string, any> = { price: data.price, stock: data.stock }
-      if (data.name) updates.name = data.name
-      if (data.code) updates.code = data.code
-      await updateProduct(id, updates)
+      const updates: Record<string, any> = {
+        price: parseFloat(editPrice) || editProduct.price,
+        stock: parseInt(editStock) || editProduct.stock,
+      }
+      if (editName && editName !== editProduct.name) updates.name = editName
+      if (editCode && editCode !== editProduct.code) updates.code = editCode
+      await updateProduct(editProduct.id, updates)
       const updated = await fetchProducts()
       setLocalProducts(updated)
+      setEditProduct(null)
     } catch (err) {
       console.error("Error updating product:", err)
+      alert("Error al guardar producto")
+    } finally {
+      setSaving(false)
     }
   }
 
-  async function handleDeleteProduct(id: string) {
+  async function handleDeleteProduct() {
+    if (!deleteTarget) return
     try {
-      await deleteProduct(id)
+      await deleteProduct(deleteTarget.id)
       const updated = await fetchProducts()
       setLocalProducts(updated)
-      selectedIds.delete(id)
+      selectedIds.delete(deleteTarget.id)
       setSelectedIds(new Set(selectedIds))
+      setDeleteTarget(null)
     } catch (err) {
       console.error("Error deleting product:", err)
     }
@@ -292,8 +322,8 @@ export default function AdminStockPage() {
         <>
           <ProductTable
             products={paginatedProducts}
-            onUpdate={handleUpdateProduct}
-            onDelete={handleDeleteProduct}
+            onEdit={openEditDialog}
+            onDelete={setDeleteTarget}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
           />
@@ -310,6 +340,79 @@ export default function AdminStockPage() {
           <p>No se encontraron productos</p>
         </div>
       )}
+
+      {/* Edit Product Dialog */}
+      <Dialog open={!!editProduct} onOpenChange={(open) => { if (!open) setEditProduct(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Producto</DialogTitle>
+            <DialogDescription>{editProduct?.name} ({editProduct?.code})</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Nombre</label>
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Codigo</label>
+              <input
+                type="text"
+                value={editCode}
+                onChange={(e) => setEditCode(e.target.value)}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Precio</label>
+              <input
+                type="number"
+                value={editPrice}
+                onChange={(e) => setEditPrice(e.target.value)}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                step="0.01"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Stock</label>
+              <input
+                type="number"
+                value={editStock}
+                onChange={(e) => setEditStock(e.target.value)}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                step="1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditProduct(null)} disabled={saving}>Cancelar</Button>
+            <Button type="button" onClick={handleSaveEdit} disabled={saving}>
+              {saving ? "Guardando..." : "Guardar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Product Dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Eliminar Producto</DialogTitle>
+            <DialogDescription>
+              Estas seguro de eliminar <strong>{deleteTarget?.name}</strong> ({deleteTarget?.code})?
+              Esta accion no se puede deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>Cancelar</Button>
+            <Button type="button" variant="destructive" onClick={handleDeleteProduct}>Eliminar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Bulk Delete Confirmation Dialog */}
       <Dialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>

@@ -1,10 +1,8 @@
 "use client"
-import { useState } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { StockIndicator } from "@/components/vendedor/stock-indicator"
 import { formatCurrency, cn } from "@/lib/utils"
 import type { Product } from "@/lib/types"
@@ -12,20 +10,13 @@ import { Edit, Trash2 } from "lucide-react"
 
 interface ProductTableProps {
   products: Product[]
-  onUpdate?: (id: string, data: { name?: string; code?: string; price: number; stock: number }) => void | Promise<void>
-  onDelete?: (id: string) => void
+  onEdit?: (product: Product) => void
+  onDelete?: (product: Product) => void
   selectedIds?: Set<string>
   onSelectionChange?: (ids: Set<string>) => void
 }
 
-export function ProductTable({ products, onUpdate, onDelete, selectedIds, onSelectionChange }: ProductTableProps) {
-  const [editProduct, setEditProduct] = useState<Product | null>(null)
-  const [deleteProduct, setDeleteProduct] = useState<Product | null>(null)
-  const [editName, setEditName] = useState("")
-  const [editDescription, setEditDescription] = useState("")
-  const [editPrice, setEditPrice] = useState("")
-  const [editStock, setEditStock] = useState("")
-
+export function ProductTable({ products, onEdit, onDelete, selectedIds, onSelectionChange }: ProductTableProps) {
   const allSelected = products.length > 0 && selectedIds != null && products.every((p) => selectedIds.has(p.id))
   const someSelected = selectedIds != null && products.some((p) => selectedIds.has(p.id)) && !allSelected
 
@@ -50,204 +41,97 @@ export function ProductTable({ products, onUpdate, onDelete, selectedIds, onSele
     onSelectionChange(next)
   }
 
-  function openEdit(product: Product) {
-    setEditProduct(product)
-    setEditName(product.name)
-    setEditDescription(product.code)
-    setEditPrice(String(product.price))
-    setEditStock(String(product.stock))
-  }
-
-  async function handleSaveEdit() {
-    console.log("handleSaveEdit called", { editProduct: editProduct?.id, onUpdate: !!onUpdate })
-    if (!editProduct) { console.log("No editProduct"); return }
-    if (!onUpdate) { console.log("No onUpdate prop"); return }
-    const updateData = {
-      name: editName || editProduct.name,
-      code: editDescription || editProduct.code,
-      price: parseFloat(editPrice) || editProduct.price,
-      stock: parseInt(editStock) || editProduct.stock,
-    }
-    console.log("Calling onUpdate with:", editProduct.id, updateData)
-    try {
-      await onUpdate(editProduct.id, updateData)
-      console.log("onUpdate completed successfully")
-    } catch (err) {
-      console.error("Error saving product:", err)
-    }
-    setEditProduct(null)
-  }
-
-  function handleConfirmDelete() {
-    if (!deleteProduct) return
-    onDelete?.(deleteProduct.id)
-    setDeleteProduct(null)
-  }
-
   return (
-    <>
-      <div className="border rounded-lg overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {onSelectionChange && (
-                <TableHead className="w-12">
-                  <Checkbox
-                    checked={allSelected ? true : someSelected ? "indeterminate" : false}
-                    onCheckedChange={toggleAll}
-                    aria-label="Seleccionar todos"
-                  />
-                </TableHead>
-              )}
-              <TableHead className="w-32">Codigo</TableHead>
-              <TableHead>Nombre</TableHead>
-              <TableHead>Categoria</TableHead>
-              <TableHead className="text-right">Costo Neto</TableHead>
-              <TableHead>Grupo/Rubro</TableHead>
-              <TableHead>Ubicacion</TableHead>
-              <TableHead className="w-32">Stock</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead className="w-32 text-right">Precio</TableHead>
-              <TableHead className="w-24 text-right">Acciones</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {products.map((product) => {
-              const isCritical = product.stock < product.criticalStockThreshold && product.stock > 0
-              const isLow = product.stock < product.lowStockThreshold && product.stock >= product.criticalStockThreshold
-              const isOutOfStock = product.stock === 0 && !product.isCustomizable
+    <div className="border rounded-lg overflow-hidden">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {onSelectionChange && (
+              <TableHead className="w-12">
+                <Checkbox
+                  checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                  onCheckedChange={toggleAll}
+                  aria-label="Seleccionar todos"
+                />
+              </TableHead>
+            )}
+            <TableHead className="w-32">Codigo</TableHead>
+            <TableHead>Nombre</TableHead>
+            <TableHead>Categoria</TableHead>
+            <TableHead className="text-right">Costo Neto</TableHead>
+            <TableHead>Grupo/Rubro</TableHead>
+            <TableHead>Ubicacion</TableHead>
+            <TableHead className="w-32">Stock</TableHead>
+            <TableHead>Estado</TableHead>
+            <TableHead className="w-32 text-right">Precio</TableHead>
+            <TableHead className="w-24 text-right">Acciones</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {products.map((product) => {
+            const isCritical = product.stock < product.criticalStockThreshold && product.stock > 0
+            const isLow = product.stock < product.lowStockThreshold && product.stock >= product.criticalStockThreshold
+            const isOutOfStock = product.stock === 0 && !product.isCustomizable
 
-              return (
-                <TableRow
-                  key={product.id}
-                  className={cn(
-                    isCritical && "bg-red-50",
-                    isLow && "bg-yellow-50",
-                    isOutOfStock && "bg-gray-50 opacity-60",
-                    selectedIds?.has(product.id) && "bg-blue-50",
-                  )}
-                >
-                  {onSelectionChange && (
-                    <TableCell>
-                      <Checkbox
-                        checked={selectedIds?.has(product.id) ?? false}
-                        onCheckedChange={() => toggleOne(product.id)}
-                        aria-label={`Seleccionar ${product.name}`}
-                      />
-                    </TableCell>
-                  )}
-                  <TableCell className="font-mono text-sm font-medium">{product.code}</TableCell>
-                  <TableCell className="font-medium">{product.name}</TableCell>
+            return (
+              <TableRow
+                key={product.id}
+                className={cn(
+                  isCritical && "bg-red-50",
+                  isLow && "bg-yellow-50",
+                  isOutOfStock && "bg-gray-50 opacity-60",
+                  selectedIds?.has(product.id) && "bg-blue-50",
+                )}
+              >
+                {onSelectionChange && (
                   <TableCell>
-                    {product.category ? (
-                      <Badge variant="outline" className="text-xs">
-                        {product.category}
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">Sin cat.</span>
-                    )}
+                    <Checkbox
+                      checked={selectedIds?.has(product.id) ?? false}
+                      onCheckedChange={() => toggleOne(product.id)}
+                      aria-label={`Seleccionar ${product.name}`}
+                    />
                   </TableCell>
-                  <TableCell className="text-right">
-                    {product.costoNeto != null ? formatCurrency(product.costoNeto) : "-"}
-                  </TableCell>
-                  <TableCell className="max-w-[120px] truncate" title={product.grupoRubro || ""}>
-                    {product.grupoRubro || "-"}
-                  </TableCell>
-                  <TableCell className="max-w-[100px] truncate" title={product.ubicacion || ""}>
-                    {product.ubicacion || "-"}
-                  </TableCell>
-                  <TableCell className="font-semibold text-lg">{product.stock}</TableCell>
-                  <TableCell>
-                    <StockIndicator product={product} showCount={false} />
-                  </TableCell>
-                  <TableCell className="text-right font-semibold">{formatCurrency(product.price)}</TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button size="sm" variant="ghost" onClick={() => openEdit(product)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setDeleteProduct(product)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </div>
-
-      {/* Edit Dialog */}
-      <Dialog open={!!editProduct} onOpenChange={(open) => !open && setEditProduct(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar Producto</DialogTitle>
-            <DialogDescription>{editProduct?.name} ({editProduct?.code})</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Nombre</label>
-              <input
-                type="text"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Codigo</label>
-              <input
-                type="text"
-                value={editDescription}
-                onChange={(e) => setEditDescription(e.target.value)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Precio</label>
-              <input
-                type="number"
-                value={editPrice}
-                onChange={(e) => setEditPrice(e.target.value)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-                step="0.01"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Stock</label>
-              <input
-                type="number"
-                value={editStock}
-                onChange={(e) => setEditStock(e.target.value)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-                step="1"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setEditProduct(null)}>Cancelar</Button>
-            <Button type="button" onClick={() => { console.log("GUARDAR clicked", editProduct?.id); handleSaveEdit() }}>Guardar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={!!deleteProduct} onOpenChange={(open) => !open && setDeleteProduct(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Eliminar Producto</DialogTitle>
-            <DialogDescription>
-              Estas seguro de eliminar <strong>{deleteProduct?.name}</strong> ({deleteProduct?.code})?
-              Esta accion no se puede deshacer.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteProduct(null)}>Cancelar</Button>
-            <Button variant="destructive" onClick={handleConfirmDelete}>Eliminar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+                )}
+                <TableCell className="font-mono text-sm font-medium">{product.code}</TableCell>
+                <TableCell className="font-medium">{product.name}</TableCell>
+                <TableCell>
+                  {product.category ? (
+                    <Badge variant="outline" className="text-xs">
+                      {product.category}
+                    </Badge>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Sin cat.</span>
+                  )}
+                </TableCell>
+                <TableCell className="text-right">
+                  {product.costoNeto != null ? formatCurrency(product.costoNeto) : "-"}
+                </TableCell>
+                <TableCell className="max-w-[120px] truncate" title={product.grupoRubro || ""}>
+                  {product.grupoRubro || "-"}
+                </TableCell>
+                <TableCell className="max-w-[100px] truncate" title={product.ubicacion || ""}>
+                  {product.ubicacion || "-"}
+                </TableCell>
+                <TableCell className="font-semibold text-lg">{product.stock}</TableCell>
+                <TableCell>
+                  <StockIndicator product={product} showCount={false} />
+                </TableCell>
+                <TableCell className="text-right font-semibold">{formatCurrency(product.price)}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => onEdit?.(product)}>
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => onDelete?.(product)}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+    </div>
   )
 }
