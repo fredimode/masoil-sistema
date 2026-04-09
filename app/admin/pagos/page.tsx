@@ -8,6 +8,8 @@ import { TablePagination, usePagination } from "@/components/ui/table-pagination
 import {
   fetchPagosProveedores,
   fetchReclamos,
+  fetchProveedores,
+  fetchCuentaCorrienteProveedor,
   updateEstadoPago,
   createReclamo,
   deletePagoProveedor,
@@ -33,6 +35,12 @@ export default function PagosPage() {
   const [loading, setLoading] = useState(true)
   const [pagos, setPagos] = useState<any[]>([])
   const [reclamos, setReclamos] = useState<any[]>([])
+  const [proveedoresList, setProveedoresList] = useState<any[]>([])
+  const [empresaGlobal, setEmpresaGlobal] = useState("Todos")
+  const [expandedProv, setExpandedProv] = useState<string | null>(null)
+  const [expandedCC, setExpandedCC] = useState<any[]>([])
+  const [loadingCC, setLoadingCC] = useState(false)
+  const [provSearch, setProvSearch] = useState("")
 
   // Pagination
   const [pagosPage, setPagosPage] = useState(1)
@@ -111,18 +119,49 @@ export default function PagosPage() {
   async function cargarDatos() {
     setLoading(true)
     try {
-      const [pagosData, reclamosData] = await Promise.all([
+      const [pagosData, reclamosData, provsData] = await Promise.all([
         fetchPagosProveedores(),
         fetchReclamos(),
+        fetchProveedores(),
       ])
       setPagos(pagosData)
       setReclamos(reclamosData)
+      setProveedoresList(provsData)
     } catch (error) {
       console.error("Error cargando datos:", error)
     } finally {
       setLoading(false)
     }
   }
+
+  async function toggleProveedor(provId: string) {
+    if (expandedProv === provId) {
+      setExpandedProv(null)
+      return
+    }
+    setExpandedProv(provId)
+    setLoadingCC(true)
+    try {
+      const cc = await fetchCuentaCorrienteProveedor(provId)
+      setExpandedCC(cc)
+    } catch {
+      setExpandedCC([])
+    } finally {
+      setLoadingCC(false)
+    }
+  }
+
+  const proveedoresFiltrados = useMemo(() => {
+    let list = proveedoresList
+    if (empresaGlobal !== "Todos") {
+      list = list.filter((p) => p.empresa === empresaGlobal)
+    }
+    if (provSearch.trim()) {
+      const q = normalizeSearch(provSearch)
+      list = list.filter((p) => normalizeSearch(p.nombre || "").includes(q))
+    }
+    return list
+  }, [proveedoresList, empresaGlobal, provSearch])
 
   async function marcarPagado(id: string) {
     try {
@@ -314,11 +353,137 @@ export default function PagosPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="programacion">
+      {/* Empresa filter */}
+      <div className="flex items-center gap-3 mb-4">
+        <label className="text-sm font-medium text-gray-600">Empresa:</label>
+        <select
+          value={empresaGlobal}
+          onChange={(e) => setEmpresaGlobal(e.target.value)}
+          className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+        >
+          <option value="Todos">Todas</option>
+          <option value="Aquiles">Aquiles</option>
+          <option value="Conancap">Conancap</option>
+          <option value="Masoil">Masoil</option>
+        </select>
+      </div>
+
+      <Tabs defaultValue="proveedores">
         <TabsList>
+          <TabsTrigger value="proveedores">Proveedores / Cta Cte</TabsTrigger>
           <TabsTrigger value="programacion">Programacion Mensual</TabsTrigger>
           <TabsTrigger value="reclamos">Reclamos</TabsTrigger>
         </TabsList>
+
+        {/* ============ TAB PROVEEDORES / CTA CTE ============ */}
+        <TabsContent value="proveedores">
+          <div className="bg-white rounded-lg shadow p-4 mb-4">
+            <input
+              type="text"
+              placeholder="Buscar proveedor..."
+              value={provSearch}
+              onChange={(e) => setProvSearch(e.target.value)}
+              className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm w-64"
+            />
+          </div>
+          <div className="space-y-2">
+            {proveedoresFiltrados.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">No hay proveedores</div>
+            ) : (
+              proveedoresFiltrados.map((prov) => {
+                const provPagos = pagos.filter((p) => p.proveedor_id === prov.id || p.proveedor_nombre === prov.nombre)
+                const totalPendiente = provPagos
+                  .filter((p) => p.estado_pago !== "PAGADO")
+                  .reduce((s, p) => s + (Number(p.importe) || 0), 0)
+                const isExpanded = expandedProv === prov.id
+
+                return (
+                  <div key={prov.id} className="bg-white rounded-lg shadow border">
+                    <button
+                      onClick={() => toggleProveedor(prov.id)}
+                      className="w-full flex items-center justify-between p-4 hover:bg-gray-50 text-left"
+                    >
+                      <div>
+                        <p className="font-semibold text-gray-900">{prov.nombre}</p>
+                        <p className="text-xs text-gray-500">
+                          {prov.empresa && <span className="mr-3">{prov.empresa}</span>}
+                          {prov.cuit && <span>CUIT: {prov.cuit}</span>}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        {totalPendiente > 0 && (
+                          <Badge className="bg-amber-100 text-amber-700 border-amber-200">
+                            Pendiente: {formatCurrency(totalPendiente)}
+                          </Badge>
+                        )}
+                        <span className="text-gray-400">{isExpanded ? "▲" : "▼"}</span>
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="border-t p-4">
+                        {loadingCC ? (
+                          <div className="flex justify-center py-4">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+                          </div>
+                        ) : expandedCC.length > 0 ? (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th className="px-3 py-2 text-left font-medium text-gray-600">Fecha</th>
+                                  <th className="px-3 py-2 text-left font-medium text-gray-600">Tipo</th>
+                                  <th className="px-3 py-2 text-left font-medium text-gray-600">Comprobante</th>
+                                  <th className="px-3 py-2 text-right font-medium text-gray-600">Debe</th>
+                                  <th className="px-3 py-2 text-right font-medium text-gray-600">Haber</th>
+                                  <th className="px-3 py-2 text-right font-medium text-gray-600">Saldo</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {expandedCC.map((m: any, i: number) => (
+                                  <tr key={m.id || i} className={i % 2 ? "bg-gray-50" : ""}>
+                                    <td className="px-3 py-2">{m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "-"}</td>
+                                    <td className="px-3 py-2">{m.tipo_comprobante || "-"}</td>
+                                    <td className="px-3 py-2">{m.numero_comprobante || "-"}</td>
+                                    <td className="px-3 py-2 text-right">{m.debe ? formatCurrency(Number(m.debe)) : "-"}</td>
+                                    <td className="px-3 py-2 text-right">{m.haber ? formatCurrency(Number(m.haber)) : "-"}</td>
+                                    <td className="px-3 py-2 text-right font-medium">{formatCurrency(Number(m.saldo) || 0)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="text-center py-4 text-gray-500 text-sm">
+                            Sin movimientos en cuenta corriente
+                            {provPagos.length > 0 && (
+                              <div className="mt-2">
+                                <p className="text-xs text-gray-400 mb-2">Comprobantes pendientes (pagos):</p>
+                                {provPagos.filter((p) => p.estado_pago !== "PAGADO").map((p) => (
+                                  <div key={p.id} className="flex justify-between text-xs border-b py-1">
+                                    <span>{formatDateStr(p.fecha_fc)} - {p.numero_fc || "S/N"}</span>
+                                    <span className="font-medium">{formatCurrency(Number(p.importe) || 0)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <div className="mt-3 flex justify-end">
+                          <Link
+                            href={`/admin/pagos/nuevo?proveedor_id=${prov.id}&proveedor_nombre=${encodeURIComponent(prov.nombre)}`}
+                            className="px-3 py-1.5 bg-primary text-white rounded text-sm hover:bg-primary/90"
+                          >
+                            + Nuevo Pago
+                          </Link>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </TabsContent>
 
         {/* ============ TAB PROGRAMACION MENSUAL ============ */}
         <TabsContent value="programacion">
