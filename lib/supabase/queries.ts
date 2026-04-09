@@ -46,8 +46,8 @@ function mapStatusChange(row: any): StatusChange {
   return {
     status: row.status as OrderStatus,
     timestamp: new Date(row.created_at),
-    userId: row.user_id,
-    userName: row.user_name,
+    userId: row.changed_by || row.user_id || "",
+    userName: row.changed_by || row.user_name || "",
     notes: row.notes || undefined,
   }
 }
@@ -220,8 +220,7 @@ export async function createOrder(order: {
   const { error: histError } = await supabase.from("order_status_history").insert({
     order_id: orderData.id,
     status: "INGRESADO",
-    user_id: order.vendedorId,
-    user_name: order.vendedorName,
+    changed_by: order.vendedorName || order.vendedorId,
   })
   if (histError) throw histError
 
@@ -247,8 +246,7 @@ export async function updateOrderStatus(
   const { error: histError } = await supabase.from("order_status_history").insert({
     order_id: orderId,
     status: newStatus,
-    user_id: userId,
-    user_name: userName,
+    changed_by: userName || userId,
     notes: notes || null,
   })
 

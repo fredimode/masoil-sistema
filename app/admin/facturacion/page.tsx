@@ -116,6 +116,19 @@ export default function FacturacionPage() {
     return { totalMonto, byTipo, topVendedores }
   }, [gpData])
 
+  // Emitidas filtering (must be before early return to maintain hook order)
+  const emitidasFiltered = useMemo(() => {
+    if (!emSearch) return emitidas
+    const q = normalizeSearch(emSearch)
+    return emitidas.filter((f: any) =>
+      normalizeSearch(f.razon_social || "").includes(q) ||
+      normalizeSearch(f.numero || "").includes(q)
+    )
+  }, [emitidas, emSearch])
+
+  const emPagination = usePagination(emitidasFiltered, 50)
+  const emPageData = emPagination.getPage(emPage)
+
   function exportXlsx() {
     const rows = gpFiltered.map((f) => ({
       Fecha: f.fecha ? formatDateStr(f.fecha) : "",
@@ -145,19 +158,6 @@ export default function FacturacionPage() {
       </div>
     )
   }
-
-  // Emitidas filtering
-  const emitidasFiltered = useMemo(() => {
-    if (!emSearch) return emitidas
-    const q = normalizeSearch(emSearch)
-    return emitidas.filter((f: any) =>
-      normalizeSearch(f.razon_social || "").includes(q) ||
-      normalizeSearch(f.numero || "").includes(q)
-    )
-  }, [emitidas, emSearch])
-
-  const emPagination = usePagination(emitidasFiltered, 50)
-  const emPageData = emPagination.getPage(emPage)
 
   return (
     <div className="p-6">
