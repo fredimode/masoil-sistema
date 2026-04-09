@@ -121,7 +121,16 @@ export default function AdminProveedorDetailPage({
           </Link>
         </Button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold mb-1">{proveedor.nombre}</h1>
+          <h1 className="text-2xl font-bold mb-1">
+            {proveedor.nombre_fantasia || proveedor.nombre}
+          </h1>
+          {(proveedor.razon_social || proveedor.nombre_fantasia) && (
+            <p className="text-sm text-muted-foreground mb-1">
+              {proveedor.nombre_fantasia
+                ? `Razón Social: ${proveedor.razon_social || proveedor.nombre}`
+                : ""}
+            </p>
+          )}
           <div className="flex items-center gap-2 text-muted-foreground">
             {proveedor.empresa && (
               <Badge variant="outline">{proveedor.empresa}</Badge>
@@ -154,8 +163,12 @@ export default function AdminProveedorDetailPage({
         <h3 className="text-lg font-semibold mb-4">Datos del Proveedor</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div>
-            <p className="text-sm text-muted-foreground mb-1">Nombre</p>
-            <p className="font-medium">{proveedor.nombre}</p>
+            <p className="text-sm text-muted-foreground mb-1">Nombre de Fantasía</p>
+            <p className="font-medium">{proveedor.nombre_fantasia || proveedor.nombre}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground mb-1">Razón Social</p>
+            <p className="font-medium">{proveedor.razon_social || proveedor.nombre}</p>
           </div>
           <div>
             <p className="text-sm text-muted-foreground mb-1">CUIT</p>
@@ -196,6 +209,14 @@ export default function AdminProveedorDetailPage({
           <div>
             <p className="text-sm text-muted-foreground mb-1">Contactos</p>
             <p className="font-medium">{proveedor.contactos || "-"}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground mb-1">Contacto Cobranzas</p>
+            <p className="font-medium">{proveedor.contacto_cobranzas || "-"}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground mb-1">Tel/WhatsApp Cobranzas</p>
+            <p className="font-medium">{proveedor.tel_cobranzas || "-"}</p>
           </div>
           {proveedor.observaciones && (
             <div className="md:col-span-2 lg:col-span-3">
