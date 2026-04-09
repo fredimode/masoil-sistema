@@ -40,9 +40,12 @@ export default function AdminStockPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  async function handleUpdateProduct(id: string, data: { price: number; stock: number }) {
+  async function handleUpdateProduct(id: string, data: { name?: string; code?: string; price: number; stock: number }) {
     try {
-      await updateProduct(id, { price: data.price, stock: data.stock })
+      const updates: Record<string, any> = { price: data.price, stock: data.stock }
+      if (data.name) updates.name = data.name
+      if (data.code) updates.code = data.code
+      await updateProduct(id, updates)
       const updated = await fetchProducts()
       setLocalProducts(updated)
     } catch (err) {

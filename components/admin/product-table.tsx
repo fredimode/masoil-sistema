@@ -12,7 +12,7 @@ import { Edit, Trash2 } from "lucide-react"
 
 interface ProductTableProps {
   products: Product[]
-  onUpdate?: (id: string, data: { price: number; stock: number }) => void
+  onUpdate?: (id: string, data: { name?: string; code?: string; price: number; stock: number }) => void
   onDelete?: (id: string) => void
   selectedIds?: Set<string>
   onSelectionChange?: (ids: Set<string>) => void
@@ -21,6 +21,8 @@ interface ProductTableProps {
 export function ProductTable({ products, onUpdate, onDelete, selectedIds, onSelectionChange }: ProductTableProps) {
   const [editProduct, setEditProduct] = useState<Product | null>(null)
   const [deleteProduct, setDeleteProduct] = useState<Product | null>(null)
+  const [editName, setEditName] = useState("")
+  const [editDescription, setEditDescription] = useState("")
   const [editPrice, setEditPrice] = useState("")
   const [editStock, setEditStock] = useState("")
 
@@ -50,6 +52,8 @@ export function ProductTable({ products, onUpdate, onDelete, selectedIds, onSele
 
   function openEdit(product: Product) {
     setEditProduct(product)
+    setEditName(product.name)
+    setEditDescription(product.code)
     setEditPrice(String(product.price))
     setEditStock(String(product.stock))
   }
@@ -57,6 +61,8 @@ export function ProductTable({ products, onUpdate, onDelete, selectedIds, onSele
   function handleSaveEdit() {
     if (!editProduct) return
     onUpdate?.(editProduct.id, {
+      name: editName || editProduct.name,
+      code: editDescription || editProduct.code,
       price: parseFloat(editPrice) || editProduct.price,
       stock: parseInt(editStock) || editProduct.stock,
     })
@@ -171,6 +177,24 @@ export function ProductTable({ products, onUpdate, onDelete, selectedIds, onSele
             <DialogDescription>{editProduct?.name} ({editProduct?.code})</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Nombre</label>
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Codigo</label>
+              <input
+                type="text"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+              />
+            </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1">Precio</label>
               <input
