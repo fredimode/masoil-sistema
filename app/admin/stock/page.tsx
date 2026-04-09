@@ -341,63 +341,75 @@ export default function AdminStockPage() {
         </div>
       )}
 
-      {/* Edit Product Dialog */}
-      <Dialog open={!!editProduct} onOpenChange={(open) => { if (!open) setEditProduct(null) }}>
-        <DialogContent>
-          <form onSubmit={(e) => { e.preventDefault(); handleSaveEdit() }}>
-            <DialogHeader>
-              <DialogTitle>Editar Producto</DialogTitle>
-              <DialogDescription>{editProduct?.name} ({editProduct?.code})</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Nombre</label>
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-                />
+      {/* Edit Product Modal - native HTML to avoid Radix portal issues */}
+      {editProduct && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ pointerEvents: "auto" }}>
+          <div className="fixed inset-0 bg-black/50" onClick={() => !saving && setEditProduct(null)} />
+          <div className="relative bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4" style={{ zIndex: 10000 }}>
+            <h3 className="text-lg font-semibold mb-1">Editar Producto</h3>
+            <p className="text-sm text-gray-500 mb-4">{editProduct.name} ({editProduct.code})</p>
+            <form onSubmit={(e) => { e.preventDefault(); handleSaveEdit() }}>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Nombre</label>
+                  <input
+                    type="text"
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Codigo</label>
+                  <input
+                    type="text"
+                    value={editCode}
+                    onChange={(e) => setEditCode(e.target.value)}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Precio</label>
+                  <input
+                    type="number"
+                    value={editPrice}
+                    onChange={(e) => setEditPrice(e.target.value)}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                    step="0.01"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-1">Stock</label>
+                  <input
+                    type="number"
+                    value={editStock}
+                    onChange={(e) => setEditStock(e.target.value)}
+                    className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                    step="1"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Codigo</label>
-                <input
-                  type="text"
-                  value={editCode}
-                  onChange={(e) => setEditCode(e.target.value)}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-                />
+              <div className="flex justify-end gap-2 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setEditProduct(null)}
+                  disabled={saving}
+                  className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {saving ? "Guardando..." : "Guardar"}
+                </button>
               </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Precio</label>
-                <input
-                  type="number"
-                  value={editPrice}
-                  onChange={(e) => setEditPrice(e.target.value)}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-                  step="0.01"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Stock</label>
-                <input
-                  type="number"
-                  value={editStock}
-                  onChange={(e) => setEditStock(e.target.value)}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-                  step="1"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditProduct(null)} disabled={saving}>Cancelar</Button>
-              <Button type="submit" disabled={saving}>
-                {saving ? "Guardando..." : "Guardar"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Delete Product Dialog */}
       <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
