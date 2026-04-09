@@ -220,7 +220,7 @@ export async function createOrder(order: {
   const { error: histError } = await supabase.from("order_status_history").insert({
     order_id: orderData.id,
     status: "INGRESADO",
-    changed_by: order.vendedorName || order.vendedorId,
+    changed_by: order.vendedorId,
   })
   if (histError) throw histError
 
@@ -246,7 +246,7 @@ export async function updateOrderStatus(
   const { error: histError } = await supabase.from("order_status_history").insert({
     order_id: orderId,
     status: newStatus,
-    changed_by: userName || userId,
+    changed_by: userId,
     notes: notes || null,
   })
 
