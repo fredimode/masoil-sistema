@@ -698,6 +698,21 @@ export async function updateCotizacion(id: string, updates: Record<string, unkno
 }
 
 // ---------------------------------------------------------------------------
+// Facturas (emitidas por el sistema)
+// ---------------------------------------------------------------------------
+
+export async function fetchFacturas(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("facturas")
+    .select("*")
+    .order("fecha", { ascending: false })
+    .limit(50000)
+  if (error) throw error
+  return data || []
+}
+
+// ---------------------------------------------------------------------------
 // Facturas GestionPro
 // ---------------------------------------------------------------------------
 
@@ -880,6 +895,56 @@ export async function createMovimientoCuentaCorriente(mov: Record<string, any>):
     .single()
   if (error) throw error
   return data.id
+}
+
+// ---------------------------------------------------------------------------
+// Cuenta Corriente Proveedor
+// ---------------------------------------------------------------------------
+
+export async function fetchCuentaCorrienteProveedor(proveedorId?: string): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  let query = supabase
+    .from("cuenta_corriente_proveedor")
+    .select("*")
+    .order("fecha", { ascending: false })
+    .limit(5000)
+  if (proveedorId) query = query.eq("proveedor_id", proveedorId)
+  const { data, error } = await query
+  if (error) throw error
+  return data || []
+}
+
+export async function createMovimientoCuentaCorrienteProveedor(mov: Record<string, any>): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("cuenta_corriente_proveedor")
+    .insert(mov)
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+// ---------------------------------------------------------------------------
+// Factura Proveedor Items
+// ---------------------------------------------------------------------------
+
+export async function fetchFacturaProveedorItems(facturaId: string): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("factura_proveedor_items")
+    .select("*")
+    .eq("factura_id", facturaId)
+    .order("created_at")
+  if (error) throw error
+  return data || []
+}
+
+export async function createFacturaProveedorItems(items: Record<string, any>[]): Promise<void> {
+  if (items.length === 0) return
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("factura_proveedor_items").insert(items)
+  if (error) throw error
 }
 
 // ---------------------------------------------------------------------------

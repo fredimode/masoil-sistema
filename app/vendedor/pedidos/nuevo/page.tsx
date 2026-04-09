@@ -62,6 +62,7 @@ function NuevoPedidoContent() {
   const [selectedProductId, setSelectedProductId] = useState("")
   const [quantity, setQuantity] = useState(1)
   const [notes, setNotes] = useState("")
+  const [observacionesEntrega, setObservacionesEntrega] = useState("")
   const [isUrgent, setIsUrgent] = useState(false)
   const [razonSocial, setRazonSocial] = useState("")
   const [productSearch, setProductSearch] = useState("")
@@ -144,7 +145,7 @@ function NuevoPedidoContent() {
 
     setSubmitting(true)
     try {
-      await createOrder({
+      const orderId = await createOrder({
         clientId: selectedClientId,
         clientName: selectedClient?.businessName ?? "",
         vendedorId: vendedor.id,
@@ -157,6 +158,14 @@ function NuevoPedidoContent() {
         items: orderItems,
         razonSocial,
       })
+
+      // Save observaciones_entrega if provided
+      if (observacionesEntrega && orderId) {
+        const { createClient: createSupabaseClient } = await import("@/lib/supabase/client")
+        const supabase = createSupabaseClient()
+        await supabase.from("orders").update({ observaciones_entrega: observacionesEntrega }).eq("id", orderId)
+      }
+
       router.push("/vendedor/pedidos")
     } catch (err) {
       alert("Error al crear el pedido. Intenta de nuevo.")
@@ -376,6 +385,17 @@ function NuevoPedidoContent() {
                   placeholder="Notas adicionales para el pedido..."
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="obs-entrega">Observaciones de Entrega</Label>
+                <Textarea
+                  id="obs-entrega"
+                  placeholder="Quién solicita, quién recibe, si se entrega en otra sucursal..."
+                  value={observacionesEntrega}
+                  onChange={(e) => setObservacionesEntrega(e.target.value)}
                   rows={3}
                 />
               </div>

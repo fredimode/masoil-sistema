@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { normalizeSearch, formatMoney, formatDateStr } from "@/lib/utils"
-import { fetchFacturasGestionpro, fetchFacturasGestionproCount } from "@/lib/supabase/queries"
+import { fetchFacturasGestionpro, fetchFacturasGestionproCount, fetchFacturas } from "@/lib/supabase/queries"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import * as XLSX from "xlsx"
 
@@ -34,22 +36,27 @@ interface FacturaGP {
 export default function FacturacionPage() {
   const [loading, setLoading] = useState(true)
   const [gpData, setGpData] = useState<FacturaGP[]>([])
+  const [emitidas, setEmitidas] = useState<any[]>([])
   const [totalCount, setTotalCount] = useState(0)
   const [gpSearch, setGpSearch] = useState("")
   const [gpTipo, setGpTipo] = useState("")
   const [gpVendedor, setGpVendedor] = useState("")
   const [gpPage, setGpPage] = useState(1)
+  const [emPage, setEmPage] = useState(1)
+  const [emSearch, setEmSearch] = useState("")
 
   useEffect(() => {
     async function load() {
       setLoading(true)
       try {
-        const [data, count] = await Promise.all([
+        const [data, count, facturasEmitidas] = await Promise.all([
           fetchFacturasGestionpro(),
           fetchFacturasGestionproCount(),
+          fetchFacturas(),
         ])
         setGpData(data as FacturaGP[])
         setTotalCount(count)
+        setEmitidas(facturasEmitidas)
       } catch (error) {
         console.error("Error cargando facturas:", error)
       } finally {
@@ -139,6 +146,19 @@ export default function FacturacionPage() {
     )
   }
 
+  // Emitidas filtering
+  const emitidasFiltered = useMemo(() => {
+    if (!emSearch) return emitidas
+    const q = normalizeSearch(emSearch)
+    return emitidas.filter((f: any) =>
+      normalizeSearch(f.razon_social || "").includes(q) ||
+      normalizeSearch(f.numero || "").includes(q)
+    )
+  }, [emitidas, emSearch])
+
+  const emPagination = usePagination(emitidasFiltered, 50)
+  const emPageData = emPagination.getPage(emPage)
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -188,6 +208,93 @@ export default function FacturacionPage() {
         </div>
       </div>
 
+      <Tabs defaultValue={emitidas.length > 0 ? "emitidas" : "historial"}>
+        <TabsList className="mb-4">
+          <TabsTrigger value="emitidas">Facturas Emitidas ({emitidas.length})</TabsTrigger>
+          <TabsTrigger value="historial">Historial GestionPro ({totalCount || gpData.length})</TabsTrigger>
+        </TabsList>
+
+        {/* Tab Facturas Emitidas */}
+        <TabsContent value="emitidas">
+          <div className="bg-white rounded-lg shadow p-4 mb-4">
+            <input
+              type="text"
+              placeholder="Buscar por razon social o numero..."
+              value={emSearch}
+              onChange={(e) => { setEmSearch(e.target.value); setEmPage(1) }}
+              className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm w-64"
+            />
+          </div>
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            {emitidasFiltered.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500">No hay facturas emitidas desde el sistema</p>
+                <Link href="/admin/facturacion/nueva" className="text-primary hover:underline text-sm mt-2 inline-block">
+                  Generar primera factura
+                </Link>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Fecha</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Tipo</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Numero</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Cliente</th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-700">Base Gravada</th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-700">IVA</th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-700">Total</th>
+                        <th className="px-4 py-3 text-center font-semibold text-gray-700">CAE</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {emPageData.map((f: any, idx: number) => (
+                        <tr key={f.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                          <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                            {f.fecha ? formatDateStr(f.fecha) : "-"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                              {f.tipo || "-"}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3 text-gray-900 font-medium">{f.numero || "-"}</td>
+                          <td className="px-4 py-3">
+                            <span className="block truncate max-w-[180px] text-gray-900" title={f.razon_social || ""}>
+                              {f.razon_social || "-"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-600">{formatMoney(Number(f.base_gravada) || 0)}</td>
+                          <td className="px-4 py-3 text-right text-gray-600">{formatMoney(Number(f.iva_21) || 0)}</td>
+                          <td className="px-4 py-3 text-right font-bold text-gray-900">{formatMoney(Number(f.total) || 0)}</td>
+                          <td className="px-4 py-3 text-center">
+                            {f.cae ? (
+                              <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">{f.cae.slice(0, 8)}...</span>
+                            ) : (
+                              <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium">Sin CAE</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <TablePagination
+                  currentPage={emPage}
+                  totalPages={emPagination.totalPages}
+                  totalItems={emPagination.totalItems}
+                  pageSize={emPagination.pageSize}
+                  onPageChange={setEmPage}
+                />
+              </>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* Tab Historial GestionPro */}
+        <TabsContent value="historial">
       {/* Filters */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
         <div className="flex flex-wrap items-center gap-3">
@@ -302,6 +409,8 @@ export default function FacturacionPage() {
           </>
         )}
       </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

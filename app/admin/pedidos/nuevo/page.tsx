@@ -51,6 +51,7 @@ export default function AdminNuevoPedidoPage() {
   const [isCustom, setIsCustom] = useState(false)
   const [razonSocial, setRazonSocial] = useState("")
   const [observacionesIncompleto, setObservacionesIncompleto] = useState("")
+  const [observacionesEntrega, setObservacionesEntrega] = useState("")
   const [submitting, setSubmitting] = useState(false)
 
   // Inline product creation
@@ -252,6 +253,7 @@ export default function AdminNuevoPedidoPage() {
       const updateFields: Record<string, any> = {}
       if (hayItemsCotizacion) updateFields.requiere_cotizacion = true
       if (razonSocial) updateFields.razon_social = razonSocial
+      if (observacionesEntrega) updateFields.observaciones_entrega = observacionesEntrega
 
       // Check if order is incomplete (items with stock < quantity)
       const itemsSinStock = orderItems.filter((i) => i.stock < i.quantity)
@@ -536,6 +538,10 @@ export default function AdminNuevoPedidoPage() {
             <div className="space-y-2">
               <Label htmlFor="notes">Observaciones</Label>
               <Textarea id="notes" placeholder="Notas adicionales..." value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="obs-entrega">Observaciones de Entrega</Label>
+              <Textarea id="obs-entrega" placeholder="Quién solicita, quién recibe, si se entrega en otra sucursal..." value={observacionesEntrega} onChange={(e) => setObservacionesEntrega(e.target.value)} rows={3} />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex items-center gap-3 p-3 border rounded-lg">

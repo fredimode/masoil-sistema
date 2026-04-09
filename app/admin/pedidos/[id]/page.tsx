@@ -30,6 +30,8 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [statusHistory, setStatusHistory] = useState<Order["statusHistory"]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [facturaResult, setFacturaResult] = useState<{ numero: string; tipo: string; cae: string; total: number; razon_social: string; comprobante_nro: string } | null>(null)
+  const [facturaDialogOpen, setFacturaDialogOpen] = useState(false)
   const [newStatus, setNewStatus] = useState<string>("")
   const [statusNote, setStatusNote] = useState("")
   const [cancelMotivo, setCancelMotivo] = useState("")
@@ -91,7 +93,8 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             })
             const data = await res.json()
             if (data.success) {
-              alert(`Factura generada: ${data.factura.tipo} ${data.factura.comprobante_nro || data.factura.numero}`)
+              setFacturaResult(data.factura)
+              setFacturaDialogOpen(true)
             } else {
               alert("Error generando factura: " + (data.error || "Error desconocido") + "\nEl estado se actualizará de todas formas.")
             }
@@ -465,6 +468,56 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           </Card>
         </div>
       </div>
+
+      {/* Factura Generated Dialog */}
+      <Dialog open={facturaDialogOpen} onOpenChange={setFacturaDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Factura Generada Exitosamente</DialogTitle>
+          </DialogHeader>
+          {facturaResult && (
+            <div className="space-y-3 py-2">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                <svg className="w-10 h-10 text-green-600 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <p className="font-bold text-green-800">Factura procesada correctamente</p>
+              </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Tipo</span>
+                  <span className="font-medium">{facturaResult.tipo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Numero</span>
+                  <span className="font-medium">{facturaResult.comprobante_nro || facturaResult.numero}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">CAE</span>
+                  <span className="font-mono font-medium text-green-700">{facturaResult.cae || "Testing"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Cliente</span>
+                  <span className="font-medium">{facturaResult.razon_social}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-base">
+                  <span className="font-bold">Total</span>
+                  <span className="font-bold text-primary">{formatCurrency(facturaResult.total)}</span>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button asChild className="flex-1">
+                  <Link href="/admin/facturacion">Ver Facturas</Link>
+                </Button>
+                <Button variant="outline" className="flex-1" onClick={() => setFacturaDialogOpen(false)}>
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
