@@ -300,10 +300,18 @@ export async function createProduct(product: {
 
 export async function updateProduct(id: string, updates: Partial<{
   stock: number; price: number; name: string; code: string; category: string;
-}>): Promise<void> {
+}>): Promise<any> {
   const supabase = createSupabaseClient()
-  const { error } = await supabase.from("products").update(updates).eq("id", id)
+  console.log("[updateProduct] id:", id, "updates:", updates)
+  const { data, error } = await supabase
+    .from("products")
+    .update(updates)
+    .eq("id", id)
+    .select()
+    .single()
+  console.log("[updateProduct] data:", data, "error:", error)
   if (error) throw error
+  return data
 }
 
 export async function deleteProduct(id: string): Promise<void> {
