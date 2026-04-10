@@ -411,79 +411,85 @@ export default function AdminStockPage() {
         </div>
       )}
 
-      {/* Delete Product Dialog */}
-      <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Eliminar Producto</DialogTitle>
-            <DialogDescription>
-              Estas seguro de eliminar <strong>{deleteTarget?.name}</strong> ({deleteTarget?.code})?
-              Esta accion no se puede deshacer.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>Cancelar</Button>
-            <Button type="button" variant="destructive" onClick={handleDeleteProduct}>Eliminar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Delete Product Dialog - conditional mount */}
+      {deleteTarget && (
+        <Dialog open onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Eliminar Producto</DialogTitle>
+              <DialogDescription>
+                Estas seguro de eliminar <strong>{deleteTarget.name}</strong> ({deleteTarget.code})?
+                Esta accion no se puede deshacer.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDeleteTarget(null)}>Cancelar</Button>
+              <Button type="button" variant="destructive" onClick={handleDeleteProduct}>Eliminar</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
-      {/* Bulk Delete Confirmation Dialog */}
-      <Dialog open={showBulkDeleteConfirm} onOpenChange={setShowBulkDeleteConfirm}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Eliminar productos</DialogTitle>
-            <DialogDescription>
-              Estas seguro de eliminar <strong>{selectedIds.size}</strong> producto{selectedIds.size !== 1 ? "s" : ""}? Esta accion no se puede deshacer.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowBulkDeleteConfirm(false)} disabled={bulkDeleting}>Cancelar</Button>
-            <Button variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleting}>
-              {bulkDeleting ? "Eliminando..." : `Eliminar ${selectedIds.size}`}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Bulk Delete Confirmation Dialog - conditional mount */}
+      {showBulkDeleteConfirm && (
+        <Dialog open onOpenChange={setShowBulkDeleteConfirm}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Eliminar productos</DialogTitle>
+              <DialogDescription>
+                Estas seguro de eliminar <strong>{selectedIds.size}</strong> producto{selectedIds.size !== 1 ? "s" : ""}? Esta accion no se puede deshacer.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowBulkDeleteConfirm(false)} disabled={bulkDeleting}>Cancelar</Button>
+              <Button variant="destructive" onClick={handleBulkDelete} disabled={bulkDeleting}>
+                {bulkDeleting ? "Eliminando..." : `Eliminar ${selectedIds.size}`}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
-      {/* CSV Preview Dialog */}
-      <Dialog open={!!csvPreview} onOpenChange={(open) => !open && setCsvPreview(null)}>
-        <DialogContent className="max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Preview CSV Importado</DialogTitle>
-            <DialogDescription>Se muestran las primeras 10 filas del archivo</DialogDescription>
-          </DialogHeader>
-          {csvPreview && csvPreview.length > 0 && (
-            <div className="overflow-x-auto max-h-80">
-              <table className="w-full text-sm border">
-                <thead className="bg-gray-100">
-                  <tr>
-                    {Object.keys(csvPreview[0]).map((h) => (
-                      <th key={h} className="px-3 py-2 text-left font-medium border-b">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {csvPreview.map((row, i) => (
-                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                      {Object.values(row).map((v, j) => (
-                        <td key={j} className="px-3 py-2 border-b">{v}</td>
+      {/* CSV Preview Dialog - conditional mount */}
+      {csvPreview && (
+        <Dialog open onOpenChange={(open) => !open && setCsvPreview(null)}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Preview CSV Importado</DialogTitle>
+              <DialogDescription>Se muestran las primeras 10 filas del archivo</DialogDescription>
+            </DialogHeader>
+            {csvPreview.length > 0 && (
+              <div className="overflow-x-auto max-h-80">
+                <table className="w-full text-sm border">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      {Object.keys(csvPreview[0]).map((h) => (
+                        <th key={h} className="px-3 py-2 text-left font-medium border-b">{h}</th>
                       ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCsvPreview(null)}>Cerrar</Button>
-            <Button onClick={() => {
-              alert("Importacion de CSV pendiente de integracion con Supabase")
-              setCsvPreview(null)
-            }}>Importar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                  </thead>
+                  <tbody>
+                    {csvPreview.map((row, i) => (
+                      <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                        {Object.values(row).map((v, j) => (
+                          <td key={j} className="px-3 py-2 border-b">{v}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setCsvPreview(null)}>Cerrar</Button>
+              <Button onClick={() => {
+                alert("Importacion de CSV pendiente de integracion con Supabase")
+                setCsvPreview(null)
+              }}>Importar</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

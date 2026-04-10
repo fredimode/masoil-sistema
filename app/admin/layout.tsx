@@ -58,17 +58,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Header */}
         <header className="h-16 border-b bg-background flex items-center justify-between px-4 md:px-6">
           {/* Mobile Menu Button */}
-          <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="md:hidden">
-                <Menu className="h-5 w-5" />
-                <span className="sr-only">Abrir menú</span>
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-64">
-              <AdminSidebarContent onNavigate={() => setSidebarOpen(false)} userRole={userRole} userName={userName} />
-            </SheetContent>
-          </Sheet>
+          <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setSidebarOpen(true)}>
+            <Menu className="h-5 w-5" />
+            <span className="sr-only">Abrir menú</span>
+          </Button>
+          {sidebarOpen && (
+            <Sheet open onOpenChange={setSidebarOpen}>
+              <SheetContent side="left" className="p-0 w-64">
+                <AdminSidebarContent onNavigate={() => setSidebarOpen(false)} userRole={userRole} userName={userName} />
+              </SheetContent>
+            </Sheet>
+          )}
 
           {/* Title - visible on mobile */}
           <h1 className="text-lg font-semibold md:hidden">Masoil Admin</h1>
