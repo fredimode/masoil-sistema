@@ -60,6 +60,7 @@ export default function AdminStockPage() {
   }
 
   async function handleSaveEdit() {
+    console.log("[handleSaveEdit] called, editProduct:", editProduct?.id)
     if (!editProduct) return
     setSaving(true)
     try {
@@ -341,11 +342,18 @@ export default function AdminStockPage() {
         </div>
       )}
 
-      {/* Edit Product Modal - native HTML to avoid Radix portal issues */}
+      {/* Edit Product Modal */}
       {editProduct && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ pointerEvents: "auto" }}>
-          <div className="fixed inset-0 bg-black/50" onClick={() => !saving && setEditProduct(null)} />
-          <div className="relative bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4" style={{ zIndex: 10000 }}>
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center"
+          onMouseDown={(e) => { if (e.target === e.currentTarget && !saving) setEditProduct(null) }}
+        >
+          <div className="fixed inset-0 bg-black/50 -z-10" />
+          <div
+            className="relative bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <h3 className="text-lg font-semibold mb-1">Editar Producto</h3>
             <p className="text-sm text-gray-500 mb-4">{editProduct.name} ({editProduct.code})</p>
             <form onSubmit={(e) => { e.preventDefault(); handleSaveEdit() }}>
