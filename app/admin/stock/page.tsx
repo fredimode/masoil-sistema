@@ -62,21 +62,27 @@ export default function AdminStockPage() {
   async function handleSaveEdit() {
     console.log("[handleSaveEdit] called, editProduct:", editProduct?.id)
     if (!editProduct) return
+    // Capture values before any state changes
+    const productId = editProduct.id
+    const updates: Record<string, any> = {
+      name: editName || editProduct.name,
+      code: editCode || editProduct.code,
+      price: parseFloat(editPrice) || editProduct.price,
+      stock: parseInt(editStock) || editProduct.stock,
+    }
+    console.log("[handleSaveEdit] productId:", productId, "updates:", updates)
     setSaving(true)
     try {
-      const updates: Record<string, any> = {
-        price: parseFloat(editPrice) || editProduct.price,
-        stock: parseInt(editStock) || editProduct.stock,
-      }
-      if (editName && editName !== editProduct.name) updates.name = editName
-      if (editCode && editCode !== editProduct.code) updates.code = editCode
-      await updateProduct(editProduct.id, updates)
+      console.log("[handleSaveEdit] calling updateProduct...")
+      await updateProduct(productId, updates)
+      console.log("[handleSaveEdit] updateProduct OK, refetching...")
       const updated = await fetchProducts()
       setLocalProducts(updated)
       setEditProduct(null)
+      console.log("[handleSaveEdit] done")
     } catch (err) {
-      console.error("Error updating product:", err)
-      alert("Error al guardar producto")
+      console.error("[handleSaveEdit] ERROR:", err)
+      alert("Error al guardar producto: " + (err instanceof Error ? err.message : String(err)))
     } finally {
       setSaving(false)
     }
