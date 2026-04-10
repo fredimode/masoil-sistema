@@ -8,6 +8,7 @@ import {
   fetchOrdenesCompra,
   fetchFacturasProveedor,
   fetchPlanCuentas,
+  fetchProducts,
   createFacturaProveedor,
   createFacturaProveedorItems,
   updateOrdenCompra,
@@ -90,10 +91,15 @@ export default function FacturasProveedorPage() {
 
   // Items de la factura
   const [formItems, setFormItems] = useState<{ id: string; nombre: string; codigo: string; cantidad: string; precio: string }[]>([])
+  const [activeProductRow, setActiveProductRow] = useState<string | null>(null)
+  const [products, setProducts] = useState<any[]>([])
 
   // Plan de cuentas e imputaciones
   const [planCuentas, setPlanCuentas] = useState<any[]>([])
-  const [imputaciones, setImputaciones] = useState<{ id: string; cuenta_codigo: string; cuenta_categoria: string; cuenta_sub: string; debe: string; haber: string }[]>([])
+  const [imputaciones, setImputaciones] = useState<{ id: string; cuenta_codigo: string; cuenta_categoria: string; cuenta_sub: string }[]>([])
+  const [cuentaSearch, setCuentaSearch] = useState("")
+  const [showCuentaList, setShowCuentaList] = useState(false)
+  const [errorMsg, setErrorMsg] = useState("")
 
   // Proveedor autocomplete
   const [proveedorSearch, setProveedorSearch] = useState("")
@@ -106,16 +112,18 @@ export default function FacturasProveedorPage() {
   async function loadData() {
     setLoading(true)
     try {
-      const [f, p, o, pc] = await Promise.all([
+      const [f, p, o, pc, pr] = await Promise.all([
         fetchFacturasProveedor(),
         fetchProveedores(),
         fetchOrdenesCompra(),
         fetchPlanCuentas().catch(() => []),
+        fetchProducts().catch(() => []),
       ])
       setFacturas(f)
       setProveedores(p)
       setOrdenes(o)
       setPlanCuentas(pc)
+      setProducts(pr as any[])
     } catch (err) {
       console.error("Error cargando facturas proveedor:", err)
     } finally {
@@ -219,9 +227,49 @@ export default function FacturasProveedorPage() {
     setShowProveedorList(false)
   }
 
+  const cuentasFiltradas = useMemo(() => {
+    if (!cuentaSearch) return planCuentas.slice(0, 30)
+    const q = normalizeSearch(cuentaSearch)
+    return planCuentas
+      .filter((c: any) =>
+        normalizeSearch(c.codigo || "").includes(q) ||
+        normalizeSearch(c.categoria || "").includes(q) ||
+        normalizeSearch(c.sub_categoria || "").includes(q)
+      )
+      .slice(0, 30)
+  }, [planCuentas, cuentaSearch])
+
+  function productosFiltrados(search: string) {
+    if (!search) return []
+    const q = normalizeSearch(search)
+    return products
+      .filter((p: any) =>
+        normalizeSearch(p.code || "").includes(q) ||
+        normalizeSearch(p.name || "").includes(q)
+      )
+      .slice(0, 10)
+  }
+
+  function addImputacion(cuenta: any) {
+    if (imputaciones.some((i) => i.cuenta_codigo === cuenta.codigo)) return
+    setImputaciones((prev) => [...prev, {
+      id: Math.random().toString(36).slice(2),
+      cuenta_codigo: cuenta.codigo,
+      cuenta_categoria: cuenta.categoria || "",
+      cuenta_sub: cuenta.sub_categoria || "",
+    }])
+    setCuentaSearch("")
+    setShowCuentaList(false)
+  }
+
   async function handleGuardar() {
+    setErrorMsg("")
     if (!form.proveedor_nombre || !form.fecha || !form.neto) {
-      alert("Completar proveedor, fecha y neto")
+      setErrorMsg("Completar proveedor, fecha y neto")
+      return
+    }
+    if (imputaciones.length === 0) {
+      setErrorMsg("Debe seleccionar al menos una imputación contable")
       return
     }
     setGuardando(true)
@@ -257,8 +305,8 @@ export default function FacturasProveedorPage() {
           cuenta_codigo: imp.cuenta_codigo,
           cuenta_categoria: imp.cuenta_categoria,
           cuenta_sub: imp.cuenta_sub,
-          debe: parseFloat(imp.debe) || 0,
-          haber: parseFloat(imp.haber) || 0,
+          debe: 0,
+          haber: 0,
         })),
       }
 
@@ -300,11 +348,13 @@ export default function FacturasProveedorPage() {
       setArchivo(null)
       setFormItems([])
       setImputaciones([])
+      setCuentaSearch("")
+      setErrorMsg("")
       setDialogOpen(false)
       await loadData()
     } catch (err) {
       console.error("Error guardando factura:", err)
-      alert("Error al guardar la factura")
+      setErrorMsg("Error al guardar la factura")
     } finally {
       setGuardando(false)
     }
@@ -347,6 +397,8 @@ export default function FacturasProveedorPage() {
             setArchivo(null)
             setFormItems([])
             setImputaciones([])
+            setCuentaSearch("")
+            setErrorMsg("")
             setDialogOpen(true)
           }}
           className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2"
@@ -498,12 +550,12 @@ export default function FacturasProveedorPage() {
 
       {/* ==================== DIALOG: Cargar Factura ==================== */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Cargar Factura de Proveedor</DialogTitle>
           </DialogHeader>
 
-          <div className="grid gap-4 py-2">
+          <div className="grid gap-3 py-2">
             {/* Proveedor autocomplete */}
             <div className="relative">
               <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor *</label>
@@ -538,20 +590,86 @@ export default function FacturasProveedorPage() {
               )}
             </div>
 
-            {/* CUIT + Razon Social (auto-filled) */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Fila 2: Tipo | Letra | Punto Venta | Número | CUIT */}
+            <div className="grid grid-cols-5 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">CUIT</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Tipo</label>
+                <select
+                  value={form.tipo}
+                  onChange={(e) => setForm((prev) => ({ ...prev, tipo: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                >
+                  <option value="FACTURA">Factura</option>
+                  <option value="NOTA_CREDITO">Nota de Credito</option>
+                  <option value="NOTA_DEBITO">Nota de Debito</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Letra</label>
+                <select
+                  value={form.letra}
+                  onChange={(e) => setForm((prev) => ({ ...prev, letra: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                >
+                  <option value="A">A</option>
+                  <option value="B">B</option>
+                  <option value="C">C</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Punto de Venta</label>
+                <input
+                  type="text"
+                  value={form.punto_venta}
+                  onChange={(e) => setForm((prev) => ({ ...prev, punto_venta: e.target.value }))}
+                  placeholder="0001"
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Número</label>
+                <input
+                  type="text"
+                  value={form.numero}
+                  onChange={(e) => setForm((prev) => ({ ...prev, numero: e.target.value }))}
+                  placeholder="00000001"
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">CUIT</label>
                 <input
                   type="text"
                   value={form.cuit}
                   onChange={(e) => setForm((prev) => ({ ...prev, cuit: e.target.value }))}
                   className="w-full p-2 border rounded-lg bg-gray-50 text-sm"
-                  placeholder="Auto-completado"
+                  placeholder="Auto"
+                />
+              </div>
+            </div>
+
+            {/* Fila 3: Fecha | Vencimiento | Razón Social */}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Fecha *</label>
+                <input
+                  type="date"
+                  value={form.fecha}
+                  onChange={(e) => setForm((prev) => ({ ...prev, fecha: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Razon Social</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Fecha Vencimiento</label>
+                <input
+                  type="date"
+                  value={form.fecha_vencimiento}
+                  onChange={(e) => setForm((prev) => ({ ...prev, fecha_vencimiento: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Razón Social</label>
                 <select
                   value={form.razon_social}
                   onChange={(e) => setForm((prev) => ({ ...prev, razon_social: e.target.value }))}
@@ -565,84 +683,10 @@ export default function FacturasProveedorPage() {
               </div>
             </div>
 
-            {/* Tipo + Letra */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Fila 4: Neto | IVA 21% | IVA 10.5% | IVA 27% */}
+            <div className="grid grid-cols-4 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
-                <select
-                  value={form.tipo}
-                  onChange={(e) => setForm((prev) => ({ ...prev, tipo: e.target.value }))}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
-                >
-                  <option value="FACTURA">Factura</option>
-                  <option value="NOTA_CREDITO">Nota de Credito</option>
-                  <option value="NOTA_DEBITO">Nota de Debito</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Letra</label>
-                <select
-                  value={form.letra}
-                  onChange={(e) => setForm((prev) => ({ ...prev, letra: e.target.value }))}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
-                >
-                  <option value="A">A</option>
-                  <option value="B">B</option>
-                  <option value="C">C</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Punto de Venta + Numero */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Punto de Venta</label>
-                <input
-                  type="text"
-                  value={form.punto_venta}
-                  onChange={(e) => setForm((prev) => ({ ...prev, punto_venta: e.target.value }))}
-                  placeholder="0001"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Numero</label>
-                <input
-                  type="text"
-                  value={form.numero}
-                  onChange={(e) => setForm((prev) => ({ ...prev, numero: e.target.value }))}
-                  placeholder="00000001"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
-                />
-              </div>
-            </div>
-
-            {/* Fechas */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha *</label>
-                <input
-                  type="date"
-                  value={form.fecha}
-                  onChange={(e) => setForm((prev) => ({ ...prev, fecha: e.target.value }))}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha Vencimiento</label>
-                <input
-                  type="date"
-                  value={form.fecha_vencimiento}
-                  onChange={(e) => setForm((prev) => ({ ...prev, fecha_vencimiento: e.target.value }))}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
-                />
-              </div>
-            </div>
-
-            {/* Neto + IVA 21% */}
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Neto *</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Neto *</label>
                 <input
                   type="number"
                   step="0.01"
@@ -653,7 +697,7 @@ export default function FacturasProveedorPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">IVA 21%</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">IVA 21% (auto)</label>
                 <input
                   type="number"
                   step="0.01"
@@ -663,12 +707,8 @@ export default function FacturasProveedorPage() {
                   className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
-            </div>
-
-            {/* IVA 10.5% + IVA 27% */}
-            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">IVA 10.5%</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">IVA 10.5%</label>
                 <input
                   type="number"
                   step="0.01"
@@ -679,7 +719,7 @@ export default function FacturasProveedorPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">IVA 27%</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">IVA 27%</label>
                 <input
                   type="number"
                   step="0.01"
@@ -691,10 +731,10 @@ export default function FacturasProveedorPage() {
               </div>
             </div>
 
-            {/* Percepciones */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Fila 5: Perc. IVA | Perc. IIBB | Jurisdicción | Imp. Internos | Exentos */}
+            <div className="grid grid-cols-5 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Perc. IVA</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Perc. IVA</label>
                 <input
                   type="number"
                   step="0.01"
@@ -705,7 +745,7 @@ export default function FacturasProveedorPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Perc. IIBB</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Perc. IIBB</label>
                 <input
                   type="number"
                   step="0.01"
@@ -715,29 +755,22 @@ export default function FacturasProveedorPage() {
                   className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
-            </div>
-
-            {/* Jurisdicción IIBB */}
-            {(parseFloat(form.percepciones_iibb) || 0) > 0 && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Jurisdicción IIBB</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Jurisdicción IIBB</label>
                 <select
                   value={form.jurisdiccion_iibb}
                   onChange={(e) => setForm((prev) => ({ ...prev, jurisdiccion_iibb: e.target.value }))}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  disabled={(parseFloat(form.percepciones_iibb) || 0) <= 0}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm disabled:bg-gray-50"
                 >
-                  <option value="">Seleccionar provincia...</option>
+                  <option value="">—</option>
                   {PROVINCIAS_ARGENTINA.map((p) => (
                     <option key={p} value={p}>{p}</option>
                   ))}
                 </select>
               </div>
-            )}
-
-            {/* Impuestos Internos + Exentos */}
-            <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Imp. Internos</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Imp. Internos</label>
                 <input
                   type="number"
                   step="0.01"
@@ -748,7 +781,7 @@ export default function FacturasProveedorPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Exentos / No Gravados</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Exentos / No Grav.</label>
                 <input
                   type="number"
                   step="0.01"
@@ -758,57 +791,43 @@ export default function FacturasProveedorPage() {
                   className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
+            </div>
+
+            {/* Fila 6: Total destacado */}
+            <div className="flex items-center justify-end gap-3 bg-primary/5 border border-primary/20 rounded-lg px-4 py-2">
+              <span className="text-sm font-medium text-gray-700">Total:</span>
+              <span className="text-2xl font-bold text-primary">
+                {form.total ? formatCurrency(parseFloat(form.total)) : "$0,00"}
+              </span>
+            </div>
+
+            {/* Adjuntar + Vincular OC en una línea */}
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Otros Imp.</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Adjuntar Factura</label>
                 <input
-                  type="number"
-                  step="0.01"
-                  value={form.otros_impuestos}
-                  onChange={(e) => handleImpuestoChange("otros_impuestos", e.target.value)}
-                  placeholder="0.00"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) => setArchivo(e.target.files?.[0] || null)}
+                  className="w-full p-2 border rounded-lg text-sm file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-primary file:text-white hover:file:bg-primary/90"
                 />
+                {archivo && <p className="text-xs text-gray-500 mt-1">{archivo.name}</p>}
               </div>
-            </div>
-
-            {/* Total */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Total</label>
-              <input
-                type="text"
-                value={form.total ? formatCurrency(parseFloat(form.total)) : "$0,00"}
-                readOnly
-                className="w-full p-2 border rounded-lg bg-gray-100 text-sm font-bold"
-              />
-            </div>
-
-            {/* Vincular OC */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Vincular con Orden de Compra</label>
-              <select
-                value={form.orden_compra_id}
-                onChange={(e) => setForm((prev) => ({ ...prev, orden_compra_id: e.target.value }))}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
-              >
-                <option value="">Sin vincular</option>
-                {ordenesProveedor.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    OC {o.nro_oc || o.id.slice(0, 8)} - {formatCurrency(Number(o.importe_total) || 0)} ({o.estado})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Adjuntar factura */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Adjuntar Factura</label>
-              <input
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={(e) => setArchivo(e.target.files?.[0] || null)}
-                className="w-full p-2 border rounded-lg text-sm file:mr-4 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:bg-primary file:text-white hover:file:bg-primary/90"
-              />
-              {archivo && <p className="text-xs text-gray-500 mt-1">{archivo.name}</p>}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Vincular con Orden de Compra</label>
+                <select
+                  value={form.orden_compra_id}
+                  onChange={(e) => setForm((prev) => ({ ...prev, orden_compra_id: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                >
+                  <option value="">Sin vincular</option>
+                  {ordenesProveedor.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      OC {o.nro_oc || o.id.slice(0, 8)} - {formatCurrency(Number(o.importe_total) || 0)} ({o.estado})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Detalle de productos/items */}
@@ -824,57 +843,96 @@ export default function FacturasProveedorPage() {
                 </button>
               </div>
               {formItems.length > 0 && (
-                <div className="space-y-2">
-                  <div className="grid grid-cols-[1fr,80px,80px,80px,30px] gap-2 text-xs font-medium text-gray-500">
-                    <span>Producto</span>
+                <div className="space-y-1">
+                  <div className="grid grid-cols-[90px,1fr,80px,110px,110px,24px] gap-2 text-xs font-medium text-gray-500 px-1">
                     <span>Código</span>
+                    <span>Producto (buscar o texto libre)</span>
                     <span>Cant.</span>
                     <span>Precio Unit.</span>
+                    <span className="text-right">Subtotal</span>
                     <span></span>
                   </div>
-                  {formItems.map((item) => (
-                    <div key={item.id} className="grid grid-cols-[1fr,80px,80px,80px,30px] gap-2">
-                      <input
-                        type="text"
-                        value={item.nombre}
-                        onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, nombre: e.target.value } : it))}
-                        className="p-1.5 border rounded text-sm"
-                        placeholder="Nombre del producto"
-                      />
-                      <input
-                        type="text"
-                        value={item.codigo}
-                        onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, codigo: e.target.value } : it))}
-                        className="p-1.5 border rounded text-sm"
-                        placeholder="Código"
-                      />
-                      <input
-                        type="number"
-                        value={item.cantidad}
-                        onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, cantidad: e.target.value } : it))}
-                        className="p-1.5 border rounded text-sm"
-                        min="1"
-                      />
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={item.precio}
-                        onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, precio: e.target.value } : it))}
-                        className="p-1.5 border rounded text-sm"
-                        placeholder="0.00"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setFormItems((prev) => prev.filter((it) => it.id !== item.id))}
-                        className="text-red-500 hover:text-red-700 text-sm"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
+                  {formItems.map((item) => {
+                    const subtotal = (parseFloat(item.cantidad) || 0) * (parseFloat(item.precio) || 0)
+                    const matches = activeProductRow === item.id ? productosFiltrados(item.nombre) : []
+                    return (
+                      <div key={item.id} className="relative grid grid-cols-[90px,1fr,80px,110px,110px,24px] gap-2 items-center">
+                        <input
+                          type="text"
+                          value={item.codigo}
+                          onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, codigo: e.target.value } : it))}
+                          className="p-1.5 border rounded text-sm"
+                          placeholder="Código"
+                        />
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={item.nombre}
+                            onChange={(e) => {
+                              setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, nombre: e.target.value } : it))
+                              setActiveProductRow(item.id)
+                            }}
+                            onFocus={() => setActiveProductRow(item.id)}
+                            onBlur={() => setTimeout(() => setActiveProductRow((r) => r === item.id ? null : r), 150)}
+                            className="w-full p-1.5 border rounded text-sm"
+                            placeholder="Buscar o escribir nombre..."
+                          />
+                          {matches.length > 0 && (
+                            <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                              {matches.map((p: any) => (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => {
+                                    setFormItems((prev) => prev.map((it) => it.id === item.id ? {
+                                      ...it,
+                                      nombre: p.name,
+                                      codigo: p.code || it.codigo,
+                                      precio: it.precio || String(p.price || ""),
+                                    } : it))
+                                    setActiveProductRow(null)
+                                  }}
+                                  className="w-full text-left px-3 py-1.5 hover:bg-gray-100 text-xs border-b last:border-0"
+                                >
+                                  <span className="font-mono text-gray-500 mr-2">{p.code}</span>
+                                  <span>{p.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                        <input
+                          type="number"
+                          value={item.cantidad}
+                          onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, cantidad: e.target.value } : it))}
+                          className="p-1.5 border rounded text-sm"
+                          min="1"
+                        />
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={item.precio}
+                          onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, precio: e.target.value } : it))}
+                          className="p-1.5 border rounded text-sm"
+                          placeholder="0.00"
+                        />
+                        <div className="text-right text-sm font-medium text-gray-700">
+                          {formatCurrency(subtotal)}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setFormItems((prev) => prev.filter((it) => it.id !== item.id))}
+                          className="text-red-500 hover:text-red-700 text-sm"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )
+                  })}
                   {formItems.some((it) => it.nombre.trim()) && (
                     <div className="text-right text-xs text-gray-500 pt-1">
-                      Subtotal items: {formatCurrency(formItems.reduce((s, it) => s + (parseFloat(it.cantidad) || 1) * (parseFloat(it.precio) || 0), 0))}
+                      Subtotal items: {formatCurrency(formItems.reduce((s, it) => s + (parseFloat(it.cantidad) || 0) * (parseFloat(it.precio) || 0), 0))}
                     </div>
                   )}
                 </div>
@@ -886,91 +944,64 @@ export default function FacturasProveedorPage() {
 
             {/* Imputación Contable */}
             <div className="border rounded-lg p-3 bg-blue-50/50">
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-sm font-medium text-gray-700">Imputación Contable (opcional)</label>
-                <button
-                  type="button"
-                  onClick={() => setImputaciones((prev) => [...prev, { id: Math.random().toString(36).slice(2), cuenta_codigo: "", cuenta_categoria: "", cuenta_sub: "", debe: "", haber: "" }])}
-                  className="text-xs text-blue-600 hover:text-blue-800"
-                >
-                  + Agregar imputación
-                </button>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Imputación Contable <span className="text-red-600">*</span>
+              </label>
+              <div className="relative mb-2">
+                <input
+                  type="text"
+                  placeholder="Buscar por código, categoría o subcategoría..."
+                  value={cuentaSearch}
+                  onChange={(e) => {
+                    setCuentaSearch(e.target.value)
+                    setShowCuentaList(true)
+                  }}
+                  onFocus={() => setShowCuentaList(true)}
+                  onBlur={() => setTimeout(() => setShowCuentaList(false), 150)}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                />
+                {showCuentaList && cuentasFiltradas.length > 0 && (
+                  <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg mt-1 max-h-56 overflow-y-auto">
+                    {cuentasFiltradas.map((c: any) => {
+                      const disabled = imputaciones.some((i) => i.cuenta_codigo === c.codigo)
+                      return (
+                        <button
+                          key={c.codigo}
+                          type="button"
+                          disabled={disabled}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => addImputacion(c)}
+                          className="w-full text-left px-3 py-1.5 hover:bg-gray-100 text-sm border-b last:border-0 disabled:opacity-40 disabled:cursor-not-allowed grid grid-cols-[80px,1fr,1fr] gap-2"
+                        >
+                          <span className="font-mono text-gray-500">{c.codigo}</span>
+                          <span className="text-gray-700 truncate">{c.categoria}</span>
+                          <span className="text-gray-600 truncate">{c.sub_categoria || "-"}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
               {imputaciones.length > 0 ? (
-                <div className="space-y-2">
-                  {imputaciones.map((imp) => {
-                    // Group plan_cuentas by categoria
-                    const grouped = planCuentas.reduce((acc: Record<string, any[]>, c: any) => {
-                      const cat = c.categoria || "Otros"
-                      if (!acc[cat]) acc[cat] = []
-                      acc[cat].push(c)
-                      return acc
-                    }, {})
-
-                    return (
-                      <div key={imp.id} className="grid grid-cols-[1fr,80px,80px,30px] gap-2 items-end">
-                        <div>
-                          <select
-                            value={imp.cuenta_codigo}
-                            onChange={(e) => {
-                              const cuenta = planCuentas.find((c: any) => c.codigo === e.target.value)
-                              setImputaciones((prev) => prev.map((i) => i.id === imp.id ? {
-                                ...i,
-                                cuenta_codigo: e.target.value,
-                                cuenta_categoria: cuenta?.categoria || "",
-                                cuenta_sub: cuenta?.sub_categoria || "",
-                              } : i))
-                            }}
-                            className="w-full p-1.5 border rounded text-sm"
-                          >
-                            <option value="">Seleccionar cuenta...</option>
-                            {Object.entries(grouped).map(([cat, cuentas]) => (
-                              <optgroup key={cat} label={cat}>
-                                {(cuentas as any[]).map((c: any) => (
-                                  <option key={c.codigo} value={c.codigo}>
-                                    {c.codigo} - {c.sub_categoria || c.categoria}
-                                  </option>
-                                ))}
-                              </optgroup>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-gray-500 block">Debe</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={imp.debe}
-                            onChange={(e) => setImputaciones((prev) => prev.map((i) => i.id === imp.id ? { ...i, debe: e.target.value } : i))}
-                            className="w-full p-1.5 border rounded text-sm"
-                            placeholder="0.00"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-gray-500 block">Haber</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            value={imp.haber}
-                            onChange={(e) => setImputaciones((prev) => prev.map((i) => i.id === imp.id ? { ...i, haber: e.target.value } : i))}
-                            className="w-full p-1.5 border rounded text-sm"
-                            placeholder="0.00"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setImputaciones((prev) => prev.filter((i) => i.id !== imp.id))}
-                          className="text-red-500 hover:text-red-700 text-sm pb-1"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    )
-                  })}
+                <div className="space-y-1">
+                  {imputaciones.map((imp) => (
+                    <div key={imp.id} className="grid grid-cols-[80px,1fr,1fr,24px] gap-2 items-center bg-white border rounded px-2 py-1.5 text-sm">
+                      <span className="font-mono text-gray-500">{imp.cuenta_codigo}</span>
+                      <span className="text-gray-700 truncate">{imp.cuenta_categoria}</span>
+                      <span className="text-gray-600 truncate">{imp.cuenta_sub || "-"}</span>
+                      <button
+                        type="button"
+                        onClick={() => setImputaciones((prev) => prev.filter((i) => i.id !== imp.id))}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <p className="text-xs text-gray-400 text-center py-2">
-                  {planCuentas.length > 0 ? "Sin imputaciones contables" : "Plan de cuentas no cargado aún"}
+                  {planCuentas.length > 0 ? "Debe seleccionar al menos una imputación" : "Plan de cuentas no cargado aún"}
                 </p>
               )}
             </div>
@@ -987,6 +1018,12 @@ export default function FacturasProveedorPage() {
               />
             </div>
           </div>
+
+          {errorMsg && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
+              {errorMsg}
+            </div>
+          )}
 
           <DialogFooter>
             <button
