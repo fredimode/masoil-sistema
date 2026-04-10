@@ -219,17 +219,12 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (facturaRef) {
-        // Determine tipo_comprobante code for the referenced invoice
-        const tipoRefMap: Record<string, number> = {
-          "Factura A": 1, "FACTURA A": 1,
-          "Factura B": 6, "FACTURA B": 6,
-          "Factura C": 11, "FACTURA C": 11,
-        }
-        const tipoRefCode = tipoRefMap[facturaRef.tipo] || 1
         const nroRef = facturaRef.comprobante_nro || facturaRef.numero || "0"
+        // TusFacturas expects the tipo as text matching the original comprobante type
+        const tipoRefText = facturaRef.tipo || `FACTURA ${letra}`
 
         comprobantesAsociados = [{
-          tipo_comprobante: tipoRefCode,
+          tipo_comprobante: tipoRefText,
           punto_venta: parseInt(process.env.TUSFACTURAS_PUNTO_VENTA || "1"),
           numero: parseInt(nroRef) || 0,
           comprobante_fecha: facturaRef.fecha
