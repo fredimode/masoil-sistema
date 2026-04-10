@@ -209,7 +209,37 @@ export async function POST(request: NextRequest) {
     // PASO 2: Enviando a TusFacturas
     // ================================================================
 
-    const payload = {
+    // Build comprobantes_asociados for NC/ND
+    let comprobantesAsociados: any[] = []
+    if ((tipoComp === "NOTA_CREDITO" || tipoComp === "NOTA_DEBITO") && facturaReferenciaId) {
+      const { data: facturaRef } = await supabase
+        .from("facturas")
+        .select("tipo, numero, comprobante_nro, fecha")
+        .eq("id", facturaReferenciaId)
+        .single()
+
+      if (facturaRef) {
+        // Determine tipo_comprobante code for the referenced invoice
+        const tipoRefMap: Record<string, number> = {
+          "Factura A": 1, "FACTURA A": 1,
+          "Factura B": 6, "FACTURA B": 6,
+          "Factura C": 11, "FACTURA C": 11,
+        }
+        const tipoRefCode = tipoRefMap[facturaRef.tipo] || 1
+        const nroRef = facturaRef.comprobante_nro || facturaRef.numero || "0"
+
+        comprobantesAsociados = [{
+          tipo_comprobante: tipoRefCode,
+          punto_venta: parseInt(process.env.TUSFACTURAS_PUNTO_VENTA || "1"),
+          numero: parseInt(nroRef) || 0,
+          comprobante_fecha: facturaRef.fecha
+            ? formatDate(new Date(facturaRef.fecha))
+            : formatDate(fechaHoy),
+        }]
+      }
+    }
+
+    const payload: Record<string, any> = {
       apitoken: process.env.TUSFACTURAS_API_TOKEN,
       usertoken: process.env.TUSFACTURAS_USER_TOKEN,
       apikey: process.env.TUSFACTURAS_API_KEY,
@@ -247,8 +277,9 @@ export async function POST(request: NextRequest) {
           },
           leyenda: "",
         })),
-        observaciones: orderId ? `Pedido ${orderId}` : "Factura directa",
+        observaciones: orderId ? `Pedido ${orderId}` : tipoComp !== "FACTURA" ? `${tipoFactura}` : "Factura directa",
         total,
+        comprobantes_asociados: comprobantesAsociados.length > 0 ? comprobantesAsociados : undefined,
       },
     }
 
