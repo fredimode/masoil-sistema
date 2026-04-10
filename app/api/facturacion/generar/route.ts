@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { orderId, clientId, items: itemsDirectos } = body
+  const { orderId, clientId, items: itemsDirectos, tipoComprobante, facturaReferenciaId } = body
 
   if (!clientId) {
     return NextResponse.json({ success: false, error: "clientId es requerido" }, { status: 400 })
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
     if (orderId) {
       const { data: orderItems, error: oiError } = await supabase
         .from("order_items")
-        .select("product_name, product_code, quantity, price")
+        .select("quantity, unit_price, products(name, code)")
         .eq("order_id", orderId)
 
       if (oiError || !orderItems || orderItems.length === 0) {
@@ -134,11 +134,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: "No se encontraron items del pedido" }, { status: 404 })
       }
 
-      items = orderItems.map((oi) => ({
-        descripcion: oi.product_name,
-        codigo: oi.product_code || "",
+      items = orderItems.map((oi: any) => ({
+        descripcion: oi.products?.name || "",
+        codigo: oi.products?.code || "",
         cantidad: oi.quantity,
-        precioUnitario: Number(oi.price),
+        precioUnitario: Number(oi.unit_price),
       }))
     } else if (itemsDirectos && itemsDirectos.length > 0) {
       // Items directos con búsqueda opcional de producto
@@ -170,9 +170,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "Debe enviar orderId o items[]" }, { status: 400 })
     }
 
-    // Determinar tipo de factura por condición IVA
+    // Determinar tipo de comprobante por condición IVA y tipo solicitado
     const condicionIvaCliente = CONDICION_IVA_MAP[(cliente.condicion_iva || "").toUpperCase().trim()] || "CF"
-    const tipoFactura = condicionIvaCliente === "RI" ? "FACTURA A" : "FACTURA B"
+    const letra = condicionIvaCliente === "RI" ? "A" : "B"
+    const tipoComp = tipoComprobante || "FACTURA"
+    const tipoFactura = tipoComp === "NOTA_CREDITO"
+      ? `NOTA DE CREDITO ${letra}`
+      : tipoComp === "NOTA_DEBITO"
+      ? `NOTA DE DEBITO ${letra}`
+      : `FACTURA ${letra}`
 
     // Calcular totales - precios son SIN IVA
     const baseGravada = items.reduce((sum, it) => sum + it.cantidad * it.precioUnitario, 0)
@@ -278,17 +284,19 @@ export async function POST(request: NextRequest) {
           order_id: orderId || null,
           client_id: clientId,
           numero: String(responseData.comprobante_nro || ""),
-          tipo: tipoFactura === "FACTURA A" ? "Factura A" : "Factura B",
+          comprobante_nro: String(responseData.comprobante_nro || ""),
+          tipo: tipoFactura,
           fecha: fechaHoy.toISOString().slice(0, 10),
           cuit_cliente: cuitCliente,
           razon_social: razonSocial,
           base_gravada: baseGravadaRedondeada,
           iva_21: iva21,
-          total,
+          total: tipoComp === "NOTA_CREDITO" ? -Math.abs(total) : total,
           cae: responseData.cae || null,
           vencimiento_cae: responseData.vencimiento_cae
             ? responseData.vencimiento_cae.split("/").reverse().join("-")
             : null,
+          factura_referencia_id: facturaReferenciaId || null,
         })
         .select()
         .single()

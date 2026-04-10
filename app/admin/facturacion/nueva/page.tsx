@@ -73,6 +73,11 @@ export default function NuevaFacturaPage() {
   const [modo, setModo] = useState<"pedido" | "manual">("manual")
   const [orderId, setOrderId] = useState<string | null>(null)
 
+  // Tipo de comprobante: FACTURA, NOTA_CREDITO, NOTA_DEBITO
+  const [tipoComprobante, setTipoComprobante] = useState<"FACTURA" | "NOTA_CREDITO" | "NOTA_DEBITO">("FACTURA")
+  const [facturaReferenciaId, setFacturaReferenciaId] = useState<string>("")
+  const [facturasCliente, setFacturasCliente] = useState<any[]>([])
+
   // Buscar clientes con debounce
   useEffect(() => {
     if (clienteSearch.length < 2) {
@@ -140,11 +145,21 @@ export default function NuevaFacturaPage() {
     return () => document.removeEventListener("mousedown", handleClick)
   }, [])
 
-  function seleccionarCliente(c: ClienteDB) {
+  async function seleccionarCliente(c: ClienteDB) {
     setClienteSeleccionado(c)
     setClienteSearch(c.razon_social || c.business_name)
     setShowClienteDropdown(false)
     setPaso(2)
+    // Load facturas for this client (for NC/ND reference)
+    if (tipoComprobante !== "FACTURA") {
+      const { data } = await supabase
+        .from("facturas")
+        .select("id, numero, tipo, total, fecha, comprobante_nro")
+        .eq("client_id", c.id)
+        .order("fecha", { ascending: false })
+        .limit(50)
+      setFacturasCliente(data || [])
+    }
   }
 
   function agregarProducto(p: ProductoDB) {
@@ -176,10 +191,15 @@ export default function NuevaFacturaPage() {
   const iva21 = Math.round(baseGravada * 0.21 * 100) / 100
   const total = Math.round((baseGravada + iva21) * 100) / 100
 
-  // Determinar tipo de factura
+  // Determinar tipo de factura según condición IVA y tipo de comprobante
   const condicionIva = (clienteSeleccionado?.condicion_iva || "").toUpperCase().trim()
   const esRI = condicionIva === "RESP. INSCRIPTO" || condicionIva === "RESPONSABLE INSCRIPTO" || condicionIva === "RI"
-  const tipoFactura = esRI ? "FACTURA A" : "FACTURA B"
+  const letra = esRI ? "A" : "B"
+  const tipoFactura = tipoComprobante === "NOTA_CREDITO"
+    ? `NOTA DE CREDITO ${letra}`
+    : tipoComprobante === "NOTA_DEBITO"
+    ? `NOTA DE DEBITO ${letra}`
+    : `FACTURA ${letra}`
 
   async function generarFactura() {
     if (!clienteSeleccionado || items.length === 0) return
@@ -189,6 +209,7 @@ export default function NuevaFacturaPage() {
     try {
       const payload: Record<string, unknown> = {
         clientId: clienteSeleccionado.id,
+        tipoComprobante,
         items: items.map((it) => ({
           productId: it.productId,
           producto_nombre: it.descripcion,
@@ -200,6 +221,9 @@ export default function NuevaFacturaPage() {
 
       if (orderId) {
         payload.orderId = orderId
+      }
+      if (facturaReferenciaId) {
+        payload.facturaReferenciaId = facturaReferenciaId
       }
 
       const res = await fetch("/api/facturacion/generar", {
@@ -307,6 +331,27 @@ export default function NuevaFacturaPage() {
         <p className="text-gray-500">Genera una factura a través de TusFacturas (modo testing)</p>
       </div>
 
+      {/* Tipo de comprobante */}
+      <div className="flex gap-2 mb-6">
+        {(["FACTURA", "NOTA_CREDITO", "NOTA_DEBITO"] as const).map((tipo) => {
+          const labels = { FACTURA: "Factura", NOTA_CREDITO: "Nota de Crédito", NOTA_DEBITO: "Nota de Débito" }
+          const colors = {
+            FACTURA: tipoComprobante === tipo ? "bg-primary text-white" : "bg-white text-gray-700 border",
+            NOTA_CREDITO: tipoComprobante === tipo ? "bg-purple-600 text-white" : "bg-white text-purple-700 border border-purple-200",
+            NOTA_DEBITO: tipoComprobante === tipo ? "bg-orange-600 text-white" : "bg-white text-orange-700 border border-orange-200",
+          }
+          return (
+            <button
+              key={tipo}
+              onClick={() => { setTipoComprobante(tipo); setFacturaReferenciaId("") }}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${colors[tipo]}`}
+            >
+              {labels[tipo]}
+            </button>
+          )
+        })}
+      </div>
+
       {/* Indicador de modo */}
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
         <p className="text-sm text-amber-800">
@@ -394,6 +439,31 @@ export default function NuevaFacturaPage() {
           </div>
         )}
       </div>
+
+      {/* Referencia de factura (solo para NC/ND) */}
+      {clienteSeleccionado && tipoComprobante !== "FACTURA" && (
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h3 className="font-bold text-gray-900 mb-4">
+            Factura de Referencia {tipoComprobante === "NOTA_CREDITO" ? "(Nota de Crédito)" : "(Nota de Débito)"}
+          </h3>
+          {facturasCliente.length > 0 ? (
+            <select
+              value={facturaReferenciaId}
+              onChange={(e) => setFacturaReferenciaId(e.target.value)}
+              className="w-full p-3 border rounded-lg text-sm"
+            >
+              <option value="">Seleccionar factura original...</option>
+              {facturasCliente.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.tipo} {f.comprobante_nro || f.numero || ""} — {formatMoney(Number(f.total))} ({f.fecha})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-sm text-gray-500">No hay facturas emitidas para este cliente</p>
+          )}
+        </div>
+      )}
 
       {/* Paso 2: Agregar productos */}
       {clienteSeleccionado && (
