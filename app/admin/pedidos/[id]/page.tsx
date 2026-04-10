@@ -19,6 +19,7 @@ import { ArrowLeft, Printer, MessageCircle, Phone, XCircle } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 
 export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params)
@@ -36,6 +37,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [statusNote, setStatusNote] = useState("")
   const [cancelMotivo, setCancelMotivo] = useState("")
   const [updating, setUpdating] = useState(false)
+  const { vendedor: currentUser } = useCurrentVendedor()
 
   useEffect(() => {
     async function loadData() {
@@ -122,7 +124,9 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         }
       }
 
-      await updateOrderStatus(o.id, newStatus as OrderStatus, "admin1", "Admin Masoil", statusNote || undefined)
+      const uid = currentUser?.id || o.vendedorId
+      const uname = currentUser?.name || "Admin"
+      await updateOrderStatus(o.id, newStatus as OrderStatus, uid, uname, statusNote || undefined)
 
       const now = new Date()
       setCurrentStatus(newStatus as OrderStatus)
@@ -131,8 +135,8 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         {
           status: newStatus as OrderStatus,
           timestamp: now,
-          userId: "admin1",
-          userName: "Admin Masoil",
+          userId: uid,
+          userName: uname,
           notes: statusNote || undefined,
         },
       ])
@@ -161,7 +165,9 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         cancelado_at: new Date().toISOString(),
       }).eq("id", o.id)
 
-      await updateOrderStatus(o.id, "CANCELADO", "admin1", "Admin Masoil", `Cancelado: ${cancelMotivo}`)
+      const uid = currentUser?.id || o.vendedorId
+      const uname = currentUser?.name || "Admin"
+      await updateOrderStatus(o.id, "CANCELADO", uid, uname, `Cancelado: ${cancelMotivo}`)
 
       const now = new Date()
       setCurrentStatus("CANCELADO")
@@ -170,8 +176,8 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         {
           status: "CANCELADO" as OrderStatus,
           timestamp: now,
-          userId: "admin1",
-          userName: "Admin Masoil",
+          userId: uid,
+          userName: uname,
           notes: `Cancelado: ${cancelMotivo}`,
         },
       ])
