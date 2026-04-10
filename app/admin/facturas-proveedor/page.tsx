@@ -7,6 +7,7 @@ import {
   fetchProveedores,
   fetchOrdenesCompra,
   fetchFacturasProveedor,
+  fetchPlanCuentas,
   createFacturaProveedor,
   createFacturaProveedorItems,
   updateOrdenCompra,
@@ -90,6 +91,10 @@ export default function FacturasProveedorPage() {
   // Items de la factura
   const [formItems, setFormItems] = useState<{ id: string; nombre: string; codigo: string; cantidad: string; precio: string }[]>([])
 
+  // Plan de cuentas e imputaciones
+  const [planCuentas, setPlanCuentas] = useState<any[]>([])
+  const [imputaciones, setImputaciones] = useState<{ id: string; cuenta_codigo: string; cuenta_categoria: string; cuenta_sub: string; debe: string; haber: string }[]>([])
+
   // Proveedor autocomplete
   const [proveedorSearch, setProveedorSearch] = useState("")
   const [showProveedorList, setShowProveedorList] = useState(false)
@@ -101,14 +106,16 @@ export default function FacturasProveedorPage() {
   async function loadData() {
     setLoading(true)
     try {
-      const [f, p, o] = await Promise.all([
+      const [f, p, o, pc] = await Promise.all([
         fetchFacturasProveedor(),
         fetchProveedores(),
         fetchOrdenesCompra(),
+        fetchPlanCuentas().catch(() => []),
       ])
       setFacturas(f)
       setProveedores(p)
       setOrdenes(o)
+      setPlanCuentas(pc)
     } catch (err) {
       console.error("Error cargando facturas proveedor:", err)
     } finally {
@@ -246,6 +253,13 @@ export default function FacturasProveedorPage() {
         razon_social: form.razon_social || null,
         orden_compra_id: form.orden_compra_id || null,
         observaciones: form.observaciones || null,
+        imputaciones: imputaciones.filter((imp) => imp.cuenta_codigo).map((imp) => ({
+          cuenta_codigo: imp.cuenta_codigo,
+          cuenta_categoria: imp.cuenta_categoria,
+          cuenta_sub: imp.cuenta_sub,
+          debe: parseFloat(imp.debe) || 0,
+          haber: parseFloat(imp.haber) || 0,
+        })),
       }
 
       const id = await createFacturaProveedor(facturaData)
@@ -285,6 +299,7 @@ export default function FacturasProveedorPage() {
       setProveedorSearch("")
       setArchivo(null)
       setFormItems([])
+      setImputaciones([])
       setDialogOpen(false)
       await loadData()
     } catch (err) {
@@ -331,6 +346,7 @@ export default function FacturasProveedorPage() {
             setProveedorSearch("")
             setArchivo(null)
             setFormItems([])
+            setImputaciones([])
             setDialogOpen(true)
           }}
           className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2"
@@ -865,6 +881,97 @@ export default function FacturasProveedorPage() {
               )}
               {formItems.length === 0 && (
                 <p className="text-xs text-gray-400 text-center py-2">Sin detalle de productos</p>
+              )}
+            </div>
+
+            {/* Imputación Contable */}
+            <div className="border rounded-lg p-3 bg-blue-50/50">
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">Imputación Contable (opcional)</label>
+                <button
+                  type="button"
+                  onClick={() => setImputaciones((prev) => [...prev, { id: Math.random().toString(36).slice(2), cuenta_codigo: "", cuenta_categoria: "", cuenta_sub: "", debe: "", haber: "" }])}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  + Agregar imputación
+                </button>
+              </div>
+              {imputaciones.length > 0 ? (
+                <div className="space-y-2">
+                  {imputaciones.map((imp) => {
+                    // Group plan_cuentas by categoria
+                    const grouped = planCuentas.reduce((acc: Record<string, any[]>, c: any) => {
+                      const cat = c.categoria || "Otros"
+                      if (!acc[cat]) acc[cat] = []
+                      acc[cat].push(c)
+                      return acc
+                    }, {})
+
+                    return (
+                      <div key={imp.id} className="grid grid-cols-[1fr,80px,80px,30px] gap-2 items-end">
+                        <div>
+                          <select
+                            value={imp.cuenta_codigo}
+                            onChange={(e) => {
+                              const cuenta = planCuentas.find((c: any) => c.codigo === e.target.value)
+                              setImputaciones((prev) => prev.map((i) => i.id === imp.id ? {
+                                ...i,
+                                cuenta_codigo: e.target.value,
+                                cuenta_categoria: cuenta?.categoria || "",
+                                cuenta_sub: cuenta?.sub_categoria || "",
+                              } : i))
+                            }}
+                            className="w-full p-1.5 border rounded text-sm"
+                          >
+                            <option value="">Seleccionar cuenta...</option>
+                            {Object.entries(grouped).map(([cat, cuentas]) => (
+                              <optgroup key={cat} label={cat}>
+                                {(cuentas as any[]).map((c: any) => (
+                                  <option key={c.codigo} value={c.codigo}>
+                                    {c.codigo} - {c.sub_categoria || c.categoria}
+                                  </option>
+                                ))}
+                              </optgroup>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 block">Debe</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={imp.debe}
+                            onChange={(e) => setImputaciones((prev) => prev.map((i) => i.id === imp.id ? { ...i, debe: e.target.value } : i))}
+                            className="w-full p-1.5 border rounded text-sm"
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-500 block">Haber</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={imp.haber}
+                            onChange={(e) => setImputaciones((prev) => prev.map((i) => i.id === imp.id ? { ...i, haber: e.target.value } : i))}
+                            className="w-full p-1.5 border rounded text-sm"
+                            placeholder="0.00"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setImputaciones((prev) => prev.filter((i) => i.id !== imp.id))}
+                          className="text-red-500 hover:text-red-700 text-sm pb-1"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 text-center py-2">
+                  {planCuentas.length > 0 ? "Sin imputaciones contables" : "Plan de cuentas no cargado aún"}
+                </p>
               )}
             </div>
 

@@ -1197,6 +1197,38 @@ async function importMovimientosCajaChica() {
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
+async function importPlanCuentas(): Promise<number> {
+  console.log("\n📋 Importando Plan de Cuentas Contables...");
+  const filename = "Plan_CtasContables.xlsx";
+  const filepath = path.join(DATA_DIR, filename);
+  if (!fs.existsSync(filepath)) {
+    console.log(`  ⚠️  Archivo ${filename} no encontrado en ${DATA_DIR}, saltando...`);
+    return 0;
+  }
+  const wb = readExcel(filename);
+  const sheetName = wb.SheetNames[0];
+  const rows = sheetToRows(wb, sheetName);
+  console.log(`  Filas encontradas: ${rows.length}`);
+
+  const records = rows.map((row) => ({
+    codigo: clean(col(row, "Código", "Codigo", "codigo", "COD")) || "",
+    categoria: clean(col(row, "Categoría", "Categoria", "categoria", "CATEGORIA")) || "",
+    sub_categoria: clean(col(row, "Sub_categoría", "Sub_categoria", "sub_categoria", "SUB_CATEGORIA", "Subcategoría", "Subcategoria")),
+  })).filter((r) => r.codigo && r.categoria);
+
+  if (records.length === 0) {
+    console.log("  ⚠️  Sin registros válidos");
+    return 0;
+  }
+
+  // Limpiar tabla
+  await supabase.from("plan_cuentas").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+
+  const count = await insertBatch("plan_cuentas", records);
+  console.log(`  ✅ ${count} cuentas contables importadas`);
+  return count;
+}
+
 async function main() {
   console.log("🚀 Iniciando migración de datos Excel → Supabase");
   console.log(`   URL: ${SUPABASE_URL}`);
@@ -1256,6 +1288,7 @@ async function main() {
   resumen["recibos"] = (await importRecibosGestionPro()) || 0;
   resumen["servicios_fijos"] = (await importServiciosFijos()) || 0;
   resumen["movimientos_caja"] = (await importMovimientosCajaChica()) || 0;
+  resumen["plan_cuentas"] = (await importPlanCuentas()) || 0;
 
   // Resumen final
   console.log("\n" + "=".repeat(60));

@@ -954,6 +954,20 @@ export async function createFacturaProveedorItems(items: Record<string, any>[]):
 }
 
 // ---------------------------------------------------------------------------
+// Plan de Cuentas Contables
+// ---------------------------------------------------------------------------
+
+export async function fetchPlanCuentas(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("plan_cuentas")
+    .select("*")
+    .order("codigo")
+  if (error) throw error
+  return data || []
+}
+
+// ---------------------------------------------------------------------------
 // Retenciones
 // ---------------------------------------------------------------------------
 
