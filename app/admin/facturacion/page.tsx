@@ -6,6 +6,7 @@ import { fetchFacturasGestionpro, fetchFacturasGestionproCount, fetchFacturas } 
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
+import { Eye, Printer } from "lucide-react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
 
@@ -44,6 +45,7 @@ export default function FacturacionPage() {
   const [gpPage, setGpPage] = useState(1)
   const [emPage, setEmPage] = useState(1)
   const [emSearch, setEmSearch] = useState("")
+  const [viewingFactura, setViewingFactura] = useState<any | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -247,6 +249,7 @@ export default function FacturacionPage() {
                         <th className="px-4 py-3 text-right font-semibold text-gray-700">IVA</th>
                         <th className="px-4 py-3 text-right font-semibold text-gray-700">Total</th>
                         <th className="px-4 py-3 text-center font-semibold text-gray-700">CAE</th>
+                        <th className="px-4 py-3 text-center font-semibold text-gray-700 w-20">Ver</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -275,6 +278,11 @@ export default function FacturacionPage() {
                             ) : (
                               <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium">Sin CAE</span>
                             )}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button onClick={() => setViewingFactura(f)} className="p-1 rounded hover:bg-gray-200" title="Ver detalle">
+                              <Eye className="h-4 w-4 text-gray-600" />
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -411,6 +419,106 @@ export default function FacturacionPage() {
       </div>
         </TabsContent>
       </Tabs>
+
+      {/* Modal Ver Factura Emitida */}
+      {viewingFactura && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setViewingFactura(null) }}
+        >
+          <div className="fixed inset-0 bg-black/50 -z-10" />
+          <div
+            className="relative bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Detalle de Factura</h3>
+              <button onClick={() => setViewingFactura(null)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+            </div>
+
+            <div className="space-y-3 text-sm">
+              {/* Cliente */}
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-500 font-medium mb-1">Cliente</p>
+                <p className="font-semibold">{viewingFactura.razon_social || "-"}</p>
+                {viewingFactura.cuit_cliente && <p className="text-gray-600">CUIT: {viewingFactura.cuit_cliente}</p>}
+              </div>
+
+              {/* Comprobante */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-gray-500">Tipo</p>
+                  <p className="font-medium">{viewingFactura.tipo || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Numero</p>
+                  <p className="font-medium">{viewingFactura.comprobante_nro || viewingFactura.numero || "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Fecha Emisión</p>
+                  <p className="font-medium">{viewingFactura.fecha ? formatDateStr(viewingFactura.fecha) : "-"}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Vencimiento CAE</p>
+                  <p className="font-medium">{viewingFactura.vencimiento_cae ? formatDateStr(viewingFactura.vencimiento_cae) : "-"}</p>
+                </div>
+              </div>
+
+              {/* Importes */}
+              <div className="border-t pt-3 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Base Gravada</span>
+                  <span className="font-medium">{formatMoney(Number(viewingFactura.base_gravada) || 0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">IVA 21%</span>
+                  <span className="font-medium">{formatMoney(Number(viewingFactura.iva_21) || 0)}</span>
+                </div>
+                <div className="flex justify-between text-base font-bold border-t pt-2">
+                  <span>Total</span>
+                  <span className="text-primary">{formatMoney(Number(viewingFactura.total) || 0)}</span>
+                </div>
+              </div>
+
+              {/* CAE */}
+              {viewingFactura.cae && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                  <p className="text-xs text-green-600 font-medium">CAE</p>
+                  <p className="font-mono font-semibold text-green-800">{viewingFactura.cae}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => {
+                  const w = window.open("", "_blank")
+                  if (w) {
+                    w.document.write(`<html><head><title>Factura ${viewingFactura.numero}</title></head><body style="font-family:sans-serif;max-width:700px;margin:40px auto;">
+                      <h2>${viewingFactura.tipo || "Factura"} ${viewingFactura.comprobante_nro || viewingFactura.numero || ""}</h2>
+                      <p><strong>Cliente:</strong> ${viewingFactura.razon_social || "-"}</p>
+                      <p><strong>CUIT:</strong> ${viewingFactura.cuit_cliente || "-"}</p>
+                      <p><strong>Fecha:</strong> ${viewingFactura.fecha || "-"}</p>
+                      <hr/>
+                      <p><strong>Base Gravada:</strong> $${Number(viewingFactura.base_gravada || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                      <p><strong>IVA 21%:</strong> $${Number(viewingFactura.iva_21 || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                      <p><strong>Total:</strong> $${Number(viewingFactura.total || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                      ${viewingFactura.cae ? `<hr/><p><strong>CAE:</strong> ${viewingFactura.cae}</p>` : ""}
+                      <script>window.print()<\/script>
+                    </body></html>`)
+                  }
+                }}
+                className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2"
+              >
+                <Printer className="h-4 w-4" /> Imprimir
+              </button>
+              <button onClick={() => setViewingFactura(null)} className="px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary/90">
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
