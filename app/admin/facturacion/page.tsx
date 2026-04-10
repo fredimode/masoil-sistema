@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { normalizeSearch, formatMoney, formatDateStr } from "@/lib/utils"
 import { fetchFacturasGestionpro, fetchFacturasGestionproCount, fetchFacturas } from "@/lib/supabase/queries"
+import { createClient } from "@/lib/supabase/client"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -46,6 +47,35 @@ export default function FacturacionPage() {
   const [emPage, setEmPage] = useState(1)
   const [emSearch, setEmSearch] = useState("")
   const [viewingFactura, setViewingFactura] = useState<any | null>(null)
+  const [viewingItems, setViewingItems] = useState<any[]>([])
+  const [loadingItems, setLoadingItems] = useState(false)
+
+  useEffect(() => {
+    if (!viewingFactura) {
+      setViewingItems([])
+      return
+    }
+    const orderId = viewingFactura.order_id
+    if (!orderId) {
+      setViewingItems([])
+      return
+    }
+    const supabase = createClient()
+    setLoadingItems(true)
+    supabase
+      .from("order_items")
+      .select("*, products(code, name)")
+      .eq("order_id", orderId)
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("Error cargando items:", error)
+          setViewingItems([])
+        } else {
+          setViewingItems(data || [])
+        }
+        setLoadingItems(false)
+      })
+  }, [viewingFactura])
 
   useEffect(() => {
     async function load() {
@@ -428,7 +458,7 @@ export default function FacturacionPage() {
         >
           <div className="fixed inset-0 bg-black/50 -z-10" />
           <div
-            className="relative bg-white rounded-lg shadow-xl p-6 w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto"
+            className="relative bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto"
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
@@ -464,10 +494,51 @@ export default function FacturacionPage() {
                 </div>
               </div>
 
+              {/* Detalle productos */}
+              <div className="border-t pt-3">
+                <p className="text-xs text-gray-500 font-medium mb-2">Detalle de Productos</p>
+                {loadingItems ? (
+                  <p className="text-xs text-gray-500 py-2">Cargando items...</p>
+                ) : viewingItems.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-2">Sin detalle de productos disponible</p>
+                ) : (
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-2 py-1.5 text-left font-semibold text-gray-600">Código</th>
+                          <th className="px-2 py-1.5 text-left font-semibold text-gray-600">Descripción</th>
+                          <th className="px-2 py-1.5 text-right font-semibold text-gray-600">Cant.</th>
+                          <th className="px-2 py-1.5 text-right font-semibold text-gray-600">Precio Unit.</th>
+                          <th className="px-2 py-1.5 text-right font-semibold text-gray-600">Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {viewingItems.map((it: any, idx: number) => {
+                          const code = it.products?.code || it.product_code || "-"
+                          const name = it.products?.name || it.product_name || "-"
+                          const qty = Number(it.quantity) || 0
+                          const price = Number(it.unit_price) || 0
+                          return (
+                            <tr key={it.id || idx} className="border-t">
+                              <td className="px-2 py-1 font-mono text-gray-600">{code}</td>
+                              <td className="px-2 py-1 text-gray-800">{name}</td>
+                              <td className="px-2 py-1 text-right text-gray-700">{qty}</td>
+                              <td className="px-2 py-1 text-right text-gray-700">{formatMoney(price)}</td>
+                              <td className="px-2 py-1 text-right font-medium text-gray-900">{formatMoney(qty * price)}</td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
               {/* Importes */}
               <div className="border-t pt-3 space-y-2">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Base Gravada</span>
+                  <span className="text-gray-600">Subtotal neto</span>
                   <span className="font-medium">{formatMoney(Number(viewingFactura.base_gravada) || 0)}</span>
                 </div>
                 <div className="flex justify-between">
