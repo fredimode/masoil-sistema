@@ -66,13 +66,18 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- === 7. DELETE policy para products (fix bulk delete) ===
+-- === 7. Products: policy FOR ALL para authenticated (fix UPDATE/DELETE) ===
+-- Reemplaza admin_write_products que solo permitía role='admin'
+DROP POLICY IF EXISTS "admin_write_products" ON products;
+DROP POLICY IF EXISTS "admin_delete_products" ON products;
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
-    WHERE tablename = 'products' AND policyname = 'admin_delete_products'
+    WHERE tablename = 'products' AND policyname = 'products_authenticated_all'
   ) THEN
-    CREATE POLICY "admin_delete_products" ON products
-      FOR DELETE USING (auth.role() = 'authenticated');
+    CREATE POLICY "products_authenticated_all" ON products
+      FOR ALL TO authenticated
+      USING (true)
+      WITH CHECK (true);
   END IF;
 END $$;
