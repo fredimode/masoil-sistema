@@ -8,13 +8,13 @@ interface StatusTimelineProps {
 }
 
 // Single linear flow for all orders now
-const mainFlow: OrderStatus[] = ["INGRESADO", "PREPARADO", "FACTURADO", "ENTREGADO"]
+const mainFlow: OrderStatus[] = ["INGRESADO", "PREPARADO", "FACTURADO", "EN_PROCESO_ENTREGA", "ENTREGADO"]
 
 export function StatusTimeline({ currentStatus }: StatusTimelineProps) {
   const currentIndex = mainFlow.indexOf(currentStatus)
 
   // Handle special statuses (not in the main flow)
-  if (currentStatus === "ESPERANDO_MERCADERIA" || currentStatus === "CANCELADO") {
+  if (currentStatus === "ESPERANDO_MERCADERIA" || currentStatus === "CANCELADO" || currentStatus === "FACTURADO_PARCIAL") {
     const config = getStatusConfig(currentStatus)
     return (
       <div className="flex items-center justify-center p-4 bg-muted/50 rounded-lg">

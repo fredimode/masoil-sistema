@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { normalizeSearch, formatMoney, formatDateStr } from "@/lib/utils"
 import { fetchFacturasGestionpro, fetchFacturasGestionproCount, fetchFacturas } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/client"
+import { fetchCuentaCorrienteCliente } from "@/lib/supabase/queries"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +50,7 @@ export default function FacturacionPage() {
   const [viewingFactura, setViewingFactura] = useState<any | null>(null)
   const [viewingItems, setViewingItems] = useState<any[]>([])
   const [loadingItems, setLoadingItems] = useState(false)
+  const [ccData, setCcData] = useState<any[]>([])  // cuenta corriente for deuda calculation
 
   useEffect(() => {
     if (!viewingFactura) {
@@ -81,14 +83,16 @@ export default function FacturacionPage() {
     async function load() {
       setLoading(true)
       try {
-        const [data, count, facturasEmitidas] = await Promise.all([
+        const [data, count, facturasEmitidas, ccAll] = await Promise.all([
           fetchFacturasGestionpro(),
           fetchFacturasGestionproCount(),
           fetchFacturas(),
+          fetchCuentaCorrienteCliente(),
         ])
         setGpData(data as FacturaGP[])
         setTotalCount(count)
         setEmitidas(facturasEmitidas)
+        setCcData(ccAll)
       } catch (error) {
         console.error("Error cargando facturas:", error)
       } finally {
@@ -147,6 +151,20 @@ export default function FacturacionPage() {
       .slice(0, 3)
     return { totalMonto, byTipo, topVendedores }
   }, [gpData])
+
+  // Calculate deuda per factura based on cuenta corriente
+  const deudaMap = useMemo(() => {
+    const map: Record<string, number> = {}
+    // For each factura, check CC payments
+    emitidas.forEach((f: any) => {
+      const total = Number(f.total) || 0
+      // Sum haber (payments) for this factura reference
+      const pagos = ccData.filter((cc: any) => cc.referencia_id === String(f.id))
+      const totalPagado = pagos.reduce((sum: number, cc: any) => sum + (Number(cc.haber) || 0), 0)
+      map[f.id] = Math.max(0, total - totalPagado)
+    })
+    return map
+  }, [emitidas, ccData])
 
   // Emitidas filtering (must be before early return to maintain hook order)
   const emitidasFiltered = useMemo(() => {
@@ -272,50 +290,54 @@ export default function FacturacionPage() {
                     <thead className="bg-gray-100">
                       <tr>
                         <th className="px-4 py-3 text-left font-semibold text-gray-700">Fecha</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Tipo</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Numero</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Tipo y Numero</th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-700">Cliente</th>
-                        <th className="px-4 py-3 text-right font-semibold text-gray-700">Base Gravada</th>
-                        <th className="px-4 py-3 text-right font-semibold text-gray-700">IVA</th>
                         <th className="px-4 py-3 text-right font-semibold text-gray-700">Total</th>
-                        <th className="px-4 py-3 text-center font-semibold text-gray-700">CAE</th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-700">Deuda</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Vendedor</th>
                         <th className="px-4 py-3 text-center font-semibold text-gray-700 w-20">Ver</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {emPageData.map((f: any, idx: number) => (
-                        <tr key={f.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                          <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                            {f.fecha ? formatDateStr(f.fecha) : "-"}
-                          </td>
-                          <td className="px-4 py-3">
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                              {f.tipo || "-"}
-                            </Badge>
-                          </td>
-                          <td className="px-4 py-3 text-gray-900 font-medium">{f.numero || "-"}</td>
-                          <td className="px-4 py-3">
-                            <span className="block truncate max-w-[180px] text-gray-900" title={f.razon_social || ""}>
-                              {f.razon_social || "-"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-600">{formatMoney(Number(f.base_gravada) || 0)}</td>
-                          <td className="px-4 py-3 text-right text-gray-600">{formatMoney(Number(f.iva_21) || 0)}</td>
-                          <td className="px-4 py-3 text-right font-bold text-gray-900">{formatMoney(Number(f.total) || 0)}</td>
-                          <td className="px-4 py-3 text-center">
-                            {f.cae ? (
-                              <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs font-medium">{f.cae.slice(0, 8)}...</span>
-                            ) : (
-                              <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs font-medium">Sin CAE</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <button onClick={() => setViewingFactura(f)} className="p-1 rounded hover:bg-gray-200" title="Ver detalle">
-                              <Eye className="h-4 w-4 text-gray-600" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {emPageData.map((f: any, idx: number) => {
+                        const deuda = deudaMap[f.id] ?? (Number(f.total) || 0)
+                        // Format tipo + numero as "A-00005-00001234"
+                        const tipoLetra = (f.tipo || "").replace(/^(FACTURA|NOTA DE CREDITO|NOTA DE DEBITO)\s*/i, "").trim() || ""
+                        const nroDisplay = f.comprobante_nro || f.numero || "-"
+                        const tipoNumero = tipoLetra ? `${tipoLetra}-${nroDisplay}` : nroDisplay
+                        return (
+                          <tr key={f.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                            <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                              {f.fecha ? formatDateStr(f.fecha) : "-"}
+                            </td>
+                            <td className="px-4 py-3">
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                {f.tipo || "-"}
+                              </Badge>
+                              <span className="ml-2 text-gray-900 font-medium">{nroDisplay}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="block truncate max-w-[180px] text-gray-900" title={f.razon_social || ""}>
+                                {f.razon_social || "-"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold text-gray-900">{formatMoney(Number(f.total) || 0)}</td>
+                            <td className="px-4 py-3 text-right">
+                              {deuda > 0 ? (
+                                <span className="font-semibold text-red-600">{formatMoney(deuda)}</span>
+                              ) : (
+                                <span className="font-medium text-green-600">Pagado</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600">{f.vendedor_name || "-"}</td>
+                            <td className="px-4 py-3 text-center">
+                              <button onClick={() => setViewingFactura(f)} className="p-1 rounded hover:bg-gray-200" title="Ver detalle">
+                                <Eye className="h-4 w-4 text-gray-600" />
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>

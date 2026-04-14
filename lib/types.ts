@@ -6,6 +6,8 @@ export type OrderStatus =
   | "INGRESADO"
   | "PREPARADO"
   | "FACTURADO"
+  | "FACTURADO_PARCIAL"
+  | "EN_PROCESO_ENTREGA"
   | "ESPERANDO_MERCADERIA"
   | "ENTREGADO"
   | "CANCELADO"
@@ -37,6 +39,9 @@ export interface OrderProduct {
   productName: string
   quantity: number
   price: number
+  facturado?: boolean
+  cantidadFacturada?: number
+  facturaId?: number | null
 }
 
 export interface StatusChange {
@@ -93,6 +98,7 @@ export interface Client {
   sucursal?: string | null
   cuit?: string | null
   numeroDocum?: string | null
+  domicilioEntrega?: string | null
 }
 
 export interface Vendedor {

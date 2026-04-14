@@ -31,6 +31,7 @@ interface ItemFactura {
   descripcion: string
   cantidad: number
   precioUnitario: number
+  esRegalo?: boolean
 }
 
 interface FacturaResultado {
@@ -77,6 +78,16 @@ export default function NuevaFacturaPage() {
   const [tipoComprobante, setTipoComprobante] = useState<"FACTURA" | "NOTA_CREDITO" | "NOTA_DEBITO">("FACTURA")
   const [facturaReferenciaId, setFacturaReferenciaId] = useState<string>("")
   const [facturasCliente, setFacturasCliente] = useState<any[]>([])
+
+  // Price history per product for this client
+  const [priceHistory, setPriceHistory] = useState<Record<string, { fecha: string; precio: number; cliente: string }[]>>({})
+  const [showPriceHistory, setShowPriceHistory] = useState<string | null>(null)
+
+  // Delivery fields (from pedido or manual)
+  const [sectorFactura, setSectorFactura] = useState("")
+  const [solicitaFactura, setSolicitaFactura] = useState("")
+  const [recibeFactura, setRecibeFactura] = useState("")
+  const [sucursalEntrega, setSucursalEntrega] = useState("")
 
   // Buscar clientes con debounce
   useEffect(() => {
@@ -162,6 +173,44 @@ export default function NuevaFacturaPage() {
     }
   }
 
+  async function loadPriceHistory(productId: string) {
+    if (priceHistory[productId] || !clienteSeleccionado) return
+    try {
+      // Get last 5 invoices for this product to this client
+      const { data } = await supabase
+        .from("order_items")
+        .select("unit_price, created_at, orders!inner(client_id)")
+        .eq("product_id", productId)
+        .eq("orders.client_id", clienteSeleccionado.id)
+        .order("created_at", { ascending: false })
+        .limit(5)
+      setPriceHistory((prev) => ({
+        ...prev,
+        [productId]: (data || []).map((d: any) => ({
+          fecha: new Date(d.created_at).toLocaleDateString("es-AR"),
+          precio: Number(d.unit_price),
+          cliente: clienteSeleccionado!.razon_social || clienteSeleccionado!.business_name,
+        })),
+      }))
+    } catch {
+      // non-blocking
+    }
+  }
+
+  function agregarItemRegalo() {
+    setItems((prev) => [
+      ...prev,
+      {
+        productId: `regalo-${Date.now()}`,
+        codigo: "",
+        descripcion: "",
+        cantidad: 1,
+        precioUnitario: 0,
+        esRegalo: true,
+      },
+    ])
+  }
+
   function agregarProducto(p: ProductoDB) {
     setItems((prev) => [
       ...prev,
@@ -178,7 +227,7 @@ export default function NuevaFacturaPage() {
     setShowProductoDropdown(false)
   }
 
-  function actualizarItem(index: number, field: "cantidad" | "precioUnitario", value: number) {
+  function actualizarItem(index: number, field: "cantidad" | "precioUnitario" | "descripcion", value: number | string) {
     setItems((prev) => prev.map((it, i) => (i === index ? { ...it, [field]: value } : it)))
   }
 
@@ -187,7 +236,7 @@ export default function NuevaFacturaPage() {
   }
 
   // Cálculos
-  const baseGravada = items.reduce((sum, it) => sum + it.cantidad * it.precioUnitario, 0)
+  const baseGravada = items.filter((it) => !it.esRegalo).reduce((sum, it) => sum + it.cantidad * it.precioUnitario, 0)
   const iva21 = Math.round(baseGravada * 0.21 * 100) / 100
   const total = Math.round((baseGravada + iva21) * 100) / 100
 
@@ -236,6 +285,28 @@ export default function NuevaFacturaPage() {
       setResultado(data)
 
       if (data.success) {
+        // Register in cuenta corriente
+        try {
+          const facturaTotal = Number(data.factura?.total) || total
+          const isNC = tipoComprobante === "NOTA_CREDITO"
+          const isND = tipoComprobante === "NOTA_DEBITO"
+
+          await supabase.from("cuenta_corriente_cliente").insert({
+            client_id: clienteSeleccionado.id,
+            fecha: new Date().toISOString().slice(0, 10),
+            tipo_comprobante: tipoComprobante === "NOTA_CREDITO" ? "NC" : tipoComprobante === "NOTA_DEBITO" ? "ND" : "FC",
+            punto_venta: data.factura?.comprobante_nro?.split("-")?.[0] || "",
+            numero_comprobante: data.factura?.comprobante_nro || data.factura?.numero || "",
+            debe: isNC ? 0 : facturaTotal,
+            haber: isNC ? facturaTotal : 0,
+            saldo: isNC ? -facturaTotal : facturaTotal,
+            referencia_id: String(data.factura?.id || ""),
+            observaciones: `${tipoFactura} generada desde el sistema`,
+          })
+        } catch (ccErr) {
+          console.error("Error registrando en cuenta corriente:", ccErr)
+        }
+
         setPaso(3)
       }
     } catch (error) {
@@ -504,46 +575,105 @@ export default function NuevaFacturaPage() {
             )}
           </div>
 
+          {/* Pedido reference */}
+          {orderId && (
+            <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg p-3">
+              <p className="text-sm text-blue-800">
+                <strong>Pedido:</strong>{" "}
+                <Link href={`/admin/pedidos/${orderId}`} className="underline">{orderId.slice(0, 8)}...</Link>
+              </p>
+            </div>
+          )}
+
+          {/* Add regalo button */}
+          <div className="flex gap-2 mb-4">
+            <button
+              type="button"
+              onClick={agregarItemRegalo}
+              className="px-3 py-1.5 text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100"
+            >
+              + Item sin precio (regalo/atención)
+            </button>
+          </div>
+
           {/* Tabla de items */}
           {items.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-100">
                   <tr>
+                    <th className="px-4 py-2 text-center font-semibold text-gray-700 w-20">Cant.</th>
                     <th className="px-4 py-2 text-left font-semibold text-gray-700">Producto</th>
-                    <th className="px-4 py-2 text-left font-semibold text-gray-700 w-20">Código</th>
-                    <th className="px-4 py-2 text-center font-semibold text-gray-700 w-24">Cant.</th>
-                    <th className="px-4 py-2 text-right font-semibold text-gray-700 w-36">Precio Unit. (s/IVA)</th>
+                    <th className="px-4 py-2 text-left font-semibold text-gray-700 w-24">Código</th>
+                    <th className="px-4 py-2 text-right font-semibold text-gray-700 w-36">Precio s/IVA</th>
                     <th className="px-4 py-2 text-right font-semibold text-gray-700 w-28">Subtotal</th>
                     <th className="px-4 py-2 w-10"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((it, idx) => (
-                    <tr key={idx} className="border-t">
-                      <td className="px-4 py-2 text-gray-900">{it.descripcion}</td>
-                      <td className="px-4 py-2 text-gray-500 text-xs">{it.codigo}</td>
+                    <tr key={idx} className={`border-t ${it.esRegalo ? "bg-amber-50/50" : ""}`}>
                       <td className="px-4 py-2">
                         <input
                           type="number"
                           min={1}
                           value={it.cantidad}
                           onChange={(e) => actualizarItem(idx, "cantidad", parseInt(e.target.value) || 1)}
-                          className="w-20 p-1 border rounded text-center text-sm"
+                          className="w-16 p-1 border rounded text-center text-sm"
                         />
                       </td>
                       <td className="px-4 py-2">
                         <input
-                          type="number"
-                          min={0}
-                          step={0.01}
-                          value={it.precioUnitario}
-                          onChange={(e) => actualizarItem(idx, "precioUnitario", parseFloat(e.target.value) || 0)}
-                          className="w-32 p-1 border rounded text-right text-sm"
+                          type="text"
+                          value={it.descripcion}
+                          onChange={(e) => actualizarItem(idx, "descripcion", e.target.value)}
+                          className="w-full p-1 border rounded text-sm text-gray-900"
+                          placeholder={it.esRegalo ? "Descripción del regalo/atención" : ""}
                         />
+                        {it.esRegalo && (
+                          <span className="text-xs text-amber-600 mt-0.5 block">Regalo/Atención - no suma al total</span>
+                        )}
+                        {!it.esRegalo && clienteSeleccionado && (
+                          <button
+                            type="button"
+                            className="text-xs text-blue-500 hover:text-blue-700 mt-0.5"
+                            onClick={() => {
+                              loadPriceHistory(it.productId)
+                              setShowPriceHistory(showPriceHistory === it.productId ? null : it.productId)
+                            }}
+                          >
+                            Ver historial precios
+                          </button>
+                        )}
+                        {showPriceHistory === it.productId && priceHistory[it.productId] && (
+                          <div className="mt-1 bg-gray-50 border rounded p-2 text-xs">
+                            {priceHistory[it.productId].length === 0 ? (
+                              <p className="text-gray-400">Sin historial para este cliente</p>
+                            ) : (
+                              priceHistory[it.productId].map((h, i) => (
+                                <p key={i} className="text-gray-600">{h.fecha}: {formatMoney(h.precio)}</p>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-gray-500 text-xs font-mono">{it.codigo || "-"}</td>
+                      <td className="px-4 py-2">
+                        {it.esRegalo ? (
+                          <span className="text-sm text-gray-400 text-right block">$0</span>
+                        ) : (
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            value={it.precioUnitario}
+                            onChange={(e) => actualizarItem(idx, "precioUnitario", parseFloat(e.target.value) || 0)}
+                            className="w-28 p-1 border rounded text-right text-sm"
+                          />
+                        )}
                       </td>
                       <td className="px-4 py-2 text-right font-medium text-gray-900">
-                        {formatMoney(it.cantidad * it.precioUnitario)}
+                        {it.esRegalo ? "$0" : formatMoney(it.cantidad * it.precioUnitario)}
                       </td>
                       <td className="px-4 py-2">
                         <button
@@ -562,6 +692,26 @@ export default function NuevaFacturaPage() {
           ) : (
             <p className="text-gray-400 text-center py-6">Buscá y agregá productos al detalle</p>
           )}
+
+          {/* Delivery/observation fields */}
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Sector</label>
+              <input type="text" value={sectorFactura} onChange={(e) => setSectorFactura(e.target.value)} className="w-full p-2 border rounded-lg text-sm" placeholder="Sector" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Solicita</label>
+              <input type="text" value={solicitaFactura} onChange={(e) => setSolicitaFactura(e.target.value)} className="w-full p-2 border rounded-lg text-sm" placeholder="Quién solicita" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Recibe</label>
+              <input type="text" value={recibeFactura} onChange={(e) => setRecibeFactura(e.target.value)} className="w-full p-2 border rounded-lg text-sm" placeholder="Quién recibe" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Sucursal de entrega</label>
+              <input type="text" value={sucursalEntrega} onChange={(e) => setSucursalEntrega(e.target.value)} className="w-full p-2 border rounded-lg text-sm" placeholder="Dirección sucursal" />
+            </div>
+          </div>
         </div>
       )}
 

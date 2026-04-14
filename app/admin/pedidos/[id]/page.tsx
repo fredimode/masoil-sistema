@@ -15,11 +15,13 @@ import { fetchOrderById, fetchClientById, updateOrderStatus } from "@/lib/supaba
 import { getStatusConfig, getNextStatuses } from "@/lib/status-config"
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils"
 import type { Order, Client, OrderStatus } from "@/lib/types"
-import { ArrowLeft, Printer, MessageCircle, Phone, XCircle } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ArrowLeft, Printer, MessageCircle, Phone, XCircle, FileText } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
+import jsPDF from "jspdf"
 
 export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params)
@@ -31,12 +33,16 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [statusHistory, setStatusHistory] = useState<Order["statusHistory"]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [orderExtra, setOrderExtra] = useState<any>(null)
   const [facturaResult, setFacturaResult] = useState<{ numero: string; tipo: string; cae: string; total: number; razon_social: string; comprobante_nro: string } | null>(null)
   const [facturaDialogOpen, setFacturaDialogOpen] = useState(false)
   const [newStatus, setNewStatus] = useState<string>("")
   const [statusNote, setStatusNote] = useState("")
   const [cancelMotivo, setCancelMotivo] = useState("")
   const [updating, setUpdating] = useState(false)
+  const [facturarOpen, setFacturarOpen] = useState(false)
+  const [facturarItems, setFacturarItems] = useState<Record<string, boolean>>({})
+  const [facturando, setFacturando] = useState(false)
   const { vendedor: currentUser } = useCurrentVendedor()
 
   useEffect(() => {
@@ -51,6 +57,15 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         setOrder(orderData)
         setCurrentStatus(orderData.status)
         setStatusHistory(orderData.statusHistory)
+
+        // Load extra order fields (sector, solicita, recibe, etc.)
+        const supabaseExtra = createClient()
+        const { data: extraData } = await supabaseExtra
+          .from("orders")
+          .select("sector, solicita, recibe, entrega_otra_sucursal, hoja_ruta_url, observaciones_entrega")
+          .eq("id", id)
+          .single()
+        if (extraData) setOrderExtra(extraData)
 
         if (orderData.clientId) {
           const clientData = await fetchClientById(orderData.clientId)
@@ -106,21 +121,12 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         }
       }
 
-      // If changing to ENTREGADO, deduct stock
-      if (newStatus === "ENTREGADO") {
-        const supabase = createClient()
-        for (const item of o.products) {
-          if (item.productId) {
-            const { data: product } = await supabase
-              .from("products")
-              .select("stock")
-              .eq("id", item.productId)
-              .single()
-            if (product) {
-              const newStock = Math.max(0, product.stock - item.quantity)
-              await supabase.from("products").update({ stock: newStock }).eq("id", item.productId)
-            }
-          }
+      // If changing to EN_PROCESO_ENTREGA, generate Hoja de Ruta
+      if (newStatus === "EN_PROCESO_ENTREGA") {
+        try {
+          await generateHojaDeRuta()
+        } catch (err) {
+          console.error("Error generating hoja de ruta:", err)
         }
       }
 
@@ -158,8 +164,25 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     }
     setUpdating(true)
     try {
-      // Save cancel reason
       const supabase = createClient()
+
+      // Restore reserved stock
+      for (const item of o.products) {
+        if (item.productId) {
+          const { data: product } = await supabase
+            .from("products")
+            .select("stock")
+            .eq("id", item.productId)
+            .single()
+          if (product) {
+            await supabase.from("products").update({ stock: product.stock + item.quantity }).eq("id", item.productId)
+          }
+        }
+      }
+      // Mark items as not reserved
+      await supabase.from("order_items").update({ reservado: false }).eq("order_id", o.id)
+
+      // Save cancel reason
       await supabase.from("orders").update({
         cancelado_motivo: cancelMotivo,
         cancelado_at: new Date().toISOString(),
@@ -188,6 +211,189 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
       alert("Error al cancelar el pedido")
     } finally {
       setUpdating(false)
+    }
+  }
+
+  async function generateHojaDeRuta() {
+    const doc = new jsPDF()
+    const margin = 20
+    let y = margin
+
+    doc.setFontSize(18)
+    doc.text("HOJA DE RUTA", 105, y, { align: "center" })
+    y += 12
+
+    doc.setFontSize(10)
+    doc.text(`Pedido: ${o.orderNumber}`, margin, y)
+    doc.text(`Fecha: ${formatDate(new Date())}`, 140, y)
+    y += 8
+
+    // Client info
+    doc.setFontSize(12)
+    doc.text("Datos del Cliente", margin, y)
+    y += 7
+    doc.setFontSize(10)
+    doc.text(`Cliente: ${o.clientName}`, margin, y); y += 6
+    if (client) {
+      doc.text(`Dirección: ${client.address || "-"}`, margin, y); y += 6
+      doc.text(`Contacto: ${client.contactName || "-"}`, margin, y); y += 6
+      doc.text(`Teléfono: ${client.whatsapp || "-"}`, margin, y); y += 6
+    }
+
+    // Delivery info
+    if (orderExtra) {
+      y += 4
+      if (orderExtra.sector) { doc.text(`Sector: ${orderExtra.sector}`, margin, y); y += 6 }
+      if (orderExtra.solicita) { doc.text(`Solicita: ${orderExtra.solicita}`, margin, y); y += 6 }
+      if (orderExtra.recibe) { doc.text(`Recibe: ${orderExtra.recibe}`, margin, y); y += 6 }
+      if (orderExtra.entrega_otra_sucursal) { doc.text(`Otra sucursal: ${orderExtra.entrega_otra_sucursal}`, margin, y); y += 6 }
+    }
+
+    // Products table
+    y += 6
+    doc.setFontSize(12)
+    doc.text("Productos a Entregar", margin, y)
+    y += 8
+    doc.setFontSize(9)
+
+    // Header
+    doc.setFont("helvetica", "bold")
+    doc.text("Código", margin, y)
+    doc.text("Producto", margin + 30, y)
+    doc.text("Cant.", 160, y)
+    y += 2
+    doc.line(margin, y, 190, y)
+    y += 5
+    doc.setFont("helvetica", "normal")
+
+    for (const p of o.products) {
+      doc.text(p.productCode, margin, y)
+      doc.text(p.productName.substring(0, 50), margin + 30, y)
+      doc.text(String(p.quantity), 165, y)
+      y += 6
+      if (y > 260) { doc.addPage(); y = margin }
+    }
+
+    // Signature area
+    y += 20
+    if (y > 240) { doc.addPage(); y = margin + 10 }
+    doc.line(margin, y, 90, y)
+    doc.text("Firma", 50, y + 5, { align: "center" })
+    doc.line(110, y, 190, y)
+    doc.text("Aclaración", 150, y + 5, { align: "center" })
+    y += 15
+    doc.line(margin, y, 90, y)
+    doc.text("DNI", 50, y + 5, { align: "center" })
+    doc.line(110, y, 190, y)
+    doc.text("Fecha de Entrega", 150, y + 5, { align: "center" })
+
+    // Upload to Supabase Storage
+    const pdfBlob = doc.output("blob")
+    const fileName = `hoja-ruta-${o.id}.pdf`
+    const supabase = createClient()
+
+    const { error: uploadError } = await supabase.storage
+      .from("documentos")
+      .upload(`hojas-ruta/${fileName}`, pdfBlob, { contentType: "application/pdf", upsert: true })
+
+    if (uploadError) {
+      console.error("Error uploading PDF:", uploadError)
+      // Fallback: download locally
+      doc.save(`Hoja-Ruta-${o.orderNumber}.pdf`)
+      return
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("documentos")
+      .getPublicUrl(`hojas-ruta/${fileName}`)
+
+    const publicUrl = urlData.publicUrl
+    await supabase.from("orders").update({ hoja_ruta_url: publicUrl }).eq("id", o.id)
+    setOrderExtra((prev: any) => ({ ...prev, hoja_ruta_url: publicUrl }))
+
+    // Also download for the user
+    doc.save(`Hoja-Ruta-${o.orderNumber}.pdf`)
+  }
+
+  // Items available for invoicing (not yet fully invoiced)
+  const itemsPendientesFactura = o.products.filter((p) => !p.facturado)
+
+  function openFacturarDialog() {
+    const initial: Record<string, boolean> = {}
+    itemsPendientesFactura.forEach((p) => { initial[p.productId] = true })
+    setFacturarItems(initial)
+    setFacturarOpen(true)
+  }
+
+  async function handleFacturar() {
+    const selectedProducts = itemsPendientesFactura.filter((p) => facturarItems[p.productId])
+    if (selectedProducts.length === 0) {
+      alert("Seleccioná al menos un item para facturar")
+      return
+    }
+    setFacturando(true)
+    try {
+      const res = await fetch("/api/facturacion/generar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId: o.id,
+          clientId: o.clientId,
+          items: selectedProducts.map((p) => ({
+            productId: p.productId,
+            producto_nombre: p.productName,
+            producto_codigo: p.productCode,
+            cantidad: p.quantity,
+            precioUnitario: p.price,
+          })),
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setFacturaResult(data.factura)
+        setFacturaDialogOpen(true)
+
+        // Mark invoiced items in DB
+        const supabase = createClient()
+        for (const p of selectedProducts) {
+          await supabase
+            .from("order_items")
+            .update({
+              facturado: true,
+              factura_id: data.factura.id,
+              cantidad_facturada: p.quantity,
+            })
+            .eq("order_id", o.id)
+            .eq("product_id", p.productId)
+        }
+
+        // Update order status
+        const allInvoiced = selectedProducts.length === itemsPendientesFactura.length
+        const newOrderStatus = allInvoiced ? "FACTURADO" : "FACTURADO_PARCIAL"
+        const uid = currentUser?.id || o.vendedorId
+        const uname = currentUser?.name || "Admin"
+        await updateOrderStatus(o.id, newOrderStatus as OrderStatus, uid, uname, `Factura generada: ${data.factura.comprobante_nro || data.factura.numero}`)
+
+        setCurrentStatus(newOrderStatus as OrderStatus)
+        setStatusHistory([
+          ...statusHistory,
+          {
+            status: newOrderStatus as OrderStatus,
+            timestamp: new Date(),
+            userId: uid,
+            userName: uname,
+            notes: `Factura generada: ${data.factura.comprobante_nro || data.factura.numero}`,
+          },
+        ])
+      } else {
+        alert("Error generando factura: " + (data.error || "Error desconocido"))
+      }
+    } catch (err) {
+      console.error("Error facturando:", err)
+      alert("Error de conexión al generar factura")
+    } finally {
+      setFacturando(false)
+      setFacturarOpen(false)
     }
   }
 
@@ -236,6 +442,23 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             <Printer className="h-4 w-4 mr-2" />
             Imprimir Remito
           </Button>
+
+          {/* Facturar button */}
+          {itemsPendientesFactura.length > 0 && !isTerminal && (
+            <Button variant="default" className="bg-purple-600 hover:bg-purple-700" onClick={openFacturarDialog}>
+              <FileText className="h-4 w-4 mr-2" />
+              Facturar
+            </Button>
+          )}
+
+          {/* Hoja de ruta button */}
+          {orderExtra?.hoja_ruta_url && (
+            <Button asChild variant="outline">
+              <a href={orderExtra.hoja_ruta_url} target="_blank" rel="noopener noreferrer">
+                Ver Hoja de Ruta
+              </a>
+            </Button>
+          )}
 
           {/* Cancel button */}
           {canCancel && (
@@ -349,9 +572,14 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             <h3 className="font-semibold mb-4">Productos</h3>
             <div className="space-y-3">
               {o.products.map((product, index) => (
-                <div key={index} className="flex items-center justify-between py-3 border-b last:border-0">
+                <div key={index} className={`flex items-center justify-between py-3 border-b last:border-0 ${product.facturado ? "bg-green-50/50" : ""}`}>
                   <div className="flex-1">
-                    <p className="font-medium">{product.productName}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium">{product.productName}</p>
+                      {product.facturado && (
+                        <Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-200">Facturado</Badge>
+                      )}
+                    </div>
                     <p className="text-sm text-muted-foreground font-mono">{product.productCode}</p>
                   </div>
                   <div className="flex items-center gap-4">
@@ -470,10 +698,97 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                 <p className="text-sm text-muted-foreground">Zona de entrega</p>
                 <p className="font-medium">{o.zona}</p>
               </div>
+              {orderExtra?.sector && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Sector</p>
+                    <p className="font-medium">{orderExtra.sector}</p>
+                  </div>
+                </>
+              )}
+              {orderExtra?.solicita && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Solicita</p>
+                    <p className="font-medium">{orderExtra.solicita}</p>
+                  </div>
+                </>
+              )}
+              {orderExtra?.recibe && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Recibe</p>
+                    <p className="font-medium">{orderExtra.recibe}</p>
+                  </div>
+                </>
+              )}
+              {orderExtra?.entrega_otra_sucursal && (
+                <>
+                  <Separator />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Entrega otra sucursal</p>
+                    <p className="font-medium">{orderExtra.entrega_otra_sucursal}</p>
+                  </div>
+                </>
+              )}
             </div>
           </Card>
         </div>
       </div>
+
+      {/* Facturar Dialog */}
+      <Dialog open={facturarOpen} onOpenChange={setFacturarOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Facturar Pedido {o.orderNumber}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-sm text-muted-foreground">
+              Seleccioná los items a facturar. Si no facturás todos, el pedido quedará en estado "Facturado Parcial".
+            </p>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {itemsPendientesFactura.map((product) => (
+                <label key={product.productId} className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50">
+                  <Checkbox
+                    checked={facturarItems[product.productId] || false}
+                    onCheckedChange={(checked) =>
+                      setFacturarItems((prev) => ({ ...prev, [product.productId]: checked === true }))
+                    }
+                  />
+                  <div className="flex-1">
+                    <p className="font-medium text-sm">{product.productName}</p>
+                    <p className="text-xs text-muted-foreground">{product.productCode} - Cant: {product.quantity}</p>
+                  </div>
+                  <span className="font-semibold text-sm">{formatCurrency(product.price * product.quantity)}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t">
+              <span className="font-semibold">Total a facturar</span>
+              <span className="text-lg font-bold">
+                {formatCurrency(
+                  itemsPendientesFactura
+                    .filter((p) => facturarItems[p.productId])
+                    .reduce((sum, p) => sum + p.price * p.quantity, 0)
+                )}
+              </span>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setFacturarOpen(false)}>Cancelar</Button>
+              <Button
+                className="bg-purple-600 hover:bg-purple-700"
+                onClick={handleFacturar}
+                disabled={facturando || !Object.values(facturarItems).some(Boolean)}
+              >
+                {facturando ? "Generando factura..." : "Generar Factura"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Factura Generated Dialog */}
       <Dialog open={facturaDialogOpen} onOpenChange={setFacturaDialogOpen}>

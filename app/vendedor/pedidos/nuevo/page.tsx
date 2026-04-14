@@ -62,7 +62,10 @@ function NuevoPedidoContent() {
   const [selectedProductId, setSelectedProductId] = useState("")
   const [quantity, setQuantity] = useState(1)
   const [notes, setNotes] = useState("")
-  const [observacionesEntrega, setObservacionesEntrega] = useState("")
+  const [sector, setSector] = useState("")
+  const [solicita, setSolicita] = useState("")
+  const [recibe, setRecibe] = useState("")
+  const [entregaOtraSucursal, setEntregaOtraSucursal] = useState("")
   const [isUrgent, setIsUrgent] = useState(false)
   const [razonSocial, setRazonSocial] = useState("")
   const [productSearch, setProductSearch] = useState("")
@@ -159,11 +162,16 @@ function NuevoPedidoContent() {
         razonSocial,
       })
 
-      // Save observaciones_entrega if provided
-      if (observacionesEntrega && orderId) {
+      // Save delivery fields if provided
+      const deliveryFields: Record<string, string> = {}
+      if (sector) deliveryFields.sector = sector
+      if (solicita) deliveryFields.solicita = solicita
+      if (recibe) deliveryFields.recibe = recibe
+      if (entregaOtraSucursal) deliveryFields.entrega_otra_sucursal = entregaOtraSucursal
+      if (Object.keys(deliveryFields).length > 0 && orderId) {
         const { createClient: createSupabaseClient } = await import("@/lib/supabase/client")
         const supabase = createSupabaseClient()
-        await supabase.from("orders").update({ observaciones_entrega: observacionesEntrega }).eq("id", orderId)
+        await supabase.from("orders").update(deliveryFields).eq("id", orderId)
       }
 
       router.push("/vendedor/pedidos")
@@ -389,15 +397,23 @@ function NuevoPedidoContent() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="obs-entrega">Observaciones de Entrega</Label>
-                <Textarea
-                  id="obs-entrega"
-                  placeholder="Quién solicita, quién recibe, si se entrega en otra sucursal..."
-                  value={observacionesEntrega}
-                  onChange={(e) => setObservacionesEntrega(e.target.value)}
-                  rows={3}
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="sector">Sector</Label>
+                  <Input id="sector" placeholder="Sector de entrega" value={sector} onChange={(e) => setSector(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="solicita">Solicita</Label>
+                  <Input id="solicita" placeholder="Quién solicita" value={solicita} onChange={(e) => setSolicita(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="recibe">Recibe</Label>
+                  <Input id="recibe" placeholder="Quién recibe" value={recibe} onChange={(e) => setRecibe(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="entrega-sucursal">Entrega en otra sucursal</Label>
+                  <Input id="entrega-sucursal" placeholder="Dirección de otra sucursal" value={entregaOtraSucursal} onChange={(e) => setEntregaOtraSucursal(e.target.value)} />
+                </div>
               </div>
 
               <div className="flex items-center gap-3 p-3 border rounded-lg">

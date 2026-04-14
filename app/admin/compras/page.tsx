@@ -13,6 +13,8 @@ import {
   updateCompra,
   deleteOrdenCompra,
   updateOrdenCompra,
+  fetchSolicitudesCompra,
+  updateSolicitudCompra,
 } from "@/lib/supabase/queries"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -49,7 +51,9 @@ export default function ComprasPage() {
   const [loading, setLoading] = useState(true)
   const [compras, setCompras] = useState<any[]>([])
   const [ordenes, setOrdenes] = useState<any[]>([])
+  const [solicitudes, setSolicitudes] = useState<any[]>([])
   const [totalComprasCount, setTotalComprasCount] = useState(0)
+  const [solEstadoFilter, setSolEstadoFilter] = useState("")
 
   // Pagination
   const [comprasPage, setComprasPage] = useState(1)
@@ -80,14 +84,16 @@ export default function ComprasPage() {
   async function loadData() {
     setLoading(true)
     try {
-      const [c, o, count] = await Promise.all([
+      const [c, o, count, sol] = await Promise.all([
         fetchCompras(),
         fetchOrdenesCompra(),
         fetchComprasCount(),
+        fetchSolicitudesCompra(),
       ])
       setCompras(c)
       setOrdenes(o)
       setTotalComprasCount(count)
+      setSolicitudes(sol)
     } catch (err) {
       console.error("Error cargando compras:", err)
     } finally {
@@ -262,11 +268,124 @@ export default function ComprasPage() {
         </Link>
       </div>
 
-      <Tabs defaultValue="compras">
+      <Tabs defaultValue="solicitudes">
         <TabsList className="mb-4">
-          <TabsTrigger value="compras">Seguimiento de Compras</TabsTrigger>
+          <TabsTrigger value="solicitudes">Solicitudes de Compra ({solicitudes.length})</TabsTrigger>
           <TabsTrigger value="ordenes">Ordenes de Compra</TabsTrigger>
+          <TabsTrigger value="compras">Seguimiento de Compras</TabsTrigger>
         </TabsList>
+
+        {/* ===================== TAB: SOLICITUDES ===================== */}
+        <TabsContent value="solicitudes">
+          <div className="bg-white rounded-lg shadow p-4 mb-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                value={solEstadoFilter}
+                onChange={(e) => setSolEstadoFilter(e.target.value)}
+                className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+              >
+                <option value="">Todos los estados</option>
+                <option value="borrador">Borrador</option>
+                <option value="aceptado">Aceptado</option>
+                <option value="rechazado">Rechazado</option>
+                <option value="convertido_oc">Convertido a OC</option>
+              </select>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            {(() => {
+              const filtered = solicitudes.filter((s) => !solEstadoFilter || s.estado === solEstadoFilter)
+              if (filtered.length === 0) {
+                return (
+                  <div className="text-center py-12 text-gray-500">
+                    No hay solicitudes de compra
+                  </div>
+                )
+              }
+              return (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Fecha</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Producto</th>
+                        <th className="px-4 py-3 text-right font-semibold text-gray-700">Cant. Faltante</th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Pedido Origen</th>
+                        <th className="px-4 py-3 text-center font-semibold text-gray-700">Estado</th>
+                        <th className="px-4 py-3 text-center font-semibold text-gray-700">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((s: any, idx: number) => (
+                        <tr key={s.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                          <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                            {s.created_at ? new Date(s.created_at).toLocaleDateString("es-AR") : "-"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="font-medium text-gray-900">{s.producto_nombre || "-"}</span>
+                            {s.producto_codigo && (
+                              <span className="text-xs text-gray-500 ml-2">{s.producto_codigo}</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right font-medium text-gray-900">
+                            {s.cantidad_faltante || 0}
+                          </td>
+                          <td className="px-4 py-3">
+                            {s.order_id ? (
+                              <Link href={`/admin/pedidos/${s.order_id}`} className="text-blue-600 hover:underline text-xs font-mono">
+                                {s.order_id.slice(0, 8)}...
+                              </Link>
+                            ) : "-"}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {s.estado === "borrador" && <Badge className="bg-gray-100 text-gray-700 border-gray-200">Borrador</Badge>}
+                            {s.estado === "aceptado" && <Badge className="bg-green-100 text-green-700 border-green-200">Aceptado</Badge>}
+                            {s.estado === "rechazado" && <Badge className="bg-red-100 text-red-700 border-red-200">Rechazado</Badge>}
+                            {s.estado === "convertido_oc" && <Badge className="bg-blue-100 text-blue-700 border-blue-200">Convertido a OC</Badge>}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              {s.estado === "borrador" && (
+                                <>
+                                  <button
+                                    onClick={async () => {
+                                      await updateSolicitudCompra(s.id, { estado: "aceptado" })
+                                      await loadData()
+                                    }}
+                                    className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded hover:bg-green-200"
+                                  >
+                                    Aprobar
+                                  </button>
+                                  <button
+                                    onClick={async () => {
+                                      await updateSolicitudCompra(s.id, { estado: "rechazado" })
+                                      await loadData()
+                                    }}
+                                    className="px-2 py-1 text-xs bg-red-100 text-red-700 rounded hover:bg-red-200"
+                                  >
+                                    Rechazar
+                                  </button>
+                                </>
+                              )}
+                              {(s.estado === "borrador" || s.estado === "aceptado") && (
+                                <Link
+                                  href={`/admin/compras/nueva?producto=${encodeURIComponent(s.producto_nombre || "")}&codigo=${encodeURIComponent(s.producto_codigo || "")}&cantidad=${s.cantidad_faltante || 0}&solicitud_id=${s.id}`}
+                                  className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                                >
+                                  Convertir en OC
+                                </Link>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
+          </div>
+        </TabsContent>
 
         {/* ===================== TAB: COMPRAS ===================== */}
         <TabsContent value="compras">

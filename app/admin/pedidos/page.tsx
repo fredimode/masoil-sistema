@@ -7,11 +7,49 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { fetchOrders } from "@/lib/supabase/queries"
+import { createClient } from "@/lib/supabase/client"
 import { normalizeSearch } from "@/lib/utils"
 import type { Order } from "@/lib/types"
 import { Search, Download, Plus } from "lucide-react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
+
+// Check and release reservations older than 30 days for unfactured orders
+async function releaseExpiredReservations() {
+  const supabase = createClient()
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString()
+
+  // Find reserved items older than 30 days on non-terminal orders
+  const { data: expiredItems } = await supabase
+    .from("order_items")
+    .select("id, product_id, quantity, order_id")
+    .eq("reservado", true)
+    .lt("reservado_at", thirtyDaysAgo)
+
+  if (!expiredItems || expiredItems.length === 0) return
+
+  // Check which orders are still not facturado
+  const orderIds = [...new Set(expiredItems.map((i) => i.order_id))]
+  const { data: orders } = await supabase
+    .from("orders")
+    .select("id, status")
+    .in("id", orderIds)
+    .not("status", "in", '("FACTURADO","FACTURADO_PARCIAL","EN_PROCESO_ENTREGA","ENTREGADO","CANCELADO")')
+
+  if (!orders || orders.length === 0) return
+  const eligibleOrderIds = new Set(orders.map((o) => o.id))
+
+  for (const item of expiredItems) {
+    if (!eligibleOrderIds.has(item.order_id)) continue
+    // Restore stock
+    const { data: product } = await supabase.from("products").select("stock").eq("id", item.product_id).single()
+    if (product) {
+      await supabase.from("products").update({ stock: product.stock + item.quantity }).eq("id", item.product_id)
+    }
+    // Mark as not reserved
+    await supabase.from("order_items").update({ reservado: false }).eq("id", item.id)
+  }
+}
 
 export default function AdminPedidosPage() {
   const [orders, setOrders] = useState<Order[]>([])
@@ -22,6 +60,9 @@ export default function AdminPedidosPage() {
   const [zonaFilter, setZonaFilter] = useState<string>("todas")
 
   useEffect(() => {
+    // Release expired reservations on page load (non-blocking)
+    releaseExpiredReservations().catch(console.error)
+
     fetchOrders()
       .then(setOrders)
       .catch((err) => console.error("Error fetching orders:", err))
@@ -120,7 +161,9 @@ export default function AdminPedidosPage() {
             <SelectItem value="urgentes">Urgentes</SelectItem>
             <SelectItem value="INGRESADO">Ingresado</SelectItem>
             <SelectItem value="PREPARADO">Preparado</SelectItem>
+            <SelectItem value="FACTURADO_PARCIAL">Facturado Parcial</SelectItem>
             <SelectItem value="FACTURADO">Facturado</SelectItem>
+            <SelectItem value="EN_PROCESO_ENTREGA">En Proceso Entrega</SelectItem>
             <SelectItem value="ESPERANDO_MERCADERIA">Esperando Mercadería</SelectItem>
             <SelectItem value="ENTREGADO">Entregado</SelectItem>
             <SelectItem value="CANCELADO">Cancelado</SelectItem>

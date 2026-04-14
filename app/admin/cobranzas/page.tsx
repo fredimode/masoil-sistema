@@ -180,11 +180,39 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
     }
   }
 
-  function handleSelectClient(client: any) {
+  async function handleSelectClient(client: any) {
     setSelectedClient(client)
     setSearch(client.businessName)
     setShowDropdown(false)
     setTodos(false)
+
+    // Unified CC by CUIT: if client has numero_docum, find all clients with same CUIT
+    const cuit = client.numero_docum || client.cuit
+    if (cuit) {
+      const sameClients = clients.filter((c: any) =>
+        (c.numeroDocum === cuit || c.cuit === cuit) && c.id !== client.id
+      )
+      if (sameClients.length > 0) {
+        // Load CC for all clients with same CUIT
+        setLoadingMov(true)
+        try {
+          const allIds = [client.id, ...sameClients.map((c) => c.id)]
+          const allMov = []
+          for (const id of allIds) {
+            const data = await fetchCuentaCorrienteCliente(id)
+            allMov.push(...data)
+          }
+          allMov.sort((a: any, b: any) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+          setMovimientos(allMov)
+        } catch (e) {
+          console.error(e)
+        } finally {
+          setLoadingMov(false)
+        }
+        return
+      }
+    }
+
     loadMovimientos(client.id)
   }
 

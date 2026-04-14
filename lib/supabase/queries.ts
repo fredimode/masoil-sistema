@@ -39,6 +39,9 @@ function mapOrderItem(row: any): OrderProduct {
     productName: row.products?.name || row.product_name || "",
     quantity: row.quantity,
     price: Number(row.unit_price ?? 0),
+    facturado: row.facturado || false,
+    cantidadFacturada: row.cantidad_facturada || 0,
+    facturaId: row.factura_id || null,
   }
 }
 
@@ -93,6 +96,7 @@ function mapClient(row: any): Client {
     sucursal: row.sucursal || null,
     cuit: row.cuit || null,
     numeroDocum: row.numero_docum || null,
+    domicilioEntrega: row.domicilio_entrega || null,
   }
 }
 
@@ -211,10 +215,60 @@ export async function createOrder(order: {
     product_id: item.productId,
     quantity: item.quantity,
     unit_price: item.price,
+    reservado: true,
+    reservado_at: new Date().toISOString(),
   }))
 
   const { error: itemsError } = await supabase.from("order_items").insert(items)
   if (itemsError) throw itemsError
+
+  // Reserve stock: deduct from products
+  for (const item of order.items) {
+    if (item.productId) {
+      const { data: product } = await supabase
+        .from("products")
+        .select("stock")
+        .eq("id", item.productId)
+        .single()
+      if (product) {
+        const newStock = Math.max(0, product.stock - item.quantity)
+        await supabase.from("products").update({ stock: newStock }).eq("id", item.productId)
+      }
+    }
+  }
+
+  // Create purchase requests for items with insufficient stock
+  const { data: orderItemsData } = await supabase
+    .from("order_items")
+    .select("id, product_id, quantity")
+    .eq("order_id", orderData.id)
+
+  if (orderItemsData) {
+    for (const oi of orderItemsData) {
+      const matchingItem = order.items.find((i) => i.productId === oi.product_id)
+      if (!matchingItem) continue
+      const { data: prod } = await supabase
+        .from("products")
+        .select("stock, name, code")
+        .eq("id", oi.product_id)
+        .single()
+      // Stock was already deducted above, so if stock < 0, there's a shortage
+      if (prod && prod.stock < 0) {
+        const faltante = Math.abs(prod.stock)
+        await supabase.from("solicitudes_compra").insert({
+          order_id: orderData.id,
+          order_item_id: oi.id,
+          product_id: oi.product_id,
+          producto_nombre: prod.name,
+          producto_codigo: prod.code,
+          cantidad_solicitada: oi.quantity,
+          cantidad_stock: Math.max(0, prod.stock + oi.quantity), // original stock before deduction
+          cantidad_faltante: faltante,
+          estado: "borrador",
+        })
+      }
+    }
+  }
 
   // Insert initial status history
   const { error: histError } = await supabase.from("order_status_history").insert({
@@ -700,6 +754,27 @@ export async function createCotizacion(cotizacion: {
 export async function updateCotizacion(id: string, updates: Record<string, unknown>): Promise<void> {
   const supabase = createSupabaseClient()
   const { error } = await supabase.from("cotizaciones").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
+// Solicitudes de Compra
+// ---------------------------------------------------------------------------
+
+export async function fetchSolicitudesCompra(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("solicitudes_compra")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(5000)
+  if (error) throw error
+  return data || []
+}
+
+export async function updateSolicitudCompra(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("solicitudes_compra").update(updates).eq("id", id)
   if (error) throw error
 }
 

@@ -24,12 +24,19 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
   const [notFoundState, setNotFoundState] = useState(false)
 
   const [editOpen, setEditOpen] = useState(false)
+  const [allVendedores, setAllVendedores] = useState<Vendedor[]>([])
   const [editForm, setEditForm] = useState({
     businessName: "",
     contactName: "",
     whatsapp: "",
     email: "",
     address: "",
+    zona: "" as string,
+    vendedorId: "",
+    paymentTerms: "",
+    creditLimit: 0,
+    notes: "",
+    domicilioEntrega: "",
   })
 
   // Contactos de Cobranzas
@@ -46,11 +53,13 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
   useEffect(() => {
     async function load() {
       try {
-        const [clientData, allOrders, allVendedores] = await Promise.all([
+        const [clientData, allOrders, allVendedoresData] = await Promise.all([
           fetchClientById(id),
           fetchOrders(),
           fetchVendedores(),
         ])
+        setAllVendedores(allVendedoresData)
+        const allVendedores = allVendedoresData
 
         if (!clientData) {
           setNotFoundState(true)
@@ -66,6 +75,12 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
           whatsapp: clientData.whatsapp,
           email: clientData.email,
           address: clientData.address,
+          zona: clientData.zona || "",
+          vendedorId: clientData.vendedorId || "",
+          paymentTerms: clientData.condicionPago || clientData.paymentTerms || "",
+          creditLimit: clientData.creditLimit || 0,
+          notes: clientData.notes || "",
+          domicilioEntrega: (clientData as any).domicilioEntrega || "",
         })
         const rawMail = (clientData as any).cobranzas_mail
         const rawTel = (clientData as any).cobranzas_telefono
@@ -94,9 +109,42 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
 
   if (!client) return null
 
-  function handleSaveEdit() {
-    setClient((prev) => prev ? { ...prev, ...editForm } : prev)
-    setEditOpen(false)
+  async function handleSaveEdit() {
+    if (!client) return
+    try {
+      await updateClient(client.id, {
+        business_name: editForm.businessName,
+        contact_name: editForm.contactName,
+        whatsapp: editForm.whatsapp,
+        email: editForm.email,
+        address: editForm.address,
+        zona: editForm.zona || null,
+        vendedor_id: editForm.vendedorId || null,
+        condicion_pago: editForm.paymentTerms,
+        payment_terms: editForm.paymentTerms,
+        credit_limit: editForm.creditLimit,
+        notes: editForm.notes,
+        domicilio_entrega: editForm.domicilioEntrega,
+      })
+      setClient((prev) => prev ? {
+        ...prev,
+        businessName: editForm.businessName,
+        contactName: editForm.contactName,
+        whatsapp: editForm.whatsapp,
+        email: editForm.email,
+        address: editForm.address,
+        zona: editForm.zona as any,
+        vendedorId: editForm.vendedorId,
+        paymentTerms: editForm.paymentTerms,
+        condicionPago: editForm.paymentTerms,
+        creditLimit: editForm.creditLimit,
+        notes: editForm.notes,
+      } : prev)
+      setEditOpen(false)
+    } catch (err) {
+      console.error("Error saving client:", err)
+      alert("Error al guardar")
+    }
   }
 
   function openEditDialog() {
@@ -107,6 +155,12 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
       whatsapp: client.whatsapp,
       email: client.email,
       address: client.address,
+      zona: client.zona || "",
+      vendedorId: client.vendedorId || "",
+      paymentTerms: client.condicionPago || client.paymentTerms || "",
+      creditLimit: client.creditLimit || 0,
+      notes: client.notes || "",
+      domicilioEntrega: (client as any).domicilioEntrega || "",
     })
     setEditOpen(true)
   }
@@ -277,7 +331,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
             <div className="space-y-3">
               <div>
                 <p className="text-sm text-muted-foreground mb-1">Condición de Pago</p>
-                <p className="font-medium">{client.paymentTerms}</p>
+                <p className="font-medium">{client.condicionPago || client.paymentTerms || "-"}</p>
               </div>
               <Separator />
               <div>
@@ -467,7 +521,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
             <DialogTitle>Editar Cliente</DialogTitle>
             <DialogDescription>Modificar datos de {client.businessName}</DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-3 py-4 max-h-[60vh] overflow-y-auto">
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1">Razón Social</label>
               <input
@@ -484,21 +538,23 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
                 className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
               />
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">WhatsApp</label>
-              <input
-                value={editForm.whatsapp}
-                onChange={(e) => setEditForm((f) => ({ ...f, whatsapp: e.target.value }))}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Email</label>
-              <input
-                value={editForm.email}
-                onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">WhatsApp</label>
+                <input
+                  value={editForm.whatsapp}
+                  onChange={(e) => setEditForm((f) => ({ ...f, whatsapp: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Email</label>
+                <input
+                  value={editForm.email}
+                  onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                />
+              </div>
             </div>
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1">Dirección</label>
@@ -506,6 +562,75 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
                 value={editForm.address}
                 onChange={(e) => setEditForm((f) => ({ ...f, address: e.target.value }))}
                 className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Domicilio de Entrega</label>
+              <input
+                value={editForm.domicilioEntrega}
+                onChange={(e) => setEditForm((f) => ({ ...f, domicilioEntrega: e.target.value }))}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                placeholder="Dirección de entrega (si difiere de la principal)"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Vendedor</label>
+                <select
+                  value={editForm.vendedorId}
+                  onChange={(e) => setEditForm((f) => ({ ...f, vendedorId: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">Sin vendedor</option>
+                  {allVendedores.filter((v) => v.isActive).map((v) => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Zona</label>
+                <select
+                  value={editForm.zona}
+                  onChange={(e) => setEditForm((f) => ({ ...f, zona: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">Sin zona</option>
+                  <option value="Norte">Norte</option>
+                  <option value="Capital">Capital</option>
+                  <option value="Sur">Sur</option>
+                  <option value="Oeste">Oeste</option>
+                  <option value="GBA">GBA</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Condición de Pago</label>
+                <input
+                  value={editForm.paymentTerms}
+                  onChange={(e) => setEditForm((f) => ({ ...f, paymentTerms: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                  placeholder="Ej: 30 días, contado"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Límite de Crédito</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={editForm.creditLimit}
+                  onChange={(e) => setEditForm((f) => ({ ...f, creditLimit: parseFloat(e.target.value) || 0 }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Notas</label>
+              <textarea
+                value={editForm.notes}
+                onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                rows={2}
               />
             </div>
           </div>
