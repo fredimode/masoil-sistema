@@ -7,13 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+
 import { createProveedor } from "@/lib/supabase/queries"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
@@ -27,7 +21,6 @@ export default function AdminNuevoProveedorPage() {
   const [formData, setFormData] = useState({
     nombre: "",
     cuit: "",
-    empresa: "",
     condicion_pago: "",
     cbu: "",
     email_comercial: "",
@@ -66,7 +59,6 @@ export default function AdminNuevoProveedorPage() {
       await createProveedor({
         nombre: formData.nombre,
         cuit: formData.cuit || undefined,
-        empresa: formData.empresa || undefined,
         condicion_pago: formData.condicion_pago || undefined,
         cbu: formData.cbu || undefined,
         email_comercial: formData.email_comercial || undefined,
@@ -134,23 +126,6 @@ export default function AdminNuevoProveedorPage() {
                 onChange={(e) => handleChange("cuit", e.target.value)}
                 placeholder="Ej: 30-12345678-9"
               />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="empresa">Empresa</Label>
-              <Select
-                value={formData.empresa}
-                onValueChange={(value) => handleChange("empresa", value)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar empresa..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Masoil">Masoil</SelectItem>
-                  <SelectItem value="Aquiles">Aquiles</SelectItem>
-                  <SelectItem value="Conancap">Conancap</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
 
             <div className="space-y-2">
