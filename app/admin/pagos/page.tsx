@@ -10,12 +10,20 @@ import {
   fetchReclamos,
   fetchProveedores,
   fetchCuentaCorrienteProveedor,
+  fetchFacturasProveedor,
   updateEstadoPago,
   createReclamo,
   deletePagoProveedor,
   updatePagoProveedor,
   deleteReclamo,
   updateReclamo,
+  fetchLotesPago,
+  fetchLotePagoItems,
+  createLotePago,
+  updateLotePago,
+  deleteLotePago,
+  updateLotePagoItem,
+  enviarFacturaALote,
 } from "@/lib/supabase/queries"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -28,25 +36,65 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog"
-import { Eye, Pencil, Trash2, Paperclip, Mail, RefreshCw } from "lucide-react"
+import { Eye, Pencil, Trash2, Paperclip, Mail, RefreshCw, ChevronDown, ChevronUp, Plus } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
+
+// ─── Vencimiento color helpers ──────────────────────────────────────────────
+
+function vencimientoColor(fechaVenc: string | null | undefined): "red" | "yellow" | "green" | "gray" {
+  if (!fechaVenc) return "gray"
+  const hoy = new Date()
+  hoy.setHours(0, 0, 0, 0)
+  const venc = new Date(fechaVenc)
+  venc.setHours(0, 0, 0, 0)
+  const diffDays = Math.floor((venc.getTime() - hoy.getTime()) / 86400000)
+  if (diffDays < 0) return "red"
+  if (diffDays <= 7) return "yellow"
+  return "green"
+}
+
+function vencimientoBg(color: "red" | "yellow" | "green" | "gray") {
+  switch (color) {
+    case "red": return "bg-red-50 border-l-4 border-l-red-500"
+    case "yellow": return "bg-yellow-50 border-l-4 border-l-yellow-400"
+    case "green": return "bg-green-50 border-l-4 border-l-green-500"
+    default: return ""
+  }
+}
+
+// ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function PagosPage() {
   const [loading, setLoading] = useState(true)
   const [pagos, setPagos] = useState<any[]>([])
   const [reclamos, setReclamos] = useState<any[]>([])
   const [proveedoresList, setProveedoresList] = useState<any[]>([])
+  const [facturasProveedor, setFacturasProveedor] = useState<any[]>([])
   const [empresaGlobal, setEmpresaGlobal] = useState("Todos")
   const [expandedProv, setExpandedProv] = useState<string | null>(null)
   const [expandedCC, setExpandedCC] = useState<any[]>([])
   const [loadingCC, setLoadingCC] = useState(false)
   const [provSearch, setProvSearch] = useState("")
+  const [filtroVencimiento, setFiltroVencimiento] = useState("Todos")
+
+  // Lotes de pago
+  const [lotes, setLotes] = useState<any[]>([])
+  const [loteItems, setLoteItems] = useState<Record<string, any[]>>({})
+  const [expandedLote, setExpandedLote] = useState<string | null>(null)
+  const [loadingLoteItems, setLoadingLoteItems] = useState(false)
+  const [filtroLoteFecha, setFiltroLoteFecha] = useState("")
+  const [filtroLoteEstado, setFiltroLoteEstado] = useState("Todos")
+  const [filtroLoteEmpresa, setFiltroLoteEmpresa] = useState("Todos")
+  const [nuevoLoteOpen, setNuevoLoteOpen] = useState(false)
+  const [nuevoLoteFecha, setNuevoLoteFecha] = useState(new Date().toISOString().slice(0, 10))
+  const [nuevoLoteEmpresa, setNuevoLoteEmpresa] = useState("")
+  const [creandoLote, setCreandoLote] = useState(false)
 
   // Pagination
   const [pagosPage, setPagosPage] = useState(1)
   const [reclamosPage, setReclamosPage] = useState(1)
 
-  // Filtros pagos
+  // Filtros pagos (programación reemplazada por lotes)
   const [busquedaPagos, setBusquedaPagos] = useState("")
   const [filtroEstado, setFiltroEstado] = useState("Todos")
   const [filtroEmpresaPagos, setFiltroEmpresaPagos] = useState("Todos")
@@ -82,6 +130,11 @@ export default function PagosPage() {
   const [editReclamoForm, setEditReclamoForm] = useState<any>({})
   const [deletingReclamo, setDeletingReclamo] = useState<any | null>(null)
   const [enviandoEmail, setEnviandoEmail] = useState<string | null>(null)
+
+  // Enviar a lote dialog
+  const [enviarALoteFC, setEnviarALoteFC] = useState<any | null>(null)
+  const [enviarALoteId, setEnviarALoteId] = useState("")
+  const [enviandoALote, setEnviandoALote] = useState(false)
 
   async function handleReenviarEmail(pago: any) {
     setEnviandoEmail(pago.id)
@@ -119,14 +172,18 @@ export default function PagosPage() {
   async function cargarDatos() {
     setLoading(true)
     try {
-      const [pagosData, reclamosData, provsData] = await Promise.all([
+      const [pagosData, reclamosData, provsData, lotesData, fcProvData] = await Promise.all([
         fetchPagosProveedores(),
         fetchReclamos(),
         fetchProveedores(),
+        fetchLotesPago(),
+        fetchFacturasProveedor(),
       ])
       setPagos(pagosData)
       setReclamos(reclamosData)
       setProveedoresList(provsData)
+      setLotes(lotesData)
+      setFacturasProveedor(fcProvData)
     } catch (error) {
       console.error("Error cargando datos:", error)
     } finally {
@@ -151,17 +208,44 @@ export default function PagosPage() {
     }
   }
 
+  // Facturas pendientes por proveedor (for Proveedores/CtaCte tab with vencimiento colors)
+  const facturasPendientesByProv = useMemo(() => {
+    const map: Record<string, any[]> = {}
+    facturasProveedor
+      .filter((f) => f.estado !== "pagada" && (f.saldo_pendiente > 0 || f.total > 0))
+      .forEach((f) => {
+        const key = f.proveedor_id
+        if (!map[key]) map[key] = []
+        map[key].push(f)
+      })
+    return map
+  }, [facturasProveedor])
+
   const proveedoresFiltrados = useMemo(() => {
     let list = proveedoresList
     if (empresaGlobal !== "Todos") {
-      list = list.filter((p) => p.empresa === empresaGlobal)
+      list = list.filter((p) => p.empresa === empresaGlobal || !p.empresa)
     }
     if (provSearch.trim()) {
       const q = normalizeSearch(provSearch)
       list = list.filter((p) => normalizeSearch(p.nombre || "").includes(q))
     }
+    // Filtro vencimiento
+    if (filtroVencimiento !== "Todos") {
+      list = list.filter((p) => {
+        const fcs = facturasPendientesByProv[p.id] || []
+        if (fcs.length === 0) return false
+        return fcs.some((f) => {
+          const c = vencimientoColor(f.fecha_vencimiento)
+          if (filtroVencimiento === "Vencidos") return c === "red"
+          if (filtroVencimiento === "Por vencer") return c === "yellow"
+          if (filtroVencimiento === "En plazo") return c === "green"
+          return true
+        })
+      })
+    }
     return list
-  }, [proveedoresList, empresaGlobal, provSearch])
+  }, [proveedoresList, empresaGlobal, provSearch, filtroVencimiento, facturasPendientesByProv])
 
   async function marcarPagado(id: string) {
     try {
@@ -176,14 +260,7 @@ export default function PagosPage() {
     setCreando(true)
     try {
       await createReclamo(nuevoReclamo)
-      setNuevoReclamo({
-        proveedor_nombre: "",
-        empresa: "",
-        forma_pago: "",
-        fecha_reclamo: "",
-        observaciones: "",
-        estado: "PENDIENTE",
-      })
+      setNuevoReclamo({ proveedor_nombre: "", empresa: "", forma_pago: "", fecha_reclamo: "", observaciones: "", estado: "PENDIENTE" })
       setDialogOpen(false)
       await cargarDatos()
     } catch (error) {
@@ -193,7 +270,6 @@ export default function PagosPage() {
     }
   }
 
-  // Actions - Pagos
   async function handleEditPago() {
     if (!editingPago) return
     try {
@@ -216,7 +292,6 @@ export default function PagosPage() {
     }
   }
 
-  // Actions - Reclamos
   async function handleEditReclamo() {
     if (!editingReclamo) return
     try {
@@ -238,6 +313,101 @@ export default function PagosPage() {
       console.error("Error eliminando reclamo:", err)
     }
   }
+
+  // Lotes
+  async function handleCrearLote() {
+    setCreandoLote(true)
+    try {
+      await createLotePago({ fecha_lote: nuevoLoteFecha, empresa: nuevoLoteEmpresa || null })
+      setNuevoLoteOpen(false)
+      await cargarDatos()
+    } catch (err) {
+      console.error("Error creando lote:", err)
+      alert("Error al crear lote")
+    } finally {
+      setCreandoLote(false)
+    }
+  }
+
+  async function toggleLote(loteId: string) {
+    if (expandedLote === loteId) {
+      setExpandedLote(null)
+      return
+    }
+    setExpandedLote(loteId)
+    if (!loteItems[loteId]) {
+      setLoadingLoteItems(true)
+      try {
+        const items = await fetchLotePagoItems(loteId)
+        setLoteItems((prev) => ({ ...prev, [loteId]: items }))
+      } catch {
+        setLoteItems((prev) => ({ ...prev, [loteId]: [] }))
+      } finally {
+        setLoadingLoteItems(false)
+      }
+    }
+  }
+
+  async function handleAprobarLote(loteId: string) {
+    try {
+      await updateLotePago(loteId, { estado: "aprobado", aprobado_at: new Date().toISOString() })
+      await cargarDatos()
+    } catch (err) {
+      console.error("Error aprobando lote:", err)
+    }
+  }
+
+  async function handleEnviarALote() {
+    if (!enviarALoteFC || !enviarALoteId) return
+    setEnviandoALote(true)
+    try {
+      await enviarFacturaALote(enviarALoteFC.id, enviarALoteId, {
+        proveedor_nombre: enviarALoteFC.proveedor_nombre,
+        proveedor_cuit: enviarALoteFC.cuit || "",
+        empresa: enviarALoteFC.razon_social || "",
+        fecha_fc: enviarALoteFC.fecha,
+        nro_fc: enviarALoteFC.punto_venta && enviarALoteFC.numero
+          ? `${String(enviarALoteFC.punto_venta).padStart(4, "0")}-${String(enviarALoteFC.numero).padStart(8, "0")}`
+          : "",
+        importe: Number(enviarALoteFC.saldo_pendiente || enviarALoteFC.total || 0),
+      })
+      setEnviarALoteFC(null)
+      setEnviarALoteId("")
+      // Refresh lote items if expanded
+      if (expandedLote) {
+        const items = await fetchLotePagoItems(expandedLote)
+        setLoteItems((prev) => ({ ...prev, [expandedLote!]: items }))
+      }
+      await cargarDatos()
+      alert("Factura enviada al lote")
+    } catch (err) {
+      console.error("Error enviando a lote:", err)
+      alert("Error al enviar a lote")
+    } finally {
+      setEnviandoALote(false)
+    }
+  }
+
+  function exportarLoteXLSX(loteId: string) {
+    const items = loteItems[loteId] || []
+    const ws = XLSX.utils.json_to_sheet(items.map((i) => ({
+      Proveedor: i.proveedor_nombre,
+      CUIT: i.proveedor_cuit,
+      Empresa: i.empresa,
+      "Fecha FC": formatDateStr(i.fecha_fc),
+      "Nro FC": i.nro_fc,
+      Importe: Number(i.importe) || 0,
+      "Forma pago": i.forma_pago || "",
+      Estado: i.estado,
+      "Valores utilizados": i.valores_utilizados || "",
+    })))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Lote")
+    XLSX.writeFile(wb, `lote_pago_${loteId.slice(0, 8)}.xlsx`)
+  }
+
+  // Lotes borrador for "enviar a lote"
+  const lotesBorrador = useMemo(() => lotes.filter((l) => l.estado === "borrador"), [lotes])
 
   // Valores unicos para filtros
   const empresasPagos = useMemo(() => [...new Set(pagos.map((p) => p.empresa).filter(Boolean))], [pagos])
@@ -274,12 +444,21 @@ export default function PagosPage() {
     })
   }, [reclamos, busquedaReclamos, filtroEmpresaReclamos])
 
-  // Pagination - Pagos
+  // Filtrado lotes
+  const lotesFiltrados = useMemo(() => {
+    return lotes.filter((l) => {
+      const matchFecha = !filtroLoteFecha || l.fecha_lote === filtroLoteFecha
+      const matchEstado = filtroLoteEstado === "Todos" || l.estado === filtroLoteEstado
+      const matchEmpresa = filtroLoteEmpresa === "Todos" || l.empresa === filtroLoteEmpresa
+      return matchFecha && matchEstado && matchEmpresa
+    })
+  }, [lotes, filtroLoteFecha, filtroLoteEstado, filtroLoteEmpresa])
+
+  // Pagination
   const { totalPages: pagosTotalPages, totalItems: pagosTotalItems, pageSize: pagosPageSize, getPage: getPagosPage } = usePagination(pagosFiltrados, 50)
   const pagosCurrentPage = Math.min(pagosPage, pagosTotalPages)
   const paginatedPagos = getPagosPage(pagosCurrentPage)
 
-  // Pagination - Reclamos
   const { totalPages: reclamosTotalPages, totalItems: reclamosTotalItems, pageSize: reclamosPageSize, getPage: getReclamosPage } = usePagination(reclamosFiltrados, 50)
   const reclamosCurrentPage = Math.min(reclamosPage, reclamosTotalPages)
   const paginatedReclamos = getReclamosPage(reclamosCurrentPage)
@@ -328,8 +507,10 @@ export default function PagosPage() {
   }
 
   function estadoBadge(estado: string) {
-    if (estado === "PAGADO") return <Badge className="bg-green-100 text-green-700 border-green-200">{estado}</Badge>
-    if (estado === "PENDIENTE") return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200">{estado}</Badge>
+    if (estado === "PAGADO" || estado === "pagado") return <Badge className="bg-green-100 text-green-700 border-green-200">{estado}</Badge>
+    if (estado === "PENDIENTE" || estado === "pendiente") return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200">{estado}</Badge>
+    if (estado === "aprobado") return <Badge className="bg-blue-100 text-blue-700 border-blue-200">{estado}</Badge>
+    if (estado === "borrador") return <Badge className="bg-gray-100 text-gray-700 border-gray-200">{estado}</Badge>
     return <Badge className="bg-red-100 text-red-700 border-red-200">{estado}</Badge>
   }
 
@@ -351,6 +532,9 @@ export default function PagosPage() {
           <h2 className="text-2xl font-bold text-gray-900">Pagos a Proveedores</h2>
           <p className="text-gray-500">Gestion de pagos y reclamos</p>
         </div>
+        <Link href="/admin/pagos/nuevo" className="px-5 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium flex items-center gap-2">
+          <Plus className="h-4 w-4" /> Nuevo Pago
+        </Link>
       </div>
 
       {/* Empresa filter */}
@@ -371,31 +555,48 @@ export default function PagosPage() {
       <Tabs defaultValue="proveedores">
         <TabsList>
           <TabsTrigger value="proveedores">Proveedores / Cta Cte</TabsTrigger>
-          <TabsTrigger value="programacion">Programacion Mensual</TabsTrigger>
+          <TabsTrigger value="lote-pago">Lote de Pago</TabsTrigger>
           <TabsTrigger value="reclamos">Reclamos</TabsTrigger>
         </TabsList>
 
         {/* ============ TAB PROVEEDORES / CTA CTE ============ */}
         <TabsContent value="proveedores">
           <div className="bg-white rounded-lg shadow p-4 mb-4">
-            <input
-              type="text"
-              placeholder="Buscar proveedor..."
-              value={provSearch}
-              onChange={(e) => setProvSearch(e.target.value)}
-              className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm w-64"
-            />
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                placeholder="Buscar proveedor..."
+                value={provSearch}
+                onChange={(e) => setProvSearch(e.target.value)}
+                className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm w-64"
+              />
+              <select
+                value={filtroVencimiento}
+                onChange={(e) => setFiltroVencimiento(e.target.value)}
+                className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+              >
+                <option value="Todos">Vencimiento: Todos</option>
+                <option value="Vencidos">Vencidos</option>
+                <option value="Por vencer">Por vencer (7 días)</option>
+                <option value="En plazo">En plazo</option>
+              </select>
+            </div>
           </div>
           <div className="space-y-2">
             {proveedoresFiltrados.length === 0 ? (
               <div className="text-center py-12 text-gray-500">No hay proveedores</div>
             ) : (
               proveedoresFiltrados.map((prov) => {
-                const provPagos = pagos.filter((p) => p.proveedor_id === prov.id || p.proveedor_nombre === prov.nombre)
-                const totalPendiente = provPagos
-                  .filter((p) => p.estado_pago !== "PAGADO")
-                  .reduce((s, p) => s + (Number(p.importe) || 0), 0)
+                const provFCs = facturasPendientesByProv[prov.id] || []
+                const totalPendiente = provFCs.reduce((s, f) => s + (Number(f.saldo_pendiente || f.total) || 0), 0)
                 const isExpanded = expandedProv === prov.id
+                // Worst vencimiento color
+                const worstColor = provFCs.reduce((worst, f) => {
+                  const c = vencimientoColor(f.fecha_vencimiento)
+                  if (c === "red") return "red"
+                  if (c === "yellow" && worst !== "red") return "yellow"
+                  return worst
+                }, "green" as "red" | "yellow" | "green")
 
                 return (
                   <div key={prov.id} className="bg-white rounded-lg shadow border">
@@ -406,14 +607,17 @@ export default function PagosPage() {
                       <div>
                         <p className="font-semibold text-gray-900">{prov.nombre}</p>
                         <p className="text-xs text-gray-500">
-                          {prov.empresa && <span className="mr-3">{prov.empresa}</span>}
-                          {prov.cuit && <span>CUIT: {prov.cuit}</span>}
+                          {prov.cuit && <span className="mr-3">CUIT: {prov.cuit}</span>}
                         </p>
                       </div>
                       <div className="flex items-center gap-4">
-                        {totalPendiente > 0 && (
-                          <Badge className="bg-amber-100 text-amber-700 border-amber-200">
-                            Pendiente: {formatCurrency(totalPendiente)}
+                        {provFCs.length > 0 && (
+                          <Badge className={
+                            worstColor === "red" ? "bg-red-100 text-red-700 border-red-200" :
+                            worstColor === "yellow" ? "bg-yellow-100 text-yellow-700 border-yellow-200" :
+                            "bg-green-100 text-green-700 border-green-200"
+                          }>
+                            {provFCs.length} FC pend. - {formatCurrency(totalPendiente)}
                           </Badge>
                         )}
                         <span className="text-gray-400">{isExpanded ? "▲" : "▼"}</span>
@@ -421,12 +625,53 @@ export default function PagosPage() {
                     </button>
                     {isExpanded && (
                       <div className="border-t p-4">
+                        {/* Facturas pendientes con colores */}
+                        {provFCs.length > 0 && (
+                          <div className="mb-4">
+                            <h4 className="text-sm font-semibold text-gray-700 mb-2">Facturas pendientes</h4>
+                            <div className="space-y-1">
+                              {provFCs.map((f) => {
+                                const color = vencimientoColor(f.fecha_vencimiento)
+                                return (
+                                  <div key={f.id} className={`flex items-center justify-between text-sm px-3 py-2 rounded ${vencimientoBg(color)}`}>
+                                    <div className="flex items-center gap-3">
+                                      <span>{formatDateStr(f.fecha)}</span>
+                                      <span className="font-medium">
+                                        {f.tipo || "FC"} {f.punto_venta && f.numero ? `${String(f.punto_venta).padStart(4, "0")}-${String(f.numero).padStart(8, "0")}` : ""}
+                                      </span>
+                                      <span className="text-xs text-gray-500">
+                                        Vto: {f.fecha_vencimiento ? formatDateStr(f.fecha_vencimiento) : "S/D"}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                      <span className="font-bold">{formatCurrency(Number(f.saldo_pendiente || f.total) || 0)}</span>
+                                      {!f.lote_pago_id && lotesBorrador.length > 0 && (
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); setEnviarALoteFC(f) }}
+                                          className="text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200"
+                                        >
+                                          Enviar a Lote
+                                        </button>
+                                      )}
+                                      {f.lote_pago_id && (
+                                        <Badge className="bg-indigo-50 text-indigo-600 border-indigo-200 text-xs">En lote</Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Cuenta corriente */}
                         {loadingCC ? (
                           <div className="flex justify-center py-4">
                             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
                           </div>
                         ) : expandedCC.length > 0 ? (
                           <div className="overflow-x-auto">
+                            <h4 className="text-sm font-semibold text-gray-700 mb-2">Cuenta corriente</h4>
                             <table className="w-full text-sm">
                               <thead className="bg-gray-50">
                                 <tr>
@@ -455,17 +700,6 @@ export default function PagosPage() {
                         ) : (
                           <div className="text-center py-4 text-gray-500 text-sm">
                             Sin movimientos en cuenta corriente
-                            {provPagos.length > 0 && (
-                              <div className="mt-2">
-                                <p className="text-xs text-gray-400 mb-2">Comprobantes pendientes (pagos):</p>
-                                {provPagos.filter((p) => p.estado_pago !== "PAGADO").map((p) => (
-                                  <div key={p.id} className="flex justify-between text-xs border-b py-1">
-                                    <span>{formatDateStr(p.fecha_fc)} - {p.numero_fc || "S/N"}</span>
-                                    <span className="font-medium">{formatCurrency(Number(p.importe) || 0)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
                           </div>
                         )}
                         <div className="mt-3 flex justify-end">
@@ -485,188 +719,218 @@ export default function PagosPage() {
           </div>
         </TabsContent>
 
-        {/* ============ TAB PROGRAMACION MENSUAL ============ */}
-        <TabsContent value="programacion">
-          {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl p-4 border border-indigo-200">
-              <p className="text-sm text-indigo-600 font-semibold">Total a pagar</p>
-              <p className="text-2xl font-bold text-indigo-700">{formatCurrency(totalAPagar)}</p>
-            </div>
-            <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-4 border border-green-200">
-              <p className="text-sm text-green-600 font-semibold">Pagados</p>
-              <p className="text-2xl font-bold text-green-700">{cantPagados}</p>
-            </div>
-            <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl p-4 border border-yellow-200">
-              <p className="text-sm text-yellow-600 font-semibold">Pendientes</p>
-              <p className="text-2xl font-bold text-yellow-700">{cantPendientes}</p>
-            </div>
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-4 border border-purple-200">
-              <p className="text-sm text-purple-600 font-semibold">Proveedores</p>
-              <p className="text-2xl font-bold text-purple-700">{cantProveedores}</p>
-            </div>
-          </div>
-
-          {/* Filtros + acciones */}
+        {/* ============ TAB LOTE DE PAGO ============ */}
+        <TabsContent value="lote-pago">
+          {/* Filtros */}
           <div className="bg-white rounded-lg shadow p-4 mb-6">
             <div className="flex flex-wrap items-center gap-3">
-              <input
-                type="text"
-                placeholder="Buscar proveedor, CUIT, nro FC..."
-                value={busquedaPagos}
-                onChange={(e) => { setBusquedaPagos(e.target.value); setPagosPage(1) }}
-                className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm flex-1 min-w-[200px]"
-              />
-              <select value={filtroEstado} onChange={(e) => { setFiltroEstado(e.target.value); setPagosPage(1) }} className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm">
-                <option value="Todos">Estado: Todos</option>
-                <option value="PAGADO">PAGADO</option>
-                <option value="PENDIENTE">PENDIENTE</option>
-              </select>
-              <select value={filtroEmpresaPagos} onChange={(e) => { setFiltroEmpresaPagos(e.target.value); setPagosPage(1) }} className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm">
-                <option value="Todos">Empresa: Todas</option>
-                {empresasPagos.map((e) => (
-                  <option key={e} value={e}>{e}</option>
-                ))}
-              </select>
-              <select value={filtroFormaPago} onChange={(e) => { setFiltroFormaPago(e.target.value); setPagosPage(1) }} className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm">
-                <option value="Todos">Forma pago: Todas</option>
-                {formasPago.map((f) => (
-                  <option key={f} value={f}>{f}</option>
-                ))}
-              </select>
-              <div className="flex items-center gap-1">
-                <label className="text-xs text-gray-500 whitespace-nowrap">Fecha lote:</label>
-                <input type="date" value={filtroFechaDesde} onChange={(e) => { setFiltroFechaDesde(e.target.value); setPagosPage(1) }} className="p-2 border rounded-lg text-sm" />
-                <span className="text-xs text-gray-400">a</span>
-                <input type="date" value={filtroFechaHasta} onChange={(e) => { setFiltroFechaHasta(e.target.value); setPagosPage(1) }} className="p-2 border rounded-lg text-sm" />
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Fecha de lote</label>
+                <input type="date" value={filtroLoteFecha} onChange={(e) => setFiltroLoteFecha(e.target.value)} className="p-2 border rounded-lg text-sm" />
               </div>
-              <button onClick={exportarPagosXLSX} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">Exportar XLSX</button>
-              <Link href="/admin/pagos/nuevo" className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium">+ Nuevo Pago</Link>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Estado</label>
+                <select value={filtroLoteEstado} onChange={(e) => setFiltroLoteEstado(e.target.value)} className="p-2 border rounded-lg text-sm">
+                  <option value="Todos">Todos</option>
+                  <option value="borrador">Borrador</option>
+                  <option value="aprobado">Aprobado</option>
+                  <option value="pagado">Pagado</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Empresa</label>
+                <select value={filtroLoteEmpresa} onChange={(e) => setFiltroLoteEmpresa(e.target.value)} className="p-2 border rounded-lg text-sm">
+                  <option value="Todos">Todas</option>
+                  <option value="Masoil">Masoil</option>
+                  <option value="Aquiles">Aquiles</option>
+                  <option value="Conancap">Conancap</option>
+                </select>
+              </div>
+              <div className="ml-auto flex gap-2">
+                <Dialog open={nuevoLoteOpen} onOpenChange={setNuevoLoteOpen}>
+                  <DialogTrigger asChild>
+                    <button className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium">+ Crear Lote</button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader><DialogTitle>Crear Lote de Pago</DialogTitle></DialogHeader>
+                    <div className="space-y-4 py-4">
+                      <div>
+                        <label className="text-sm text-gray-600 block mb-1">Fecha del lote *</label>
+                        <input type="date" value={nuevoLoteFecha} onChange={(e) => setNuevoLoteFecha(e.target.value)} className="w-full p-2 border rounded-lg text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-sm text-gray-600 block mb-1">Empresa</label>
+                        <select value={nuevoLoteEmpresa} onChange={(e) => setNuevoLoteEmpresa(e.target.value)} className="w-full p-2 border rounded-lg text-sm">
+                          <option value="">Todas</option>
+                          <option value="Masoil">Masoil</option>
+                          <option value="Aquiles">Aquiles</option>
+                          <option value="Conancap">Conancap</option>
+                        </select>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <DialogClose asChild>
+                        <button className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
+                      </DialogClose>
+                      <button onClick={handleCrearLote} disabled={creandoLote || !nuevoLoteFecha} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-gray-400 text-sm font-medium">
+                        {creandoLote ? "Creando..." : "Crear Lote"}
+                      </button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              </div>
             </div>
           </div>
 
-          {/* Tabla pagos */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            {pagosFiltrados.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-gray-500">No se encontraron pagos</p>
-              </div>
+          {/* Listado de lotes */}
+          <div className="space-y-3">
+            {lotesFiltrados.length === 0 ? (
+              <div className="text-center py-12 text-gray-500 bg-white rounded-lg shadow">No hay lotes de pago</div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm table-fixed">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[140px]">Proveedor</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[100px]">CUIT</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[80px]">Empresa</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[85px]">Fecha FC</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[80px]">Nro FC</th>
-                      <th className="px-3 py-3 text-right font-semibold text-gray-700 w-[100px]">Importe</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700 w-[100px]">Forma pago</th>
-                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[90px]">Estado</th>
-                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[50px]" title="Comprobante">Adj</th>
-                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[80px]">Email</th>
-                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[50px]" title="Orden de Pago">OP</th>
-                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-[100px]">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {paginatedPagos.map((p, idx) => (
-                      <tr key={p.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                        <td className="px-3 py-3 font-medium text-gray-900 truncate" title={p.proveedor_nombre || ""}>{p.proveedor_nombre}</td>
-                        <td className="px-3 py-3 text-gray-600 truncate">{p.cuit || "-"}</td>
-                        <td className="px-3 py-3 text-gray-600 truncate">{p.empresa || "-"}</td>
-                        <td className="px-3 py-3 text-gray-600">{formatDateStr(p.fecha_fc)}</td>
-                        <td className="px-3 py-3 text-gray-600 truncate">{p.numero_fc || "-"}</td>
-                        <td className="px-3 py-3 text-right font-bold text-gray-900">{formatCurrency(Number(p.importe) || 0)}</td>
-                        <td className="px-3 py-3 text-gray-600 truncate" title={p.forma_pago || ""}>{p.forma_pago || "-"}</td>
-                        <td className="px-3 py-3 text-center">
-                          <div className="max-w-[90px] mx-auto truncate">{estadoBadge(p.estado_pago || "")}</div>
-                        </td>
-                        <td className="px-2 py-3 text-center">
-                          {p.comprobante_url ? (
-                            <button onClick={() => handleDownloadComprobante(p)} className="p-1 hover:bg-gray-200 rounded" title="Ver comprobante">
-                              <Paperclip className="h-4 w-4 text-blue-600" />
-                            </button>
-                          ) : <span className="text-gray-300">-</span>}
-                        </td>
-                        <td className="px-2 py-3 text-center">
-                          {p.email_enviado ? (
-                            <div className="flex items-center justify-center gap-1">
-                              <Badge className="bg-green-100 text-green-700 border-green-200 text-[10px] px-1">Enviado</Badge>
-                              <button onClick={() => handleReenviarEmail(p)} className="p-0.5 hover:bg-gray-200 rounded" title="Reenviar email" disabled={enviandoEmail === p.id}>
-                                <RefreshCw className={`h-3 w-3 text-gray-500 ${enviandoEmail === p.id ? "animate-spin" : ""}`} />
-                              </button>
-                            </div>
-                          ) : (
+              lotesFiltrados.map((lote) => {
+                const isExpanded = expandedLote === lote.id
+                const items = loteItems[lote.id] || []
+                // Group items by proveedor
+                const groupedByProv: Record<string, any[]> = {}
+                items.forEach((item) => {
+                  const key = item.proveedor_nombre || "Sin proveedor"
+                  if (!groupedByProv[key]) groupedByProv[key] = []
+                  groupedByProv[key].push(item)
+                })
+
+                return (
+                  <div key={lote.id} className="bg-white rounded-lg shadow border">
+                    <button
+                      onClick={() => toggleLote(lote.id)}
+                      className="w-full flex items-center justify-between p-4 hover:bg-gray-50 text-left"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div>
+                          <p className="font-semibold text-gray-900">{formatDateStr(lote.fecha_lote)}</p>
+                          <p className="text-xs text-gray-500">{lote.empresa || "Todas"}</p>
+                        </div>
+                        {estadoBadge(lote.estado)}
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <span className="font-bold text-gray-900">{formatCurrency(Number(lote.total) || 0)}</span>
+                        {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                      </div>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="border-t p-4">
+                        {loadingLoteItems ? (
+                          <div className="flex justify-center py-4">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
+                          </div>
+                        ) : items.length === 0 ? (
+                          <p className="text-center text-gray-500 py-4 text-sm">Lote vacío — envíe facturas desde Proveedores / Cta Cte</p>
+                        ) : (
+                          <div className="space-y-4">
+                            {Object.entries(groupedByProv).map(([provNombre, provItems]) => (
+                              <div key={provNombre}>
+                                <h4 className="font-semibold text-sm text-gray-800 mb-1">{provNombre} <span className="text-gray-400 font-normal">({provItems[0]?.proveedor_cuit || ""})</span></h4>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-sm">
+                                    <thead className="bg-gray-50">
+                                      <tr>
+                                        <th className="px-2 py-1.5 text-left font-medium text-gray-600">Empresa</th>
+                                        <th className="px-2 py-1.5 text-left font-medium text-gray-600">Fecha FC</th>
+                                        <th className="px-2 py-1.5 text-left font-medium text-gray-600">Nro FC</th>
+                                        <th className="px-2 py-1.5 text-right font-medium text-gray-600">Importe</th>
+                                        <th className="px-2 py-1.5 text-left font-medium text-gray-600">Forma pago</th>
+                                        <th className="px-2 py-1.5 text-center font-medium text-gray-600">Estado</th>
+                                        <th className="px-2 py-1.5 text-left font-medium text-gray-600">Valores utilizados</th>
+                                        <th className="px-2 py-1.5 text-center font-medium text-gray-600">OP</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {provItems.map((item, idx) => (
+                                        <tr key={item.id} className={idx % 2 ? "bg-gray-50" : ""}>
+                                          <td className="px-2 py-1.5">{item.empresa || "-"}</td>
+                                          <td className="px-2 py-1.5">{formatDateStr(item.fecha_fc)}</td>
+                                          <td className="px-2 py-1.5">{item.nro_fc || "-"}</td>
+                                          <td className="px-2 py-1.5 text-right font-bold">{formatCurrency(Number(item.importe) || 0)}</td>
+                                          <td className="px-2 py-1.5">
+                                            <input
+                                              type="text"
+                                              value={item.forma_pago || ""}
+                                              onChange={async (e) => {
+                                                const val = e.target.value
+                                                setLoteItems((prev) => ({
+                                                  ...prev,
+                                                  [lote.id]: (prev[lote.id] || []).map((i) => i.id === item.id ? { ...i, forma_pago: val } : i)
+                                                }))
+                                                try { await updateLotePagoItem(item.id, { forma_pago: val }) } catch {}
+                                              }}
+                                              className="w-full border rounded px-1.5 py-1 text-xs"
+                                              placeholder="Transferencia, Cheque..."
+                                            />
+                                          </td>
+                                          <td className="px-2 py-1.5 text-center">{estadoBadge(item.estado)}</td>
+                                          <td className="px-2 py-1.5">
+                                            <input
+                                              type="text"
+                                              value={item.valores_utilizados || ""}
+                                              onChange={async (e) => {
+                                                const val = e.target.value
+                                                setLoteItems((prev) => ({
+                                                  ...prev,
+                                                  [lote.id]: (prev[lote.id] || []).map((i) => i.id === item.id ? { ...i, valores_utilizados: val } : i)
+                                                }))
+                                                try { await updateLotePagoItem(item.id, { valores_utilizados: val }) } catch {}
+                                              }}
+                                              className="w-full border rounded px-1.5 py-1 text-xs"
+                                              placeholder="Detalles de valores..."
+                                            />
+                                          </td>
+                                          <td className="px-2 py-1.5 text-center">
+                                            <Link
+                                              href={`/admin/pagos/nuevo?proveedor_nombre=${encodeURIComponent(item.proveedor_nombre || "")}&importe=${item.importe || ""}&nro_fc=${encodeURIComponent(item.nro_fc || "")}`}
+                                              className="text-xs text-blue-600 hover:underline"
+                                            >
+                                              Generar OP
+                                            </Link>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Lote actions */}
+                        <div className="mt-4 flex justify-end gap-2">
+                          {lote.estado === "borrador" && (
                             <button
-                              onClick={() => handleReenviarEmail(p)}
-                              className="p-1 hover:bg-blue-100 rounded text-xs text-blue-600"
-                              title="Enviar email"
-                              disabled={enviandoEmail === p.id}
+                              onClick={() => handleAprobarLote(lote.id)}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
                             >
-                              {enviandoEmail === p.id ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+                              Aprobar Lote
                             </button>
                           )}
-                        </td>
-                        <td className="px-2 py-3 text-center">
-                          {p.orden_pago_url ? (
-                            <button
-                              onClick={async () => {
-                                const supabaseOP = createClient()
-                                const { data } = await supabaseOP.storage.from("comprobantes").createSignedUrl(p.orden_pago_url, 60)
-                                if (data?.signedUrl) window.open(data.signedUrl, "_blank")
-                              }}
-                              className="p-1 hover:bg-blue-100 rounded text-xs text-blue-600"
-                              title={`Ver ${p.orden_pago_numero || "OP"}`}
-                            >
-                              <Paperclip className="h-3.5 w-3.5" />
-                            </button>
-                          ) : <span className="text-gray-300 text-xs">-</span>}
-                        </td>
-                        <td className="px-3 py-3 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <button onClick={() => setViewingPago(p)} className="p-1 hover:bg-gray-200 rounded" title="Ver detalle">
-                              <Eye className="h-4 w-4 text-gray-600" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setEditingPago(p)
-                                setEditPagoForm({
-                                  proveedor_nombre: p.proveedor_nombre || "",
-                                  cuit: p.cuit || "",
-                                  empresa: p.empresa || "",
-                                  numero_fc: p.numero_fc || "",
-                                  importe: p.importe || 0,
-                                  forma_pago: p.forma_pago || "",
-                                  estado_pago: p.estado_pago || "",
-                                  banco: p.banco || "",
-                                  origen: p.origen || "",
-                                })
-                              }}
-                              className="p-1 hover:bg-gray-200 rounded"
-                              title="Editar"
-                            >
-                              <Pencil className="h-4 w-4 text-blue-600" />
-                            </button>
-                            <button onClick={() => setDeletingPago(p)} className="p-1 hover:bg-gray-200 rounded" title="Eliminar">
-                              <Trash2 className="h-4 w-4 text-red-600" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                          <button
+                            onClick={() => exportarLoteXLSX(lote.id)}
+                            disabled={items.length === 0}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium disabled:opacity-50"
+                          >
+                            Exportar XLSX
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })
             )}
-            <TablePagination currentPage={pagosCurrentPage} totalPages={pagosTotalPages} totalItems={pagosTotalItems} pageSize={pagosPageSize} onPageChange={setPagosPage} />
           </div>
         </TabsContent>
 
         {/* ============ TAB RECLAMOS ============ */}
         <TabsContent value="reclamos">
-          {/* Filtros + acciones */}
           <div className="bg-white rounded-lg shadow p-4 mb-6">
             <div className="flex flex-wrap items-center gap-3">
               <input
@@ -740,7 +1004,6 @@ export default function PagosPage() {
             </div>
           </div>
 
-          {/* Tabla reclamos */}
           <div className="bg-white rounded-lg shadow overflow-hidden">
             {reclamosFiltrados.length === 0 ? (
               <div className="text-center py-12">
@@ -810,7 +1073,42 @@ export default function PagosPage() {
         </TabsContent>
       </Tabs>
 
-      {/* ========== DIALOGS - PAGOS ========== */}
+      {/* ========== DIALOGS ========== */}
+
+      {/* Enviar a Lote Dialog */}
+      <Dialog open={!!enviarALoteFC} onOpenChange={(open) => !open && setEnviarALoteFC(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Enviar Factura a Lote de Pago</DialogTitle></DialogHeader>
+          {enviarALoteFC && (
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-gray-600">
+                <strong>{enviarALoteFC.proveedor_nombre}</strong> — {formatCurrency(Number(enviarALoteFC.saldo_pendiente || enviarALoteFC.total) || 0)}
+              </p>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">Seleccionar lote (borrador)</label>
+                <select
+                  value={enviarALoteId}
+                  onChange={(e) => setEnviarALoteId(e.target.value)}
+                  className="w-full p-2 border rounded-lg text-sm"
+                >
+                  <option value="">Seleccionar...</option>
+                  {lotesBorrador.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {formatDateStr(l.fecha_lote)} - {l.empresa || "Todas"} ({formatCurrency(Number(l.total) || 0)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <button onClick={() => setEnviarALoteFC(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
+            <button onClick={handleEnviarALote} disabled={enviandoALote || !enviarALoteId} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-gray-400 text-sm font-medium">
+              {enviandoALote ? "Enviando..." : "Enviar a Lote"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* View Pago */}
       <Dialog open={!!viewingPago} onOpenChange={(open) => !open && setViewingPago(null)}>
@@ -887,8 +1185,6 @@ export default function PagosPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* ========== DIALOGS - RECLAMOS ========== */}
 
       {/* View Reclamo */}
       <Dialog open={!!viewingReclamo} onOpenChange={(open) => !open && setViewingReclamo(null)}>
