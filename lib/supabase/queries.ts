@@ -1067,3 +1067,128 @@ export async function createRetencion(retencion: Record<string, any>): Promise<s
   if (error) throw error
   return data.id
 }
+
+// ---------------------------------------------------------------------------
+// Recibos Cobranza (nuevos con correlativo)
+// ---------------------------------------------------------------------------
+
+export async function fetchRecibosCobranza(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("recibos_cobranza")
+    .select("*")
+    .order("numero", { ascending: false })
+    .limit(5000)
+  if (error) throw error
+  return data || []
+}
+
+export async function getNextReciboNumero(): Promise<number> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("recibos_cobranza")
+    .select("numero")
+    .order("numero", { ascending: false })
+    .limit(1)
+  if (error) throw error
+  return (data && data.length > 0) ? data[0].numero + 1 : 1
+}
+
+export async function createReciboCobranza(recibo: Record<string, any>): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("recibos_cobranza")
+    .insert(recibo)
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+export async function createChequesRecibidos(cheques: Record<string, any>[]): Promise<void> {
+  if (cheques.length === 0) return
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("cheques_recibidos").insert(cheques)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
+// Lotes de Pago
+// ---------------------------------------------------------------------------
+
+export async function fetchLotesPago(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("lotes_pago")
+    .select("*")
+    .order("fecha_lote", { ascending: false })
+    .limit(5000)
+  if (error) throw error
+  return data || []
+}
+
+export async function fetchLotePagoItems(loteId: string): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("lote_pago_items")
+    .select("*")
+    .eq("lote_id", loteId)
+    .order("proveedor_nombre")
+  if (error) throw error
+  return data || []
+}
+
+export async function createLotePago(lote: Record<string, any>): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("lotes_pago")
+    .insert(lote)
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+export async function updateLotePago(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("lotes_pago").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+export async function deleteLotePago(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("lotes_pago").delete().eq("id", id)
+  if (error) throw error
+}
+
+export async function addItemToLote(item: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("lote_pago_items").insert(item)
+  if (error) throw error
+}
+
+export async function updateLotePagoItem(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("lote_pago_items").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+export async function removeLotePagoItem(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("lote_pago_items").delete().eq("id", id)
+  if (error) throw error
+}
+
+export async function enviarFacturaALote(facturaProveedorId: string, loteId: string, item: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  // Add item to lote
+  const { error: itemError } = await supabase.from("lote_pago_items").insert({ ...item, lote_id: loteId, factura_proveedor_id: facturaProveedorId })
+  if (itemError) throw itemError
+  // Mark factura as linked to lote
+  const { error: fcError } = await supabase.from("facturas_proveedor").update({ lote_pago_id: loteId }).eq("id", facturaProveedorId)
+  if (fcError) throw fcError
+  // Update lote total
+  const { data: items } = await supabase.from("lote_pago_items").select("importe").eq("lote_id", loteId)
+  const total = (items || []).reduce((s: number, i: any) => s + (Number(i.importe) || 0), 0)
+  await supabase.from("lotes_pago").update({ total }).eq("id", loteId)
+}

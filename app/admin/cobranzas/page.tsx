@@ -9,13 +9,14 @@ import {
 } from "@/components/ui/table"
 import {
   fetchCobranzasPendientes, fetchClients, fetchCuentaCorrienteCliente,
-  fetchRetenciones, fetchRecibos, createCobro, createRetencion, createMovimientoCuentaCorriente,
-  deleteCobranzaPendiente,
+  fetchRetenciones, fetchRecibos, createRetencion, createMovimientoCuentaCorriente,
+  deleteCobranzaPendiente, fetchVendedores, getNextReciboNumero,
+  createReciboCobranza, createChequesRecibidos, fetchRecibosCobranza,
 } from "@/lib/supabase/queries"
 import { formatCurrency, normalizeSearch, formatDateStr } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
-import { Search, Download, Plus, Trash2, Eye, Printer, Mail } from "lucide-react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Search, Download, Plus, Trash2, Eye, Printer } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import * as XLSX from "xlsx"
 
@@ -62,24 +63,30 @@ const EMPRESAS = ["Todas", "Aquiles", "Conancap", "Masoil"]
 export default function CobranzasPage() {
   const [loading, setLoading] = useState(true)
   const [clients, setClients] = useState<any[]>([])
+  const [vendedores, setVendedores] = useState<any[]>([])
   const [cobranzas, setCobranzas] = useState<any[]>([])
   const [retenciones, setRetenciones] = useState<any[]>([])
   const [recibos, setRecibos] = useState<any[]>([])
+  const [recibosCobranza, setRecibosCobranza] = useState<any[]>([])
   const [empresaFilter, setEmpresaFilter] = useState("Todas")
 
   useEffect(() => {
     async function load() {
       try {
-        const [cl, cp, ret, rec] = await Promise.all([
+        const [cl, cp, ret, rec, vend, recCob] = await Promise.all([
           fetchClients(),
           fetchCobranzasPendientes(),
           fetchRetenciones(),
           fetchRecibos(),
+          fetchVendedores(),
+          fetchRecibosCobranza(),
         ])
         setClients(cl)
         setCobranzas(cp)
         setRetenciones(ret)
         setRecibos(rec)
+        setVendedores(vend)
+        setRecibosCobranza(recCob)
       } catch (e) {
         console.error(e)
       } finally {
@@ -130,11 +137,17 @@ export default function CobranzasPage() {
         </TabsContent>
 
         <TabsContent value="registrar-cobro">
-          <TabRegistrarCobro clients={clients} cobranzas={cobranzas} setCobranzas={setCobranzas} />
+          <TabRegistrarCobro
+            clients={clients}
+            vendedores={vendedores}
+            cobranzas={cobranzas}
+            setCobranzas={setCobranzas}
+            onReciboCreado={(rec) => setRecibosCobranza((prev) => [rec, ...prev])}
+          />
         </TabsContent>
 
         <TabsContent value="cobros-realizados">
-          <TabCobrosRealizados recibos={recibos} />
+          <TabCobrosRealizados recibos={recibos} recibosCobranza={recibosCobranza} />
         </TabsContent>
 
         <TabsContent value="retenciones">
@@ -187,13 +200,12 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
     setTodos(false)
 
     // Unified CC by CUIT: if client has numero_docum, find all clients with same CUIT
-    const cuit = client.numero_docum || client.cuit
+    const cuit = client.numeroDocum || client.cuit
     if (cuit) {
       const sameClients = clients.filter((c: any) =>
         (c.numeroDocum === cuit || c.cuit === cuit) && c.id !== client.id
       )
       if (sameClients.length > 0) {
-        // Load CC for all clients with same CUIT
         setLoadingMov(true)
         try {
           const allIds = [client.id, ...sameClients.map((c) => c.id)]
@@ -234,9 +246,7 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
     return rows
   }, [movimientos, desde, hasta])
 
-  const pag = usePagination(filtered, 50)
-
-  // Running saldo
+  // Running saldo + totals
   const withSaldo = useMemo(() => {
     const sorted = [...filtered].sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""))
     let saldo = 0
@@ -246,8 +256,11 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
     }).reverse()
   }, [filtered])
 
-  const pageRows = pag.getPage(page)
-  // map pageRows to withSaldo by index offset
+  const totalDebe = useMemo(() => filtered.reduce((s, m) => s + (m.debe || 0), 0), [filtered])
+  const totalHaber = useMemo(() => filtered.reduce((s, m) => s + (m.haber || 0), 0), [filtered])
+  const saldoTotal = totalDebe - totalHaber
+
+  const pag = usePagination(withSaldo, 50)
   const startIdx = (page - 1) * 50
   const displayRows = withSaldo.slice(startIdx, startIdx + 50)
 
@@ -256,7 +269,9 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
       withSaldo.map((m) => ({
         Fecha: formatDateStr(m.fecha),
         "Tipo Comprobante": m.tipo_comprobante || "",
-        "PV-Número": m.pv_numero || "",
+        "Número": m.punto_venta && m.numero_comprobante
+          ? `${String(m.punto_venta).padStart(4, "0")}-${String(m.numero_comprobante).padStart(8, "0")}`
+          : m.pv_numero || "",
         Debe: m.debe || 0,
         Haber: m.haber || 0,
         Saldo: m.saldo,
@@ -265,6 +280,29 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "Cuenta Corriente")
     XLSX.writeFile(wb, "cuenta_corriente.xlsx")
+  }
+
+  function handlePrint() {
+    const w = window.open("", "_blank")
+    if (!w) return
+    const clientName = selectedClient?.businessName || "Todos los clientes"
+    const rows = withSaldo.map((m) => `
+      <tr>
+        <td>${formatDateStr(m.fecha)}</td>
+        <td>${m.tipo_comprobante || "-"}</td>
+        <td>${m.punto_venta && m.numero_comprobante ? `${String(m.punto_venta).padStart(4, "0")}-${String(m.numero_comprobante).padStart(8, "0")}` : m.pv_numero || "-"}</td>
+        <td style="text-align:right">${m.debe ? formatCurrency(m.debe) : "-"}</td>
+        <td style="text-align:right">${m.haber ? formatCurrency(m.haber) : "-"}</td>
+        <td style="text-align:right;font-weight:bold">${formatCurrency(m.saldo)}</td>
+      </tr>`).join("")
+    w.document.write(`<html><head><title>Cuenta Corriente - ${clientName}</title>
+      <style>body{font-family:sans-serif;max-width:900px;margin:30px auto}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px 8px;font-size:12px}th{background:#f5f5f5;text-align:left}.totals td{font-weight:bold;background:#f0f0f0}</style></head><body>
+      <h2>Cuenta Corriente</h2><p><strong>Cliente:</strong> ${clientName}</p>
+      ${desde || hasta ? `<p>Período: ${desde || "..."} a ${hasta || "..."}</p>` : ""}
+      <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Número</th><th style="text-align:right">Debe</th><th style="text-align:right">Haber</th><th style="text-align:right">Saldo</th></tr></thead>
+      <tbody>${rows}
+      <tr class="totals"><td colspan="3">TOTALES</td><td style="text-align:right">${formatCurrency(totalDebe)}</td><td style="text-align:right">${formatCurrency(totalHaber)}</td><td style="text-align:right">${formatCurrency(saldoTotal)}</td></tr>
+      </tbody></table><script>window.print()<\/script></body></html>`)
   }
 
   return (
@@ -292,7 +330,7 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
                   onClick={() => handleSelectClient(c)}
                   className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
                 >
-                  {c.businessName}
+                  {c.businessName} {c.cuit || c.numeroDocum ? `(${c.cuit || c.numeroDocum})` : ""}
                 </button>
               ))}
             </div>
@@ -310,6 +348,9 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
           <input type="checkbox" checked={todos} onChange={(e) => handleTodosChange(e.target.checked)} />
           Todos los clientes
         </label>
+        <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-2 bg-gray-600 text-white rounded-md text-sm hover:bg-gray-700" disabled={withSaldo.length === 0}>
+          <Printer className="h-4 w-4" /> Imprimir
+        </button>
         <button onClick={exportXLSX} className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700" disabled={withSaldo.length === 0}>
           <Download className="h-4 w-4" /> XLSX
         </button>
@@ -327,7 +368,7 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
                 <TableRow>
                   <TableHead>Fecha</TableHead>
                   <TableHead>Tipo Comprobante</TableHead>
-                  <TableHead>PV-Número</TableHead>
+                  <TableHead>Número</TableHead>
                   <TableHead className="text-right">Debe</TableHead>
                   <TableHead className="text-right">Haber</TableHead>
                   <TableHead className="text-right">Saldo</TableHead>
@@ -338,12 +379,22 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
                   <TableRow key={m.id || i}>
                     <TableCell>{formatDateStr(m.fecha)}</TableCell>
                     <TableCell>{m.tipo_comprobante || "-"}</TableCell>
-                    <TableCell>{m.pv_numero || "-"}</TableCell>
+                    <TableCell>
+                      {m.punto_venta && m.numero_comprobante
+                        ? `${String(m.punto_venta).padStart(4, "0")}-${String(m.numero_comprobante).padStart(8, "0")}`
+                        : m.pv_numero || "-"}
+                    </TableCell>
                     <TableCell className="text-right">{m.debe ? formatCurrency(m.debe) : "-"}</TableCell>
                     <TableCell className="text-right">{m.haber ? formatCurrency(m.haber) : "-"}</TableCell>
                     <TableCell className="text-right font-medium">{formatCurrency(m.saldo)}</TableCell>
                   </TableRow>
                 ))}
+                <TableRow className="bg-gray-50 font-bold">
+                  <TableCell colSpan={3}>TOTALES</TableCell>
+                  <TableCell className="text-right">{formatCurrency(totalDebe)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(totalHaber)}</TableCell>
+                  <TableCell className="text-right">{formatCurrency(saldoTotal)}</TableCell>
+                </TableRow>
               </TableBody>
             </Table>
           </div>
@@ -361,9 +412,9 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
 // ─── Tab 2: Registrar Cobro ─────────────────────────────────────────────────
 
 function TabRegistrarCobro({
-  clients, cobranzas, setCobranzas,
+  clients, vendedores, cobranzas, setCobranzas, onReciboCreado,
 }: {
-  clients: any[]; cobranzas: any[]; setCobranzas: (c: any[]) => void
+  clients: any[]; vendedores: any[]; cobranzas: any[]; setCobranzas: (c: any[]) => void; onReciboCreado: (r: any) => void
 }) {
   const [search, setSearch] = useState("")
   const [showDropdown, setShowDropdown] = useState(false)
@@ -372,6 +423,15 @@ function TabRegistrarCobro({
   const [medios, setMedios] = useState<MedioPago[]>([emptyMedio()])
   const [rets, setRets] = useState<RetencionForm[]>([])
   const [confirmando, setConfirmando] = useState(false)
+  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10))
+  const [nextRecibo, setNextRecibo] = useState<number>(0)
+  // Unified CUIT pendientes
+  const [pendientesUnificados, setPendientesUnificados] = useState<any[]>([])
+
+  // Load next recibo number on mount
+  useEffect(() => {
+    getNextReciboNumero().then(setNextRecibo).catch(() => setNextRecibo(1))
+  }, [])
 
   const filteredClients = useMemo(() => {
     if (!search.trim()) return []
@@ -379,26 +439,58 @@ function TabRegistrarCobro({
     return clients.filter((c) => normalizeSearch(c.businessName || "").includes(norm)).slice(0, 10)
   }, [search, clients])
 
-  const pendientesCliente = useMemo(() => {
-    if (!selectedClient) return []
-    return cobranzas.filter((c) => c.client_id === selectedClient.id)
-  }, [cobranzas, selectedClient])
+  // Vendedor auto-resolved from client
+  const vendedorNombre = useMemo(() => {
+    if (!selectedClient?.vendedorId) return ""
+    const v = vendedores.find((v) => v.id === selectedClient.vendedorId)
+    return v?.name || ""
+  }, [selectedClient, vendedores])
 
   const totalSeleccionado = useMemo(() => {
-    return pendientesCliente
+    return pendientesUnificados
       .filter((c) => selectedIds.has(c.id))
       .reduce((sum, c) => sum + (c.saldo_pendiente || c.total || 0), 0)
-  }, [pendientesCliente, selectedIds])
+  }, [pendientesUnificados, selectedIds])
 
   const totalMedios = useMemo(() => medios.reduce((s, m) => s + (m.importe || 0), 0), [medios])
   const totalRets = useMemo(() => rets.reduce((s, r) => s + (r.importe || 0), 0), [rets])
   const totalValores = totalMedios + totalRets
+
+  // Total Debe/Haber for CC display
+  const totalDebe = useMemo(() => {
+    return pendientesUnificados.reduce((s, c) => {
+      const tipo = (c.comprobante || c.tipo_comprobante || "").toUpperCase()
+      if (tipo.startsWith("NC")) return s
+      return s + (c.saldo_pendiente || c.total || 0)
+    }, 0)
+  }, [pendientesUnificados])
+
+  const totalHaber = useMemo(() => {
+    return pendientesUnificados.reduce((s, c) => {
+      const tipo = (c.comprobante || c.tipo_comprobante || "").toUpperCase()
+      if (tipo.startsWith("NC")) return s + (c.saldo_pendiente || c.total || 0)
+      return s
+    }, 0)
+  }, [pendientesUnificados])
 
   function handleSelectClient(client: any) {
     setSelectedClient(client)
     setSearch(client.businessName)
     setShowDropdown(false)
     setSelectedIds(new Set())
+
+    // Unified CC by CUIT
+    const cuit = client.numeroDocum || client.cuit
+    if (cuit) {
+      const sameClients = clients.filter((c: any) =>
+        (c.numeroDocum === cuit || c.cuit === cuit)
+      )
+      const allIds = sameClients.map((c) => c.id)
+      const pendientes = cobranzas.filter((c) => allIds.includes(c.client_id))
+      setPendientesUnificados(pendientes)
+    } else {
+      setPendientesUnificados(cobranzas.filter((c) => c.client_id === client.id))
+    }
   }
 
   function toggleFactura(id: string) {
@@ -426,21 +518,58 @@ function TabRegistrarCobro({
     setRets((prev) => prev.filter((r) => r.id !== id))
   }
 
+  function handleCancelar() {
+    setSelectedClient(null)
+    setSearch("")
+    setSelectedIds(new Set())
+    setMedios([emptyMedio()])
+    setRets([])
+    setPendientesUnificados([])
+    setFecha(new Date().toISOString().slice(0, 10))
+  }
+
   async function handleConfirmar() {
     if (!selectedClient || totalValores < totalSeleccionado) return
     setConfirmando(true)
     try {
-      // Generate recibo number
-      const reciboNum = `REC-${String(Date.now()).slice(-6)}`
+      const reciboNum = nextRecibo
+      const saldoFavor = totalValores - totalSeleccionado
+      const cuit = selectedClient.numeroDocum || selectedClient.cuit || ""
 
-      // Create cobro
-      await createCobro({
-        fecha: new Date().toISOString().slice(0, 10),
-        monto: totalValores,
-        medio_pago: medios.map((m) => m.tipo).join(", "),
-        referencia: reciboNum,
-        notas: `Cobro a ${selectedClient.businessName}`,
+      // Create recibo cobranza
+      const reciboId = await createReciboCobranza({
+        numero: reciboNum,
+        fecha,
+        client_id: selectedClient.id,
+        cuit_cliente: cuit,
+        razon_social_cliente: selectedClient.businessName,
+        vendedor_id: selectedClient.vendedorId || null,
+        vendedor_nombre: vendedorNombre || null,
+        total_facturas: totalSeleccionado,
+        total_retenciones: totalRets,
+        total_valores: totalValores,
+        saldo_a_favor: saldoFavor > 0 ? saldoFavor : 0,
+        medios_pago: medios.filter((m) => m.importe > 0).map((m) => ({
+          tipo: m.tipo, importe: m.importe, referencia: m.referencia,
+          numero: m.numero, banco: m.banco,
+          fecha_emision: m.fecha_emision, fecha_deposito: m.fecha_deposito,
+        })),
+        facturas_ids: Array.from(selectedIds),
       })
+
+      // Create cheques/echeqs records
+      const cheques = medios
+        .filter((m) => (m.tipo === "Cheque" || m.tipo === "Echeq") && m.importe > 0)
+        .map((m) => ({
+          recibo_id: reciboId,
+          tipo: m.tipo.toLowerCase(),
+          numero: m.numero,
+          banco: m.banco,
+          importe: m.importe,
+          fecha_emision: m.fecha_emision || null,
+          fecha_deposito: m.fecha_deposito || null,
+        }))
+      await createChequesRecibidos(cheques)
 
       // Create retenciones
       for (const r of rets) {
@@ -448,36 +577,67 @@ function TabRegistrarCobro({
           await createRetencion({
             client_id: selectedClient.id,
             tipo: r.tipo,
-            nro_comprobante: r.nro_comprobante,
-            fecha: r.fecha || new Date().toISOString().slice(0, 10),
+            numero_comprobante: r.nro_comprobante,
+            fecha: r.fecha || fecha,
             importe: r.importe,
+            recibo_id: reciboId,
           })
         }
       }
 
-      // Create movimiento en cuenta corriente
+      // Create movimiento en cuenta corriente - RECIBO (HABER)
+      const reciboLabel = `REC-${String(reciboNum).padStart(4, "0")}`
       await createMovimientoCuentaCorriente({
         client_id: selectedClient.id,
-        fecha: new Date().toISOString().slice(0, 10),
+        fecha,
         tipo_comprobante: "RECIBO",
-        pv_numero: reciboNum,
-        haber: totalValores,
+        punto_venta: 0,
+        numero_comprobante: reciboLabel,
+        haber: totalMedios,
         debe: 0,
+        referencia_id: reciboId,
+        observaciones: `Cobro registrado - ${medios.map((m) => m.tipo).join(", ")}`,
       })
 
-      // Update local cobranzas state - remove fully paid, update partial
+      // If retenciones, create separate CC entry
+      if (totalRets > 0) {
+        await createMovimientoCuentaCorriente({
+          client_id: selectedClient.id,
+          fecha,
+          tipo_comprobante: "RETENCION",
+          punto_venta: 0,
+          numero_comprobante: reciboLabel,
+          haber: totalRets,
+          debe: 0,
+          referencia_id: reciboId,
+          observaciones: `Retenciones del recibo ${reciboLabel}`,
+        })
+      }
+
+      // Update local cobranzas state
       const updatedCobranzas = cobranzas.map((c) => {
         if (!selectedIds.has(c.id)) return c
         return { ...c, saldo_pendiente: 0 }
       })
       setCobranzas(updatedCobranzas)
 
+      // Notify parent
+      onReciboCreado({
+        id: reciboId,
+        numero: reciboNum,
+        fecha,
+        razon_social_cliente: selectedClient.businessName,
+        total_valores: totalValores,
+        total_facturas: totalSeleccionado,
+        total_retenciones: totalRets,
+        vendedor_nombre: vendedorNombre,
+      })
+
+      // Update next recibo number
+      setNextRecibo(reciboNum + 1)
+
       // Reset form
-      setSelectedClient(null)
-      setSearch("")
-      setSelectedIds(new Set())
-      setMedios([emptyMedio()])
-      setRets([])
+      handleCancelar()
       alert("Cobro registrado exitosamente")
     } catch (e: any) {
       console.error(e)
@@ -490,117 +650,236 @@ function TabRegistrarCobro({
   const diff = totalValores - totalSeleccionado
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* LEFT - Cuenta Corriente del Cliente */}
-      <Card className="p-4 space-y-4">
-        <h3 className="font-semibold text-lg">Cuenta Corriente del Cliente</h3>
-
-        <div className="relative">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => { setSearch(e.target.value); setShowDropdown(true) }}
-            onFocus={() => setShowDropdown(true)}
-            placeholder="Buscar cliente por razón social..."
-            className="w-full pl-9 pr-3 py-2 border rounded-md text-sm"
-          />
-          {showDropdown && filteredClients.length > 0 && (
-            <div className="absolute z-50 mt-1 w-full bg-white border rounded-md shadow-lg max-h-48 overflow-auto">
-              {filteredClients.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => handleSelectClient(c)}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
-                >
-                  {c.businessName}
-                </button>
-              ))}
+    <div className="space-y-4">
+      {/* DATOS GENERALES */}
+      <Card className="p-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="text-sm font-medium mb-1 block">Fecha</label>
+            <input
+              type="date"
+              value={fecha}
+              onChange={(e) => setFecha(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1 block">N° de Recibo</label>
+            <div className="w-full border rounded-md px-3 py-2 text-sm bg-gray-50 font-mono font-bold">
+              REC-{String(nextRecibo).padStart(4, "0")}
             </div>
-          )}
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1 block">Vendedor</label>
+            <div className="w-full border rounded-md px-3 py-2 text-sm bg-gray-50">
+              {vendedorNombre || (selectedClient ? "Sin vendedor asignado" : "Seleccione un cliente")}
+            </div>
+          </div>
         </div>
-
-        {selectedClient && pendientesCliente.length > 0 ? (
-          <>
-            <div className="border rounded-md overflow-auto max-h-[400px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-10"></TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>Comprobante</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-right">Saldo Pend.</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {pendientesCliente.map((c) => (
-                    <TableRow key={c.id} className={selectedIds.has(c.id) ? "bg-blue-50" : ""}>
-                      <TableCell>
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(c.id)}
-                          onChange={() => toggleFactura(c.id)}
-                        />
-                      </TableCell>
-                      <TableCell>{formatDateStr(c.fecha || c.created_at)}</TableCell>
-                      <TableCell>{c.comprobante || c.tipo_comprobante || "-"}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(c.total || 0)}</TableCell>
-                      <TableCell className="text-right font-medium">{formatCurrency(c.saldo_pendiente || c.total || 0)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            <div className="text-right font-semibold text-sm">
-              Total seleccionado: {formatCurrency(totalSeleccionado)}
-            </div>
-          </>
-        ) : selectedClient ? (
-          <p className="text-sm text-gray-500 py-4">Sin facturas pendientes para este cliente</p>
-        ) : (
-          <p className="text-sm text-gray-500 py-4">Seleccione un cliente para ver sus facturas pendientes</p>
-        )}
       </Card>
 
-      {/* RIGHT - Valores de Pago */}
-      <Card className="p-4 space-y-4">
-        <h3 className="font-semibold text-lg">Valores de Pago</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* LEFT - Cuenta Corriente del Cliente */}
+        <Card className="p-4 space-y-4">
+          <h3 className="font-semibold text-lg">Cuenta Corriente del Cliente</h3>
 
-        {/* Medios de pago */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium">Medios de pago</label>
-            <button
-              onClick={() => setMedios((prev) => [...prev, emptyMedio()])}
-              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
-            >
-              <Plus className="h-3 w-3" /> Agregar medio de pago
-            </button>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => { setSearch(e.target.value); setShowDropdown(true) }}
+              onFocus={() => setShowDropdown(true)}
+              placeholder="Buscar cliente por razón social..."
+              className="w-full pl-9 pr-3 py-2 border rounded-md text-sm"
+            />
+            {showDropdown && filteredClients.length > 0 && (
+              <div className="absolute z-50 mt-1 w-full bg-white border rounded-md shadow-lg max-h-48 overflow-auto">
+                {filteredClients.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => handleSelectClient(c)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                  >
+                    {c.businessName} {c.cuit || c.numeroDocum ? `(${c.cuit || c.numeroDocum})` : ""}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
-          {medios.map((m) => (
-            <div key={m.id} className="border rounded-md p-3 space-y-2 bg-gray-50">
-              <div className="flex items-center gap-2">
-                <select
-                  value={m.tipo}
-                  onChange={(e) => updateMedio(m.id, "tipo", e.target.value)}
-                  className="border rounded-md px-2 py-1.5 text-sm flex-1"
-                >
-                  <option value="Efectivo">Efectivo</option>
-                  <option value="Transferencia">Transferencia</option>
-                  <option value="Cheque">Cheque</option>
-                  <option value="Echeq">Echeq</option>
-                  <option value="Compensación">Compensación</option>
-                </select>
-                {medios.length > 1 && (
-                  <button onClick={() => removeMedio(m.id)} className="text-red-500 hover:text-red-700">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                )}
+          {selectedClient && pendientesUnificados.length > 0 ? (
+            <>
+              <div className="border rounded-md overflow-auto max-h-[400px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10"></TableHead>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Número</TableHead>
+                      <TableHead className="text-right">Debe</TableHead>
+                      <TableHead className="text-right">Haber</TableHead>
+                      <TableHead className="text-right">Saldo</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pendientesUnificados.map((c) => {
+                      const tipo = (c.comprobante || c.tipo_comprobante || "").toUpperCase()
+                      const isNC = tipo.startsWith("NC")
+                      const monto = c.saldo_pendiente || c.total || 0
+                      return (
+                        <TableRow key={c.id} className={selectedIds.has(c.id) ? "bg-blue-50" : ""}>
+                          <TableCell>
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(c.id)}
+                              onChange={() => toggleFactura(c.id)}
+                            />
+                          </TableCell>
+                          <TableCell>{formatDateStr(c.fecha_comprobante || c.fecha || c.created_at)}</TableCell>
+                          <TableCell>
+                            <Badge variant={isNC ? "secondary" : "outline"} className={isNC ? "bg-green-100 text-green-700" : ""}>
+                              {c.comprobante || c.tipo_comprobante || "-"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs">{c.numero_comprobante || "-"}</TableCell>
+                          <TableCell className="text-right">{!isNC ? formatCurrency(monto) : "-"}</TableCell>
+                          <TableCell className="text-right">{isNC ? formatCurrency(monto) : "-"}</TableCell>
+                          <TableCell className="text-right font-medium">{formatCurrency(isNC ? -monto : monto)}</TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              {/* Retenciones - en panel izquierdo */}
+              <div className="space-y-3 border-t pt-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Retenciones</label>
+                  <button
+                    onClick={() => setRets((prev) => [...prev, emptyRetencion()])}
+                    className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+                  >
+                    <Plus className="h-3 w-3" /> Agregar retención
+                  </button>
+                </div>
+
+                {rets.map((r) => (
+                  <div key={r.id} className="border rounded-md p-3 space-y-2 bg-gray-50">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={r.tipo}
+                        onChange={(e) => updateRet(r.id, "tipo", e.target.value)}
+                        className="border rounded-md px-2 py-1.5 text-sm flex-1"
+                      >
+                        {TIPOS_RETENCION.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                      <button onClick={() => removeRet(r.id)} className="text-red-500 hover:text-red-700">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-xs text-gray-500">Nro Comprobante</label>
+                        <input
+                          type="text"
+                          value={r.nro_comprobante}
+                          onChange={(e) => updateRet(r.id, "nro_comprobante", e.target.value)}
+                          className="w-full border rounded-md px-2 py-1.5 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">Fecha</label>
+                        <input
+                          type="date"
+                          value={r.fecha}
+                          onChange={(e) => updateRet(r.id, "fecha", e.target.value)}
+                          className="w-full border rounded-md px-2 py-1.5 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500">Importe</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={r.importe || ""}
+                          onChange={(e) => updateRet(r.id, "importe", parseFloat(e.target.value) || 0)}
+                          className="w-full border rounded-md px-2 py-1.5 text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Totals panel izquierdo */}
+              <div className="border-t pt-3 space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span>Total Debe:</span>
+                  <span className="font-medium">{formatCurrency(totalDebe)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Total Haber (NC + Retenciones):</span>
+                  <span className="font-medium">{formatCurrency(totalHaber + totalRets)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-bold border-t pt-1">
+                  <span>Saldo deudor:</span>
+                  <span>{formatCurrency(totalDebe - totalHaber - totalRets)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-bold text-blue-700">
+                  <span>Total seleccionado:</span>
+                  <span>{formatCurrency(totalSeleccionado)}</span>
+                </div>
+              </div>
+            </>
+          ) : selectedClient ? (
+            <p className="text-sm text-gray-500 py-4">Sin facturas pendientes para este cliente</p>
+          ) : (
+            <p className="text-sm text-gray-500 py-4">Seleccione un cliente para ver sus facturas pendientes</p>
+          )}
+        </Card>
+
+        {/* RIGHT - Valores de Pago */}
+        <Card className="p-4 space-y-4">
+          <h3 className="font-semibold text-lg">Valores de Pago</h3>
+
+          {/* Medios de pago */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Medios de pago</label>
+              <button
+                onClick={() => setMedios((prev) => [...prev, emptyMedio()])}
+                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
+              >
+                <Plus className="h-3 w-3" /> Agregar medio de pago
+              </button>
+            </div>
+
+            {medios.map((m) => (
+              <div key={m.id} className="border rounded-md p-3 space-y-2 bg-gray-50">
+                <div className="flex items-center gap-2">
+                  <select
+                    value={m.tipo}
+                    onChange={(e) => updateMedio(m.id, "tipo", e.target.value)}
+                    className="border rounded-md px-2 py-1.5 text-sm flex-1"
+                  >
+                    <option value="Efectivo">Efectivo</option>
+                    <option value="Transferencia">Transferencia</option>
+                    <option value="Cheque">Cheque</option>
+                    <option value="Echeq">Echeq</option>
+                    <option value="Compensación">Compensación</option>
+                  </select>
+                  {medios.length > 1 && (
+                    <button onClick={() => removeMedio(m.id)} className="text-red-500 hover:text-red-700">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
                 <div>
                   <label className="text-xs text-gray-500">Importe</label>
                   <input
@@ -624,153 +903,99 @@ function TabRegistrarCobro({
                     />
                   </div>
                 )}
+
+                {(m.tipo === "Cheque" || m.tipo === "Echeq") && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-gray-500">Número</label>
+                      <input
+                        type="text"
+                        value={m.numero}
+                        onChange={(e) => updateMedio(m.id, "numero", e.target.value)}
+                        className="w-full border rounded-md px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Banco</label>
+                      <input
+                        type="text"
+                        value={m.banco}
+                        onChange={(e) => updateMedio(m.id, "banco", e.target.value)}
+                        className="w-full border rounded-md px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Fecha emisión</label>
+                      <input
+                        type="date"
+                        value={m.fecha_emision}
+                        onChange={(e) => updateMedio(m.id, "fecha_emision", e.target.value)}
+                        className="w-full border rounded-md px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-500">Fecha depósito</label>
+                      <input
+                        type="date"
+                        value={m.fecha_deposito}
+                        onChange={(e) => updateMedio(m.id, "fecha_deposito", e.target.value)}
+                        className="w-full border rounded-md px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
-
-              {(m.tipo === "Cheque" || m.tipo === "Echeq") && (
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs text-gray-500">Número</label>
-                    <input
-                      type="text"
-                      value={m.numero}
-                      onChange={(e) => updateMedio(m.id, "numero", e.target.value)}
-                      className="w-full border rounded-md px-2 py-1.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500">Banco</label>
-                    <input
-                      type="text"
-                      value={m.banco}
-                      onChange={(e) => updateMedio(m.id, "banco", e.target.value)}
-                      className="w-full border rounded-md px-2 py-1.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500">Fecha emisión</label>
-                    <input
-                      type="date"
-                      value={m.fecha_emision}
-                      onChange={(e) => updateMedio(m.id, "fecha_emision", e.target.value)}
-                      className="w-full border rounded-md px-2 py-1.5 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500">Fecha depósito</label>
-                    <input
-                      type="date"
-                      value={m.fecha_deposito}
-                      onChange={(e) => updateMedio(m.id, "fecha_deposito", e.target.value)}
-                      className="w-full border rounded-md px-2 py-1.5 text-sm"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {/* Retenciones */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium">Retenciones</label>
-            <button
-              onClick={() => setRets((prev) => [...prev, emptyRetencion()])}
-              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800"
-            >
-              <Plus className="h-3 w-3" /> Agregar retención
-            </button>
+            ))}
           </div>
 
-          {rets.map((r) => (
-            <div key={r.id} className="border rounded-md p-3 space-y-2 bg-gray-50">
-              <div className="flex items-center gap-2">
-                <select
-                  value={r.tipo}
-                  onChange={(e) => updateRet(r.id, "tipo", e.target.value)}
-                  className="border rounded-md px-2 py-1.5 text-sm flex-1"
-                >
-                  {TIPOS_RETENCION.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-                <button onClick={() => removeRet(r.id)} className="text-red-500 hover:text-red-700">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="text-xs text-gray-500">Nro Comprobante</label>
-                  <input
-                    type="text"
-                    value={r.nro_comprobante}
-                    onChange={(e) => updateRet(r.id, "nro_comprobante", e.target.value)}
-                    className="w-full border rounded-md px-2 py-1.5 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">Fecha</label>
-                  <input
-                    type="date"
-                    value={r.fecha}
-                    onChange={(e) => updateRet(r.id, "fecha", e.target.value)}
-                    className="w-full border rounded-md px-2 py-1.5 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500">Importe</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={r.importe || ""}
-                    onChange={(e) => updateRet(r.id, "importe", parseFloat(e.target.value) || 0)}
-                    className="w-full border rounded-md px-2 py-1.5 text-sm"
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Totals */}
-        <div className="border-t pt-3 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>Total medios de pago:</span>
-            <span className="font-medium">{formatCurrency(totalMedios)}</span>
-          </div>
-          {totalRets > 0 && (
+          {/* Totals */}
+          <div className="border-t pt-3 space-y-2">
             <div className="flex justify-between text-sm">
-              <span>Total retenciones:</span>
-              <span className="font-medium">{formatCurrency(totalRets)}</span>
+              <span>Total medios de pago:</span>
+              <span className="font-medium">{formatCurrency(totalMedios)}</span>
+            </div>
+            {totalRets > 0 && (
+              <div className="flex justify-between text-sm">
+                <span>Total retenciones:</span>
+                <span className="font-medium">{formatCurrency(totalRets)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-sm font-bold">
+              <span>Total valores:</span>
+              <span>{formatCurrency(totalValores)}</span>
+            </div>
+          </div>
+
+          {/* Validation messages */}
+          {selectedIds.size > 0 && totalValores > 0 && diff > 0 && (
+            <div className="bg-green-50 border border-green-200 rounded-md px-3 py-2 text-sm text-green-700">
+              Saldo a favor: {formatCurrency(diff)} — se registrará como pago a cuenta
             </div>
           )}
-          <div className="flex justify-between text-sm font-bold">
-            <span>Total valores:</span>
-            <span>{formatCurrency(totalValores)}</span>
-          </div>
-        </div>
+          {selectedIds.size > 0 && totalValores > 0 && diff < 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-md px-3 py-2 text-sm text-red-600">
+              El total de valores no cubre las facturas seleccionadas
+            </div>
+          )}
 
-        {/* Validation messages */}
-        {selectedIds.size > 0 && totalValores > 0 && diff > 0 && (
-          <div className="bg-green-50 border border-green-200 rounded-md px-3 py-2 text-sm text-green-700">
-            Saldo a favor: {formatCurrency(diff)} — se registrará como pago a cuenta
+          {/* Actions */}
+          <div className="flex gap-3">
+            <button
+              onClick={handleCancelar}
+              className="flex-1 py-2.5 border rounded-md text-sm font-medium hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleConfirmar}
+              disabled={confirmando || !selectedClient || selectedIds.size === 0 || totalValores < totalSeleccionado}
+              className="flex-1 py-2.5 bg-primary text-white rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {confirmando ? "Registrando..." : "Confirmar Cobro"}
+            </button>
           </div>
-        )}
-        {selectedIds.size > 0 && totalValores > 0 && diff < 0 && (
-          <div className="bg-red-50 border border-red-200 rounded-md px-3 py-2 text-sm text-red-600">
-            El total de valores no cubre las facturas seleccionadas
-          </div>
-        )}
-
-        {/* Confirm */}
-        <button
-          onClick={handleConfirmar}
-          disabled={confirmando || !selectedClient || selectedIds.size === 0 || totalValores < totalSeleccionado}
-          className="w-full py-2.5 bg-primary text-white rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {confirmando ? "Registrando..." : "Confirmar Cobro"}
-        </button>
-      </Card>
+        </Card>
+      </div>
     </div>
   )
 }
@@ -810,7 +1035,7 @@ function TabRetenciones({ retenciones, clients }: { retenciones: any[]; clients:
         Fecha: formatDateStr(r.fecha),
         Cliente: clientMap[r.client_id] || "-",
         Tipo: r.tipo || "",
-        "Nro Comprobante": r.nro_comprobante || "",
+        "Nro Comprobante": r.nro_comprobante || r.numero_comprobante || "",
         Importe: r.importe || 0,
       }))
     )
@@ -879,7 +1104,7 @@ function TabRetenciones({ retenciones, clients }: { retenciones: any[]; clients:
                   <TableCell>{formatDateStr(r.fecha)}</TableCell>
                   <TableCell>{clientMap[r.client_id] || "-"}</TableCell>
                   <TableCell><Badge variant="outline">{r.tipo}</Badge></TableCell>
-                  <TableCell>{r.nro_comprobante || "-"}</TableCell>
+                  <TableCell>{r.nro_comprobante || r.numero_comprobante || "-"}</TableCell>
                   <TableCell className="text-right font-medium">{formatCurrency(r.importe || 0)}</TableCell>
                 </TableRow>
               ))
@@ -1011,14 +1236,38 @@ function TabInforme({ cobranzas, clients }: { cobranzas: any[]; clients: any[] }
 
 // ─── Tab 5: Cobros Realizados ─────────────────────────────────────────────
 
-function TabCobrosRealizados({ recibos }: { recibos: any[] }) {
+function TabCobrosRealizados({ recibos, recibosCobranza }: { recibos: any[]; recibosCobranza: any[] }) {
   const [search, setSearch] = useState("")
   const [searchFecha, setSearchFecha] = useState("")
   const [page, setPage] = useState(1)
   const [viewing, setViewing] = useState<any | null>(null)
 
+  // Merge old recibos (GestionPro) with new recibos_cobranza
+  const allRecibos = useMemo(() => {
+    const fromCobranza = recibosCobranza.map((r) => ({
+      id: r.id,
+      fecha: r.fecha,
+      nro_comprobante: `REC-${String(r.numero).padStart(4, "0")}`,
+      razon_social: r.razon_social_cliente,
+      importe: r.total_valores,
+      vendedor: r.vendedor_nombre,
+      tipo: "nuevo",
+      detalle: r,
+    }))
+    const fromGP = recibos.map((r) => ({
+      ...r,
+      tipo: "gp",
+      detalle: r,
+    }))
+    return [...fromCobranza, ...fromGP].sort((a, b) => {
+      const fa = a.fecha || ""
+      const fb = b.fecha || ""
+      return fb.localeCompare(fa)
+    })
+  }, [recibos, recibosCobranza])
+
   const filtered = useMemo(() => {
-    let rows = recibos
+    let rows = allRecibos
     if (search.trim()) {
       const norm = normalizeSearch(search)
       rows = rows.filter((r) =>
@@ -1030,7 +1279,7 @@ function TabCobrosRealizados({ recibos }: { recibos: any[] }) {
       rows = rows.filter((r) => (r.fecha || "").startsWith(searchFecha))
     }
     return rows
-  }, [recibos, search, searchFecha])
+  }, [allRecibos, search, searchFecha])
 
   const pag = usePagination(filtered, 50)
 
@@ -1091,15 +1340,22 @@ function TabCobrosRealizados({ recibos }: { recibos: any[] }) {
                         onClick={() => {
                           const w = window.open("", "_blank")
                           if (w) {
-                            w.document.write(`<html><head><title>Recibo ${r.nro_comprobante}</title></head><body style="font-family:sans-serif;max-width:600px;margin:40px auto;">
+                            const det = r.detalle || {}
+                            const mediosHtml = r.tipo === "nuevo" && det.medios_pago
+                              ? (Array.isArray(det.medios_pago) ? det.medios_pago : []).map((mp: any) =>
+                                `<tr><td>${mp.tipo}</td><td style="text-align:right">$${Number(mp.importe || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}</td></tr>`
+                              ).join("")
+                              : ""
+                            w.document.write(`<html><head><title>Recibo ${r.nro_comprobante}</title>
+                              <style>body{font-family:sans-serif;max-width:600px;margin:40px auto}table{width:100%;border-collapse:collapse;margin:10px 0}td{padding:4px 8px;border-bottom:1px solid #eee}</style></head><body>
                               <h2>Recibo de Cobro</h2>
                               <p><strong>Nro:</strong> ${r.nro_comprobante || "-"}</p>
                               <p><strong>Fecha:</strong> ${r.fecha ? new Date(r.fecha).toLocaleDateString("es-AR") : "-"}</p>
                               <p><strong>Cliente:</strong> ${r.razon_social || "-"}</p>
-                              <p><strong>Importe:</strong> $${Number(r.importe || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
                               <p><strong>Vendedor:</strong> ${r.vendedor || "-"}</p>
-                              <script>window.print()<\/script>
-                            </body></html>`)
+                              ${mediosHtml ? `<h3>Medios de Pago</h3><table>${mediosHtml}</table>` : ""}
+                              <p style="font-size:18px;margin-top:20px"><strong>Total:</strong> $${Number(r.importe || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                              <script>window.print()<\/script></body></html>`)
                           }
                         }}
                         className="p-1.5 rounded hover:bg-gray-100"
@@ -1129,9 +1385,22 @@ function TabCobrosRealizados({ recibos }: { recibos: any[] }) {
                 <div><span className="text-muted-foreground">Nro Recibo:</span> <span className="font-medium">{viewing.nro_comprobante || "-"}</span></div>
                 <div><span className="text-muted-foreground">Fecha:</span> <span className="font-medium">{viewing.fecha ? new Date(viewing.fecha).toLocaleDateString("es-AR") : "-"}</span></div>
                 <div><span className="text-muted-foreground">Cliente:</span> <span className="font-medium">{viewing.razon_social || "-"}</span></div>
-                <div><span className="text-muted-foreground">Cod Cliente:</span> <span className="font-medium">{viewing.cod_cliente || "-"}</span></div>
                 <div><span className="text-muted-foreground">Vendedor:</span> <span className="font-medium">{viewing.vendedor || "-"}</span></div>
-                <div><span className="text-muted-foreground">Sucursal:</span> <span className="font-medium">{viewing.sucursal || "-"}</span></div>
+                {viewing.tipo === "nuevo" && viewing.detalle && (
+                  <>
+                    <div><span className="text-muted-foreground">Total Facturas:</span> <span className="font-medium">{formatCurrency(viewing.detalle.total_facturas || 0)}</span></div>
+                    <div><span className="text-muted-foreground">Total Retenciones:</span> <span className="font-medium">{formatCurrency(viewing.detalle.total_retenciones || 0)}</span></div>
+                    {viewing.detalle.saldo_a_favor > 0 && (
+                      <div className="col-span-2"><span className="text-muted-foreground">Saldo a favor:</span> <span className="font-medium text-green-600">{formatCurrency(viewing.detalle.saldo_a_favor)}</span></div>
+                    )}
+                  </>
+                )}
+                {viewing.tipo === "gp" && (
+                  <>
+                    <div><span className="text-muted-foreground">Cod Cliente:</span> <span className="font-medium">{viewing.detalle?.cod_cliente || "-"}</span></div>
+                    <div><span className="text-muted-foreground">Sucursal:</span> <span className="font-medium">{viewing.detalle?.sucursal || "-"}</span></div>
+                  </>
+                )}
                 <div className="col-span-2 border-t pt-2">
                   <span className="text-muted-foreground">Importe:</span>{" "}
                   <span className="font-bold text-lg">{formatCurrency(Number(viewing.importe) || 0)}</span>
