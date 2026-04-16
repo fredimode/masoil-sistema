@@ -13,6 +13,7 @@ interface CurrentVendedor {
   role: UserRole
   isActive: boolean
   zonas: Zona[]
+  iniciales?: string | null
 }
 
 interface UseCurrentVendedorReturn {
@@ -40,7 +41,7 @@ export function useCurrentVendedor(): UseCurrentVendedorReturn {
 
         const { data, error: queryError } = await supabase
           .from("vendedores")
-          .select("id, auth_user_id, name, email, whatsapp, role, is_active, vendedor_zonas(zona)")
+          .select("id, auth_user_id, name, email, whatsapp, role, is_active, iniciales, vendedor_zonas(zona)")
           .eq("auth_user_id", user.id)
           .single()
 
@@ -58,6 +59,7 @@ export function useCurrentVendedor(): UseCurrentVendedorReturn {
           whatsapp: data.whatsapp,
           role: data.role as UserRole,
           isActive: data.is_active,
+          iniciales: (data as any).iniciales || null,
           zonas: (data.vendedor_zonas as { zona: string }[]).map((vz) => vz.zona as Zona),
         })
       } catch {

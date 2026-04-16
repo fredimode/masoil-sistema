@@ -109,6 +109,7 @@ export interface Vendedor {
   zonas: Zona[]
   isActive: boolean
   role: UserRole
+  iniciales?: string | null
 }
 
 export interface StatusConfig {

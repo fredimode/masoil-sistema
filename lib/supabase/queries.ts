@@ -109,7 +109,16 @@ function mapVendedor(row: any): Vendedor {
     role: row.role,
     isActive: row.is_active,
     zonas: (row.vendedor_zonas || []).map((vz: any) => vz.zona as Zona),
+    iniciales: row.iniciales || null,
   }
+}
+
+// Vendedores comerciales (los que aparecen en selects de pedidos/cotizaciones)
+export const VENDEDOR_INICIALES_VALIDAS = ["PSG", "JGE", "DDM"] as const
+export function esVendedorComercial(v: Pick<Vendedor, "iniciales" | "email">): boolean {
+  if (v.iniciales && VENDEDOR_INICIALES_VALIDAS.includes(v.iniciales as any)) return true
+  const emails = ["pablo@masoil.com.ar", "jestevez@masoil.com.ar", "cobranzas@masoil.com.ar"]
+  return emails.includes((v.email || "").toLowerCase())
 }
 
 // ---------------------------------------------------------------------------
@@ -173,17 +182,40 @@ export async function createOrder(order: {
   const rand = Math.floor(Math.random() * 10000).toString().padStart(4, "0")
   const orderNumber = `ORD-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${Date.now().toString().slice(-6)}${rand}`
 
-  // Generate correlative serial number PED-0001, PED-0002, etc.
-  const { data: lastOrder } = await supabase
+  // Resolve vendor initials (PSG, JGE, DDM) for correlative per vendedor
+  let iniciales = ""
+  if (order.vendedorId) {
+    const { data: vend } = await supabase
+      .from("vendedores")
+      .select("iniciales, email")
+      .eq("id", order.vendedorId)
+      .maybeSingle()
+    iniciales = (vend?.iniciales || "").trim()
+    if (!iniciales && vend?.email) {
+      const em = String(vend.email).toLowerCase()
+      if (em === "pablo@masoil.com.ar") iniciales = "PSG"
+      else if (em === "jestevez@masoil.com.ar") iniciales = "JGE"
+      else if (em === "cobranzas@masoil.com.ar") iniciales = "DDM"
+    }
+  }
+
+  // Generate correlative serial: PED-{INICIALES}-0001 per vendor, fallback PED-0001
+  const prefix = iniciales ? `PED-${iniciales}-` : "PED-"
+  const { data: lastOrders } = await supabase
     .from("orders")
     .select("order_number_serial")
-    .not("order_number_serial", "is", null)
+    .like("order_number_serial", `${prefix}%`)
     .order("created_at", { ascending: false })
-    .limit(1)
-    .single()
-  const lastSerial = lastOrder?.order_number_serial
-  const lastNum = lastSerial ? parseInt(lastSerial.replace("PED-", ""), 10) : 0
-  const orderNumberSerial = `PED-${String((lastNum || 0) + 1).padStart(4, "0")}`
+    .limit(50)
+  let lastNum = 0
+  for (const row of lastOrders || []) {
+    const serial = row?.order_number_serial as string | null
+    if (!serial) continue
+    const suffix = serial.replace(prefix, "")
+    const n = parseInt(suffix, 10)
+    if (!isNaN(n) && n > lastNum) lastNum = n
+  }
+  const orderNumberSerial = `${prefix}${String(lastNum + 1).padStart(4, "0")}`
 
   // Insert order
   const { data: orderData, error: orderError } = await supabase
@@ -1238,4 +1270,165 @@ export async function enviarFacturaALote(facturaProveedorId: string, loteId: str
   const { data: items } = await supabase.from("lote_pago_items").select("importe").eq("lote_id", loteId)
   const total = (items || []).reduce((s: number, i: any) => s + (Number(i.importe) || 0), 0)
   await supabase.from("lotes_pago").update({ total }).eq("id", loteId)
+}
+
+// ---------------------------------------------------------------------------
+// Cotizaciones de venta
+// ---------------------------------------------------------------------------
+
+export async function fetchCotizacionesVenta(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("cotizaciones_venta")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(5000)
+  if (error) throw error
+  return data || []
+}
+
+export async function fetchCotizacionVentaById(id: string): Promise<any | null> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("cotizaciones_venta")
+    .select("*")
+    .eq("id", id)
+    .single()
+  if (error) return null
+  return data
+}
+
+export async function fetchCotizacionVentaItems(cotizacionId: string): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("cotizacion_venta_items")
+    .select("*")
+    .eq("cotizacion_id", cotizacionId)
+    .order("created_at")
+  if (error) throw error
+  return data || []
+}
+
+export async function getNextCotizacionVentaNumero(iniciales: string): Promise<string> {
+  const supabase = createSupabaseClient()
+  const prefix = `COT-${iniciales}-`
+  const { data } = await supabase
+    .from("cotizaciones_venta")
+    .select("numero")
+    .like("numero", `${prefix}%`)
+    .order("created_at", { ascending: false })
+    .limit(50)
+  let max = 0
+  for (const r of data || []) {
+    const n = parseInt((r.numero || "").replace(prefix, ""), 10)
+    if (!isNaN(n) && n > max) max = n
+  }
+  return `${prefix}${String(max + 1).padStart(4, "0")}`
+}
+
+export async function createCotizacionVenta(cot: {
+  numero: string
+  fecha?: string
+  client_id: string
+  client_name: string
+  vendedor_id?: string | null
+  vendedor_nombre?: string | null
+  vendedor_iniciales?: string | null
+  razon_social?: string | null
+  zona?: string | null
+  validez_fecha?: string | null
+  forma_pago?: string | null
+  plazo_entrega?: string | null
+  observaciones?: string | null
+  total: number
+  items: {
+    product_id?: string | null
+    producto_nombre: string
+    producto_codigo?: string | null
+    cantidad: number
+    precio_unitario: number
+    subtotal: number
+  }[]
+}): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("cotizaciones_venta")
+    .insert({
+      numero: cot.numero,
+      fecha: cot.fecha || new Date().toISOString().slice(0, 10),
+      client_id: cot.client_id,
+      client_name: cot.client_name,
+      vendedor_id: cot.vendedor_id || null,
+      vendedor_nombre: cot.vendedor_nombre || null,
+      vendedor_iniciales: cot.vendedor_iniciales || null,
+      razon_social: cot.razon_social || null,
+      zona: cot.zona || null,
+      validez_fecha: cot.validez_fecha || null,
+      forma_pago: cot.forma_pago || null,
+      plazo_entrega: cot.plazo_entrega || null,
+      observaciones: cot.observaciones || null,
+      total: cot.total,
+      estado: "pendiente",
+    })
+    .select("id")
+    .single()
+  if (error) throw error
+  const cotizacionId = data.id as string
+
+  if (cot.items.length > 0) {
+    const itemsInsert = cot.items.map((i) => ({
+      cotizacion_id: cotizacionId,
+      product_id: i.product_id || null,
+      producto_nombre: i.producto_nombre,
+      producto_codigo: i.producto_codigo || null,
+      cantidad: i.cantidad,
+      precio_unitario: i.precio_unitario,
+      subtotal: i.subtotal,
+      aprobado: true,
+    }))
+    const { error: itemsError } = await supabase.from("cotizacion_venta_items").insert(itemsInsert)
+    if (itemsError) throw itemsError
+  }
+
+  return cotizacionId
+}
+
+export async function updateCotizacionVenta(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("cotizaciones_venta").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+export async function updateCotizacionVentaItemAprobado(itemId: string, aprobado: boolean): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("cotizacion_venta_items").update({ aprobado }).eq("id", itemId)
+  if (error) throw error
+}
+
+export async function deleteCotizacionVenta(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("cotizaciones_venta").delete().eq("id", id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
+// Orden de Compra Items
+// ---------------------------------------------------------------------------
+
+export async function fetchOrdenCompraItems(ordenCompraId: string): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("orden_compra_items")
+    .select("*")
+    .eq("orden_compra_id", ordenCompraId)
+    .order("created_at")
+  if (error) throw error
+  return data || []
+}
+
+export async function createOrdenCompraItems(items: Record<string, any>[]): Promise<void> {
+  if (items.length === 0) return
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("orden_compra_items").insert(items)
+  if (error) throw error
 }

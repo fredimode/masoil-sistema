@@ -17,6 +17,7 @@ import {
   TrendingUp,
   Percent,
   FileText,
+  FileSearch,
   Receipt,
   Building2,
   ShoppingCart,
@@ -45,6 +46,7 @@ const navSections: NavSection[] = [
     label: "Ventas",
     roles: ["admin", "usuario"],
     items: [
+      { href: "/admin/cotizaciones-venta", label: "Cotizaciones", icon: FileSearch },
       { href: "/admin/pedidos", label: "Pedidos", icon: ClipboardList },
       { href: "/admin/pedidos/customizados", label: "Pedidos Custom", icon: ClipboardEdit },
       { href: "/admin/clientes", label: "Clientes", icon: Users },
