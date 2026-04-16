@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect, useMemo, useRef } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState, useEffect, useMemo, useRef } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { fetchProveedores, fetchCompras, fetchProducts } from "@/lib/supabase/queries"
+import { fetchProveedores, fetchCompras, fetchProducts, updateSolicitudCompra, createOrdenCompra } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/client"
 import { normalizeSearch, formatCurrency } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -16,6 +16,7 @@ import { Paperclip, X, Search, Upload, Check } from "lucide-react"
 import type { Product } from "@/lib/types"
 
 const ESTADOS_OC = ["Pendiente", "Realizado", "Recibido Completo", "Recibido Incompleto", "Factura Cargada", "Cancelado"]
+const EMPRESAS = ["Masoil", "Aquiles", "Conancap"]
 
 interface CompraItem {
   productId: string
@@ -26,11 +27,21 @@ interface CompraItem {
 }
 
 export default function NuevaCompraPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-center text-gray-500">Cargando...</div>}>
+      <NuevaCompraForm />
+    </Suspense>
+  )
+}
+
+function NuevaCompraForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [proveedores, setProveedores] = useState<any[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [compras, setCompras] = useState<any[]>([])
   const [provSearch, setProvSearch] = useState("")
   const [showProvDropdown, setShowProvDropdown] = useState(false)
   const [prodSearch, setProdSearch] = useState("")
@@ -39,8 +50,10 @@ export default function NuevaCompraPage() {
   const [articuloMode, setArticuloMode] = useState<"productos" | "texto">("productos")
   const [presupuestoFile, setPresupuestoFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const solicitudId = searchParams.get("solicitud_id") || ""
 
   const [form, setForm] = useState({
+    empresa: "",
     fecha: new Date().toISOString().slice(0, 10),
     proveedor_id: "",
     proveedor_nombre: "",
@@ -59,17 +72,44 @@ export default function NuevaCompraPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [provs, compras, prods] = await Promise.all([fetchProveedores(), fetchCompras(), fetchProducts()])
+        const [provs, comprasData, prods] = await Promise.all([fetchProveedores(), fetchCompras(), fetchProducts()])
         setProveedores(provs)
         setProducts(prods)
+        setCompras(comprasData)
 
-        const npNumbers = compras
+        const npNumbers = comprasData
           .map((c: any) => c.nro_nota_pedido)
           .filter((np: string) => np && /^NP-\d+$/.test(np))
           .map((np: string) => parseInt(np.replace("NP-", ""), 10))
         const maxNP = npNumbers.length > 0 ? Math.max(...npNumbers) : 0
         const next = `NP-${String(maxNP + 1).padStart(4, "0")}`
-        setForm((prev) => ({ ...prev, nro_nota_pedido: next }))
+
+        // Prefill from URL params (conversion from solicitud de compra)
+        const provIdParam = searchParams.get("proveedor_id") || ""
+        const provNameParam = searchParams.get("proveedor_nombre") || ""
+        setForm((prev) => ({
+          ...prev,
+          nro_nota_pedido: next,
+          proveedor_id: provIdParam,
+          proveedor_nombre: provNameParam,
+          email_comercial: provs.find((p: any) => String(p.id) === provIdParam)?.email_comercial || "",
+        }))
+        if (provNameParam) setProvSearch(provNameParam)
+
+        const productId = searchParams.get("product_id") || ""
+        const productoNombre = searchParams.get("producto_nombre") || ""
+        const productoCodigo = searchParams.get("producto_codigo") || ""
+        const cantidadParam = parseInt(searchParams.get("cantidad") || "0", 10)
+        if (productoNombre) {
+          const prod = productId ? prods.find((p: Product) => p.id === productId) : null
+          setCompraItems([{
+            productId: prod?.id || productId || "",
+            code: prod?.code || productoCodigo,
+            name: prod?.name || productoNombre,
+            costoNeto: prod?.costoNeto ?? prod?.price ?? 0,
+            quantity: cantidadParam > 0 ? cantidadParam : 1,
+          }])
+        }
       } catch (err) {
         console.error("Error cargando datos:", err)
       } finally {
@@ -77,7 +117,28 @@ export default function NuevaCompraPage() {
       }
     }
     loadData()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Proveedores sugeridos: los que compraron antes alguno de los productos del carrito
+  const proveedoresSugeridos = useMemo(() => {
+    if (compraItems.length === 0) return []
+    const ids = new Set<string>()
+    for (const item of compraItems) {
+      compras.forEach((c) => {
+        if (
+          c.proveedor_id &&
+          (
+            (item.name && normalizeSearch(c.articulo || "").includes(normalizeSearch(item.name))) ||
+            (item.code && normalizeSearch(c.articulo || "").includes(normalizeSearch(item.code)))
+          )
+        ) {
+          ids.add(String(c.proveedor_id))
+        }
+      })
+    }
+    return proveedores.filter((p) => ids.has(String(p.id))).slice(0, 6)
+  }, [compras, proveedores, compraItems])
 
   const filteredProveedores = useMemo(() => {
     if (!provSearch.trim()) return []
@@ -134,6 +195,11 @@ export default function NuevaCompraPage() {
     ).join("\n")
   }
 
+  const totalCompra = useMemo(
+    () => compraItems.reduce((s, i) => s + (i.costoNeto || 0) * (i.quantity || 0), 0),
+    [compraItems],
+  )
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const articuloFinal = buildArticuloText()
@@ -146,7 +212,36 @@ export default function NuevaCompraPage() {
     try {
       const supabase = createClient()
 
-      // Insert compra and get ID back
+      // Create ordenes_compra (OC) with items if we have products
+      let nroOcGenerado: string | null = null
+      let ocId: string | null = null
+      if (articuloMode === "productos" && compraItems.length > 0) {
+        ocId = await createOrdenCompra({
+          proveedor_nombre: form.proveedor_nombre,
+          proveedor_id: form.proveedor_id || null,
+          importe_total: totalCompra,
+          estado: form.estado || "Pendiente",
+          razon_social: form.empresa || "",
+          empresa: form.empresa || null,
+          email_comercial: form.email_comercial || null,
+          items: compraItems.map((i) => ({
+            product_id: i.productId || null,
+            producto_nombre: i.name,
+            producto_codigo: i.code || null,
+            cantidad: i.quantity,
+            precio_unitario: i.costoNeto,
+            subtotal: i.costoNeto * i.quantity,
+          })),
+        })
+        const { data: ocRow } = await supabase
+          .from("ordenes_compra")
+          .select("nro_oc")
+          .eq("id", ocId)
+          .single()
+        nroOcGenerado = ocRow?.nro_oc || null
+      }
+
+      // Insert compra (tracking) and get ID back
       const { data: compraData, error: compraError } = await supabase
         .from("compras")
         .insert({
@@ -158,6 +253,7 @@ export default function NuevaCompraPage() {
           vendedor: form.vendedor || null,
           nro_cotizacion: form.nro_cotizacion || null,
           nro_nota_pedido: form.nro_nota_pedido || null,
+          nro_oc: nroOcGenerado,
           estado: form.estado || null,
           fecha: form.fecha || null,
           fecha_estimada_ingreso: form.fecha_estimada_ingreso || null,
@@ -178,6 +274,15 @@ export default function NuevaCompraPage() {
 
         if (!uploadError) {
           await supabase.from("compras").update({ cotizacion_ref: path }).eq("id", compraData.id)
+        }
+      }
+
+      // Mark solicitud as converted if we came from one
+      if (solicitudId && ocId) {
+        try {
+          await updateSolicitudCompra(solicitudId, { estado: "convertido_oc", orden_compra_id: ocId })
+        } catch (err) {
+          console.error("Error marcando solicitud:", err)
         }
       }
 
@@ -219,11 +324,44 @@ export default function NuevaCompraPage() {
             <CardTitle>Datos de la compra</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Empresa */}
+            <div className="space-y-2">
+              <Label>Empresa <span className="text-red-500">*</span></Label>
+              <select
+                value={form.empresa}
+                onChange={(e) => setForm((prev) => ({ ...prev, empresa: e.target.value }))}
+                className="w-full p-2 border rounded-lg text-sm bg-white focus:ring-2 focus:ring-primary"
+                required
+              >
+                <option value="">Seleccionar empresa...</option>
+                {EMPRESAS.map((em) => (<option key={em} value={em}>{em}</option>))}
+              </select>
+            </div>
+
             {/* Fecha */}
             <div className="space-y-2">
               <Label htmlFor="fecha">Fecha</Label>
               <Input id="fecha" type="date" value={form.fecha} onChange={(e) => setForm((prev) => ({ ...prev, fecha: e.target.value }))} />
             </div>
+
+            {/* Proveedores sugeridos (chips) - si hay productos cargados y hay historial */}
+            {proveedoresSugeridos.length > 0 && !form.proveedor_id && (
+              <div className="space-y-1 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                <p className="text-xs text-blue-800 font-medium">Proveedores sugeridos para estos productos</p>
+                <div className="flex flex-wrap gap-2">
+                  {proveedoresSugeridos.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => selectProveedor(p)}
+                      className="px-3 py-1 text-xs bg-white border border-blue-300 rounded-full hover:bg-blue-100"
+                    >
+                      {p.nombre || p.razon_social}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Proveedor - Autocomplete */}
             <div className="space-y-2 relative">
@@ -300,25 +438,45 @@ export default function NuevaCompraPage() {
                   {/* Selected items */}
                   {compraItems.length > 0 && (
                     <div className="border rounded-lg divide-y">
-                      {compraItems.map((item) => (
-                        <div key={item.productId} className="flex items-center gap-2 px-3 py-2">
-                          <div className="flex-1 min-w-0">
+                      <div className="grid grid-cols-[1fr,80px,110px,110px,30px] gap-2 px-3 py-2 bg-gray-50 text-xs font-medium text-gray-600">
+                        <span>Producto</span>
+                        <span className="text-center">Cant.</span>
+                        <span className="text-center">Precio Unit.</span>
+                        <span className="text-right">Subtotal</span>
+                        <span />
+                      </div>
+                      {compraItems.map((item, idx) => (
+                        <div key={item.productId || `${item.code}-${idx}`} className="grid grid-cols-[1fr,80px,110px,110px,30px] gap-2 px-3 py-2 items-center">
+                          <div className="min-w-0">
                             <span className="font-mono text-xs text-gray-400 mr-1">{item.code || "S/C"}</span>
                             <span className="text-sm font-medium">{item.name}</span>
-                            {item.costoNeto > 0 && <span className="text-xs text-gray-400 ml-2">{formatCurrency(item.costoNeto)}</span>}
                           </div>
                           <input
                             type="number"
                             min={1}
                             value={item.quantity}
-                            onChange={(e) => setCompraItems((prev) => prev.map((i) => i.productId === item.productId ? { ...i, quantity: parseInt(e.target.value) || 1 } : i))}
-                            className="w-16 p-1 border rounded text-center text-sm"
+                            onChange={(e) => setCompraItems((prev) => prev.map((i, j) => (j === idx ? { ...i, quantity: parseInt(e.target.value) || 1 } : i)))}
+                            className="w-full p-1 border rounded text-center text-sm"
                           />
-                          <button type="button" onClick={() => setCompraItems((prev) => prev.filter((i) => i.productId !== item.productId))} className="p-1 hover:bg-red-100 rounded">
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            value={item.costoNeto || ""}
+                            onChange={(e) => setCompraItems((prev) => prev.map((i, j) => (j === idx ? { ...i, costoNeto: parseFloat(e.target.value) || 0 } : i)))}
+                            className="w-full p-1 border rounded text-center text-sm"
+                            placeholder="0.00"
+                          />
+                          <p className="text-right text-sm font-semibold">{formatCurrency(item.costoNeto * item.quantity)}</p>
+                          <button type="button" onClick={() => setCompraItems((prev) => prev.filter((_, j) => j !== idx))} className="p-1 hover:bg-red-100 rounded">
                             <X className="h-4 w-4 text-red-500" />
                           </button>
                         </div>
                       ))}
+                      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 text-sm font-semibold">
+                        <span>Total</span>
+                        <span>{formatCurrency(totalCompra)}</span>
+                      </div>
                     </div>
                   )}
                   {compraItems.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Buscá y agregá productos arriba</p>}
@@ -413,7 +571,7 @@ export default function NuevaCompraPage() {
 
         <div className="flex justify-end gap-3 mt-6">
           <Button type="button" variant="outline" onClick={() => router.push("/admin/compras")} disabled={submitting}>Cancelar</Button>
-          <Button type="submit" disabled={submitting || (articuloMode === "texto" ? !form.articulo.trim() : compraItems.length === 0) || (form.estado === "Recibido Incompleto" && !form.observaciones_incompleto.trim())}>
+          <Button type="submit" disabled={submitting || !form.empresa || (articuloMode === "texto" ? !form.articulo.trim() : compraItems.length === 0) || (form.estado === "Recibido Incompleto" && !form.observaciones_incompleto.trim())}>
             {submitting ? "Guardando..." : "Crear Compra"}
           </Button>
         </div>

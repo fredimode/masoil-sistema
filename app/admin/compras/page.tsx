@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import * as XLSX from "xlsx"
 import { formatCurrency, formatDate, normalizeSearch } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
@@ -15,7 +16,6 @@ import {
   updateOrdenCompra,
   fetchSolicitudesCompra,
   updateSolicitudCompra,
-  createOrdenCompra,
   fetchProveedores,
 } from "@/lib/supabase/queries"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -50,6 +50,7 @@ function estadoBadge(estado: string) {
 }
 
 export default function ComprasPage() {
+  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [compras, setCompras] = useState<any[]>([])
   const [ordenes, setOrdenes] = useState<any[]>([])
@@ -58,11 +59,6 @@ export default function ComprasPage() {
   const [solEstadoFilter, setSolEstadoFilter] = useState("")
   const [solBusqueda, setSolBusqueda] = useState("")
   const [proveedores, setProveedores] = useState<any[]>([])
-
-  // Convertir en OC dialog
-  const [convertingOC, setConvertingOC] = useState<any | null>(null)
-  const [ocForm, setOcForm] = useState({ proveedor_nombre: "", proveedor_id: "", importe_total: 0, razon_social: "" })
-  const [ocSubmitting, setOcSubmitting] = useState(false)
 
   // Pagination
   const [comprasPage, setComprasPage] = useState(1)
@@ -213,26 +209,26 @@ export default function ComprasPage() {
     }
   }
 
-  async function handleConvertirOC() {
-    if (!convertingOC) return
-    setOcSubmitting(true)
-    try {
-      const ocId = await createOrdenCompra({
-        proveedor_nombre: ocForm.proveedor_nombre,
-        proveedor_id: ocForm.proveedor_id || null,
-        importe_total: ocForm.importe_total || 0,
-        razon_social: ocForm.razon_social || "",
-        estado: "Pendiente",
-      })
-      await updateSolicitudCompra(convertingOC.id, { estado: "convertido_oc", orden_compra_id: ocId })
-      setConvertingOC(null)
-      await loadData()
-    } catch (err) {
-      console.error("Error convirtiendo a OC:", err)
-      alert("Error al crear la Orden de Compra")
-    } finally {
-      setOcSubmitting(false)
+  function handleConvertirOC(solicitud: any) {
+    // Find proveedor habitual del producto (si ya se compró antes ese producto)
+    const provHabitual = proveedores.find((p) =>
+      compras.some((c) =>
+        c.proveedor_id === p.id &&
+        normalizeSearch(c.articulo || "").includes(normalizeSearch(solicitud.producto_nombre || "")),
+      ),
+    )
+    const params = new URLSearchParams({
+      solicitud_id: solicitud.id,
+      producto_nombre: solicitud.producto_nombre || "",
+      producto_codigo: solicitud.producto_codigo || "",
+      product_id: solicitud.product_id || "",
+      cantidad: String(solicitud.cantidad_faltante || solicitud.cantidad_solicitada || 1),
+    })
+    if (provHabitual) {
+      params.set("proveedor_id", provHabitual.id || "")
+      params.set("proveedor_nombre", provHabitual.nombre || provHabitual.razon_social || "")
     }
+    router.push(`/admin/compras/nueva?${params.toString()}`)
   }
 
   async function handleDownloadAdjunto(path: string) {
@@ -421,22 +417,7 @@ export default function ComprasPage() {
                               )}
                               {(s.estado === "borrador" || s.estado === "aceptado") && (
                                 <button
-                                  onClick={() => {
-                                    // Find proveedor habitual if product has one in compras history
-                                    const provHabitual = proveedores.find((p) =>
-                                      compras.some((c) =>
-                                        c.proveedor_id === p.id &&
-                                        normalizeSearch(c.articulo || "").includes(normalizeSearch(s.producto_nombre || ""))
-                                      )
-                                    )
-                                    setOcForm({
-                                      proveedor_nombre: provHabitual?.nombre || provHabitual?.razon_social || "",
-                                      proveedor_id: provHabitual?.id || "",
-                                      importe_total: 0,
-                                      razon_social: provHabitual?.razon_social || "",
-                                    })
-                                    setConvertingOC(s)
-                                  }}
+                                  onClick={() => handleConvertirOC(s)}
                                   className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
                                 >
                                   Convertir en OC
@@ -529,7 +510,7 @@ export default function ComprasPage() {
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 160 }}>Articulo</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 75 }}>Vendedor</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 120 }}>Estado</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>Nro Fact. Prov.</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 90 }}>Nro Orden de Compra</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>F. Recepción</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 60 }}>Nro NP</th>
                       <th className="px-2 py-3 text-center font-semibold text-gray-700" style={{ width: 70 }}>Acciones</th>
@@ -570,27 +551,23 @@ export default function ComprasPage() {
                           </select>
                         </td>
                         <td className="px-2 py-1">
-                          {(c.estado === "Recibido Completo" || c.estado === "Recibido Incompleto" || c.estado === "Factura Cargada") ? (
-                            <input
-                              type="text"
-                              value={c.nro_factura_proveedor || ""}
-                              placeholder="Nro factura..."
-                              onChange={async (e) => {
-                                const val = e.target.value
-                                setCompras((prev) => prev.map((x) => x.id === c.id ? { ...x, nro_factura_proveedor: val } : x))
-                              }}
-                              onBlur={async (e) => {
-                                try {
-                                  await updateCompra(c.id, { nro_factura_proveedor: e.target.value })
-                                } catch (err) {
-                                  console.error("Error guardando nro factura:", err)
-                                }
-                              }}
-                              className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
-                            />
-                          ) : (
-                            <span className="text-xs text-gray-400">-</span>
-                          )}
+                          <input
+                            type="text"
+                            value={c.nro_oc || ""}
+                            placeholder="OC-XXXX"
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setCompras((prev) => prev.map((x) => x.id === c.id ? { ...x, nro_oc: val } : x))
+                            }}
+                            onBlur={async (e) => {
+                              try {
+                                await updateCompra(c.id, { nro_oc: e.target.value || null })
+                              } catch (err) {
+                                console.error("Error guardando nro OC:", err)
+                              }
+                            }}
+                            className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
+                          />
                         </td>
                         <td className="px-2 py-1">
                           <input
@@ -724,7 +701,7 @@ export default function ComprasPage() {
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 120 }}>Proveedor</th>
                       <th className="px-2 py-3 text-right font-semibold text-gray-700" style={{ width: 85 }}>Importe</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 120 }}>Estado</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>Nro Fact. Prov.</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 90 }}>Empresa</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>F. Recepción</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 60 }}>Nro OC</th>
                       <th className="px-2 py-3 text-center font-semibold text-gray-700" style={{ width: 75 }}>Acciones</th>
@@ -762,27 +739,24 @@ export default function ComprasPage() {
                           </select>
                         </td>
                         <td className="px-2 py-1">
-                          {(o.estado === "Recibido Completo" || o.estado === "Recibido Incompleto" || o.estado === "Factura Cargada") ? (
-                            <input
-                              type="text"
-                              value={o.nro_factura_proveedor || ""}
-                              placeholder="Nro factura..."
-                              onChange={async (e) => {
-                                const val = e.target.value
-                                setOrdenes((prev) => prev.map((x) => x.id === o.id ? { ...x, nro_factura_proveedor: val } : x))
-                              }}
-                              onBlur={async (e) => {
-                                try {
-                                  await updateOrdenCompra(o.id, { nro_factura_proveedor: e.target.value })
-                                } catch (err) {
-                                  console.error("Error guardando nro factura:", err)
-                                }
-                              }}
-                              className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
-                            />
-                          ) : (
-                            <span className="text-xs text-gray-400">-</span>
-                          )}
+                          <select
+                            value={o.empresa || ""}
+                            onChange={async (e) => {
+                              const val = e.target.value
+                              setOrdenes((prev) => prev.map((x) => x.id === o.id ? { ...x, empresa: val } : x))
+                              try {
+                                await updateOrdenCompra(o.id, { empresa: val || null })
+                              } catch (err) {
+                                console.error("Error guardando empresa:", err)
+                              }
+                            }}
+                            className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
+                          >
+                            <option value="">-</option>
+                            <option value="Masoil">Masoil</option>
+                            <option value="Aquiles">Aquiles</option>
+                            <option value="Conancap">Conancap</option>
+                          </select>
                         </td>
                         <td className="px-2 py-1">
                           <input
@@ -1010,53 +984,6 @@ export default function ComprasPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ========== DIALOG - CONVERTIR EN OC ========== */}
-      <Dialog open={!!convertingOC} onOpenChange={(open) => !open && setConvertingOC(null)}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Convertir Solicitud en Orden de Compra</DialogTitle>
-          </DialogHeader>
-          {convertingOC && (
-            <div className="space-y-4">
-              <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
-                <div><strong>Producto:</strong> {convertingOC.producto_codigo && <span className="font-mono text-gray-500 mr-1">{convertingOC.producto_codigo}</span>}{convertingOC.producto_nombre}</div>
-                <div><strong>Cantidad faltante:</strong> <span className="text-red-600 font-bold">{convertingOC.cantidad_faltante}</span></div>
-                <div><strong>Pedido origen:</strong> {convertingOC.pedido_serial || convertingOC.order_id?.slice(0, 8) || "-"}</div>
-              </div>
-              <div>
-                <label className="text-sm text-gray-600 block mb-1">Proveedor</label>
-                <input
-                  type="text"
-                  value={ocForm.proveedor_nombre}
-                  onChange={(e) => setOcForm((f) => ({ ...f, proveedor_nombre: e.target.value, proveedor_id: "" }))}
-                  className="w-full p-2 border rounded-lg text-sm"
-                  placeholder="Nombre del proveedor"
-                  list="prov-list-oc"
-                />
-                <datalist id="prov-list-oc">
-                  {proveedores.map((p) => (
-                    <option key={p.id} value={p.nombre || p.razon_social || ""} />
-                  ))}
-                </datalist>
-              </div>
-              <div>
-                <label className="text-sm text-gray-600 block mb-1">Razon Social</label>
-                <input type="text" value={ocForm.razon_social} onChange={(e) => setOcForm((f) => ({ ...f, razon_social: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" placeholder="Razon social" />
-              </div>
-              <div>
-                <label className="text-sm text-gray-600 block mb-1">Importe Total</label>
-                <input type="number" value={ocForm.importe_total} onChange={(e) => setOcForm((f) => ({ ...f, importe_total: Number(e.target.value) }))} className="w-full p-2 border rounded-lg text-sm" min={0} step={0.01} />
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <button onClick={() => setConvertingOC(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm" disabled={ocSubmitting}>Cancelar</button>
-            <button onClick={handleConvertirOC} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm" disabled={ocSubmitting || !ocForm.proveedor_nombre.trim()}>
-              {ocSubmitting ? "Creando..." : "Crear Orden de Compra"}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

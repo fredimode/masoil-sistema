@@ -825,7 +825,17 @@ export async function createOrdenCompra(oc: {
   estado?: string
   nro_oc?: string
   razon_social?: string
+  empresa?: string | null
   articulo?: string
+  email_comercial?: string | null
+  items?: {
+    product_id?: string | null
+    producto_nombre: string
+    producto_codigo?: string | null
+    cantidad: number
+    precio_unitario: number
+    subtotal: number
+  }[]
 }): Promise<string> {
   const supabase = createSupabaseClient()
 
@@ -850,10 +860,28 @@ export async function createOrdenCompra(oc: {
       estado: oc.estado || "Pendiente",
       nro_oc: oc.nro_oc || nroOc,
       razon_social: oc.razon_social || null,
+      empresa: oc.empresa || null,
+      email_comercial: oc.email_comercial || null,
     })
     .select("id")
     .single()
   if (error) throw error
+
+  // Insert items if provided
+  if (oc.items && oc.items.length > 0) {
+    const itemsInsert = oc.items.map((i) => ({
+      orden_compra_id: data.id,
+      product_id: i.product_id || null,
+      producto_nombre: i.producto_nombre,
+      producto_codigo: i.producto_codigo || null,
+      cantidad: i.cantidad,
+      precio_unitario: i.precio_unitario,
+      subtotal: i.subtotal,
+    }))
+    const { error: itemsError } = await supabase.from("orden_compra_items").insert(itemsInsert)
+    if (itemsError) throw itemsError
+  }
+
   return data.id
 }
 

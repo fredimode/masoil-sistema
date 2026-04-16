@@ -73,3 +73,6 @@ CREATE POLICY "oc_items_auth_all" ON orden_compra_items
 
 -- 4. EMPRESA EN OC -------------------------------------------------------
 ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS empresa TEXT;
+
+-- 5. NRO OC EN SEGUIMIENTO DE COMPRAS ------------------------------------
+ALTER TABLE compras ADD COLUMN IF NOT EXISTS nro_oc TEXT;
