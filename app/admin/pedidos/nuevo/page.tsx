@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { fetchClients, fetchProducts, fetchVendedores, createOrder } from "@/lib/supabase/queries"
+import { fetchClients, fetchProducts, fetchVendedores, createOrder, esVendedorComercial } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/client"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import type { Client, Product, Vendedor } from "@/lib/types"
@@ -110,7 +110,7 @@ export default function AdminNuevoPedidoPage() {
 
   if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
 
-  const activeVendedores = vendedores.filter((v) => v.role !== "admin" && v.isActive)
+  const activeVendedores = vendedores.filter((v) => v.isActive && esVendedorComercial(v))
   const selectedClient = clients.find((c) => c.id === selectedClientId)
 
   // Filter clients (solo por búsqueda, no por vendedor seleccionado)
