@@ -24,7 +24,7 @@ import * as XLSX from "xlsx"
 
 type MedioPago = {
   id: string
-  tipo: "Efectivo" | "Transferencia" | "Cheque" | "Echeq" | "Compensación"
+  tipo: "Efectivo" | "Transferencia" | "Cheque" | "Echeq" | "Compensación" | "Depósito Bancario"
   importe: number
   referencia: string
   numero: string
@@ -174,6 +174,46 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
   const [hasta, setHasta] = useState("")
   const [todos, setTodos] = useState(false)
   const [page, setPage] = useState(1)
+  const [retOpen, setRetOpen] = useState(false)
+  const [retForm, setRetForm] = useState({ tipo: "ARBA", nro_comprobante: "", fecha: new Date().toISOString().slice(0, 10), importe: 0 })
+  const [retSaving, setRetSaving] = useState(false)
+
+  async function handleGuardarRetencion() {
+    if (!selectedClient) return
+    if (!retForm.importe || retForm.importe <= 0) {
+      alert("Indicá un importe válido")
+      return
+    }
+    setRetSaving(true)
+    try {
+      const retId = await createRetencion({
+        client_id: selectedClient.id,
+        tipo: retForm.tipo,
+        numero_comprobante: retForm.nro_comprobante || null,
+        fecha: retForm.fecha,
+        importe: retForm.importe,
+      })
+      await createMovimientoCuentaCorriente({
+        client_id: selectedClient.id,
+        fecha: retForm.fecha,
+        tipo_comprobante: "RETENCION",
+        punto_venta: 0,
+        numero_comprobante: retForm.nro_comprobante || "",
+        haber: retForm.importe,
+        debe: 0,
+        referencia_id: retId,
+        observaciones: `Retención ${retForm.tipo} cargada desde CC`,
+      })
+      setRetOpen(false)
+      setRetForm({ tipo: "ARBA", nro_comprobante: "", fecha: new Date().toISOString().slice(0, 10), importe: 0 })
+      await loadMovimientos(selectedClient.id)
+    } catch (e: any) {
+      console.error(e)
+      alert("Error al guardar retención: " + (e?.message || ""))
+    } finally {
+      setRetSaving(false)
+    }
+  }
 
   const filteredClients = useMemo(() => {
     if (!search.trim()) return []
@@ -405,6 +445,78 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
           {selectedClient || todos ? "Sin movimientos" : "Seleccione un cliente o marque \"Todos los clientes\""}
         </p>
       )}
+
+      {/* Cargar Retención desde CC */}
+      {selectedClient && (
+        <div className="flex justify-end border-t pt-4">
+          <button
+            onClick={() => setRetOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-md text-sm hover:bg-indigo-700"
+          >
+            <Plus className="h-4 w-4" /> Cargar Retención
+          </button>
+        </div>
+      )}
+
+      <Dialog open={retOpen} onOpenChange={setRetOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cargar Retención — {selectedClient?.businessName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Tipo</label>
+              <select
+                value={retForm.tipo}
+                onChange={(e) => setRetForm((f) => ({ ...f, tipo: e.target.value }))}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              >
+                {TIPOS_RETENCION.map((t) => (<option key={t} value={t}>{t}</option>))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Nro Comprobante</label>
+                <input
+                  type="text"
+                  value={retForm.nro_comprobante}
+                  onChange={(e) => setRetForm((f) => ({ ...f, nro_comprobante: e.target.value }))}
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Fecha</label>
+                <input
+                  type="date"
+                  value={retForm.fecha}
+                  onChange={(e) => setRetForm((f) => ({ ...f, fecha: e.target.value }))}
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Importe</label>
+              <input
+                type="number"
+                step="0.01"
+                value={retForm.importe || ""}
+                onChange={(e) => setRetForm((f) => ({ ...f, importe: parseFloat(e.target.value) || 0 }))}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <button onClick={() => setRetOpen(false)} className="px-3 py-2 bg-gray-100 rounded-md text-sm hover:bg-gray-200" disabled={retSaving}>Cancelar</button>
+            <button
+              onClick={handleGuardarRetencion}
+              className="px-3 py-2 bg-primary text-white rounded-md text-sm hover:bg-primary/90 disabled:opacity-50"
+              disabled={retSaving || !retForm.importe}
+            >
+              {retSaving ? "Guardando..." : "Guardar Retención"}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
@@ -668,6 +780,9 @@ function TabRegistrarCobro({
             <div className="w-full border rounded-md px-3 py-2 text-sm bg-gray-50 font-mono font-bold">
               REC-{String(nextRecibo).padStart(4, "0")}
             </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Correlativo automático (siguiente al último usado). Si necesitás configurar el número inicial, contactá al admin.
+            </p>
           </div>
           <div>
             <label className="text-sm font-medium mb-1 block">Vendedor</label>
@@ -869,6 +984,7 @@ function TabRegistrarCobro({
                   >
                     <option value="Efectivo">Efectivo</option>
                     <option value="Transferencia">Transferencia</option>
+                    <option value="Depósito Bancario">Depósito Bancario</option>
                     <option value="Cheque">Cheque</option>
                     <option value="Echeq">Echeq</option>
                     <option value="Compensación">Compensación</option>
@@ -892,15 +1008,28 @@ function TabRegistrarCobro({
                   />
                 </div>
 
-                {(m.tipo === "Transferencia" || m.tipo === "Compensación") && (
-                  <div>
-                    <label className="text-xs text-gray-500">Referencia</label>
-                    <input
-                      type="text"
-                      value={m.referencia}
-                      onChange={(e) => updateMedio(m.id, "referencia", e.target.value)}
-                      className="w-full border rounded-md px-2 py-1.5 text-sm"
-                    />
+                {(m.tipo === "Transferencia" || m.tipo === "Compensación" || m.tipo === "Depósito Bancario") && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-gray-500">Referencia{m.tipo === "Depósito Bancario" ? " / Nro comprobante" : ""}</label>
+                      <input
+                        type="text"
+                        value={m.referencia}
+                        onChange={(e) => updateMedio(m.id, "referencia", e.target.value)}
+                        className="w-full border rounded-md px-2 py-1.5 text-sm"
+                      />
+                    </div>
+                    {m.tipo === "Depósito Bancario" && (
+                      <div>
+                        <label className="text-xs text-gray-500">Banco</label>
+                        <input
+                          type="text"
+                          value={m.banco}
+                          onChange={(e) => updateMedio(m.id, "banco", e.target.value)}
+                          className="w-full border rounded-md px-2 py-1.5 text-sm"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
 
