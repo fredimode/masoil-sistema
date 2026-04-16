@@ -15,6 +15,8 @@ import {
   updateOrdenCompra,
   fetchSolicitudesCompra,
   updateSolicitudCompra,
+  createOrdenCompra,
+  fetchProveedores,
 } from "@/lib/supabase/queries"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -54,6 +56,13 @@ export default function ComprasPage() {
   const [solicitudes, setSolicitudes] = useState<any[]>([])
   const [totalComprasCount, setTotalComprasCount] = useState(0)
   const [solEstadoFilter, setSolEstadoFilter] = useState("")
+  const [solBusqueda, setSolBusqueda] = useState("")
+  const [proveedores, setProveedores] = useState<any[]>([])
+
+  // Convertir en OC dialog
+  const [convertingOC, setConvertingOC] = useState<any | null>(null)
+  const [ocForm, setOcForm] = useState({ proveedor_nombre: "", proveedor_id: "", importe_total: 0, razon_social: "" })
+  const [ocSubmitting, setOcSubmitting] = useState(false)
 
   // Pagination
   const [comprasPage, setComprasPage] = useState(1)
@@ -84,16 +93,18 @@ export default function ComprasPage() {
   async function loadData() {
     setLoading(true)
     try {
-      const [c, o, count, sol] = await Promise.all([
+      const [c, o, count, sol, provs] = await Promise.all([
         fetchCompras(),
         fetchOrdenesCompra(),
         fetchComprasCount(),
         fetchSolicitudesCompra(),
+        fetchProveedores(),
       ])
       setCompras(c)
       setOrdenes(o)
       setTotalComprasCount(count)
       setSolicitudes(sol)
+      setProveedores(provs)
     } catch (err) {
       console.error("Error cargando compras:", err)
     } finally {
@@ -202,6 +213,28 @@ export default function ComprasPage() {
     }
   }
 
+  async function handleConvertirOC() {
+    if (!convertingOC) return
+    setOcSubmitting(true)
+    try {
+      const ocId = await createOrdenCompra({
+        proveedor_nombre: ocForm.proveedor_nombre,
+        proveedor_id: ocForm.proveedor_id || null,
+        importe_total: ocForm.importe_total || 0,
+        razon_social: ocForm.razon_social || "",
+        estado: "Pendiente",
+      })
+      await updateSolicitudCompra(convertingOC.id, { estado: "convertido_oc", orden_compra_id: ocId })
+      setConvertingOC(null)
+      await loadData()
+    } catch (err) {
+      console.error("Error convirtiendo a OC:", err)
+      alert("Error al crear la Orden de Compra")
+    } finally {
+      setOcSubmitting(false)
+    }
+  }
+
   async function handleDownloadAdjunto(path: string) {
     const supabase = createClient()
     const { data } = await supabase.storage.from("comprobantes").createSignedUrl(path, 60)
@@ -279,6 +312,13 @@ export default function ComprasPage() {
         <TabsContent value="solicitudes">
           <div className="bg-white rounded-lg shadow p-4 mb-4">
             <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                placeholder="Buscar por producto..."
+                value={solBusqueda}
+                onChange={(e) => setSolBusqueda(e.target.value)}
+                className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm flex-1 min-w-[200px]"
+              />
               <select
                 value={solEstadoFilter}
                 onChange={(e) => setSolEstadoFilter(e.target.value)}
@@ -294,7 +334,11 @@ export default function ComprasPage() {
           </div>
           <div className="bg-white rounded-lg shadow overflow-hidden">
             {(() => {
-              const filtered = solicitudes.filter((s) => !solEstadoFilter || s.estado === solEstadoFilter)
+              const filtered = solicitudes.filter((s) => {
+                const matchEstado = !solEstadoFilter || s.estado === solEstadoFilter
+                const matchBusqueda = !solBusqueda || normalizeSearch(s.producto_nombre || "").includes(normalizeSearch(solBusqueda)) || normalizeSearch(s.producto_codigo || "").includes(normalizeSearch(solBusqueda))
+                return matchEstado && matchBusqueda
+              })
               if (filtered.length === 0) {
                 return (
                   <div className="text-center py-12 text-gray-500">
@@ -307,43 +351,51 @@ export default function ComprasPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-gray-100">
                       <tr>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Fecha</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Producto</th>
-                        <th className="px-4 py-3 text-right font-semibold text-gray-700">Cant. Faltante</th>
-                        <th className="px-4 py-3 text-left font-semibold text-gray-700">Pedido Origen</th>
-                        <th className="px-4 py-3 text-center font-semibold text-gray-700">Estado</th>
-                        <th className="px-4 py-3 text-center font-semibold text-gray-700">Acciones</th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700">Fecha</th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700">Producto</th>
+                        <th className="px-3 py-3 text-right font-semibold text-gray-700">Cant. Pedida</th>
+                        <th className="px-3 py-3 text-right font-semibold text-gray-700">Stock Actual</th>
+                        <th className="px-3 py-3 text-right font-semibold text-gray-700">Faltante</th>
+                        <th className="px-3 py-3 text-left font-semibold text-gray-700">Pedido Origen</th>
+                        <th className="px-3 py-3 text-center font-semibold text-gray-700">Estado</th>
+                        <th className="px-3 py-3 text-center font-semibold text-gray-700">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
                       {filtered.map((s: any, idx: number) => (
                         <tr key={s.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                          <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                          <td className="px-3 py-3 text-gray-600 whitespace-nowrap text-xs">
                             {s.created_at ? new Date(s.created_at).toLocaleDateString("es-AR") : "-"}
                           </td>
-                          <td className="px-4 py-3">
-                            <span className="font-medium text-gray-900">{s.producto_nombre || "-"}</span>
+                          <td className="px-3 py-3">
                             {s.producto_codigo && (
-                              <span className="text-xs text-gray-500 ml-2">{s.producto_codigo}</span>
+                              <span className="text-xs text-gray-500 font-mono mr-1">{s.producto_codigo}</span>
                             )}
+                            <span className="font-medium text-gray-900">{s.producto_nombre || "-"}</span>
                           </td>
-                          <td className="px-4 py-3 text-right font-medium text-gray-900">
+                          <td className="px-3 py-3 text-right font-medium text-gray-900">
+                            {s.cantidad_solicitada || 0}
+                          </td>
+                          <td className="px-3 py-3 text-right text-gray-600">
+                            {s.cantidad_stock ?? 0}
+                          </td>
+                          <td className="px-3 py-3 text-right font-bold text-red-600">
                             {s.cantidad_faltante || 0}
                           </td>
-                          <td className="px-4 py-3">
+                          <td className="px-3 py-3">
                             {s.order_id ? (
-                              <Link href={`/admin/pedidos/${s.order_id}`} className="text-blue-600 hover:underline text-xs font-mono">
-                                {s.order_id.slice(0, 8)}...
+                              <Link href={`/admin/pedidos/${s.order_id}`} className="text-blue-600 hover:underline text-xs font-mono font-medium">
+                                {s.pedido_serial || s.order_id.slice(0, 8)}
                               </Link>
                             ) : "-"}
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td className="px-3 py-3 text-center">
                             {s.estado === "borrador" && <Badge className="bg-gray-100 text-gray-700 border-gray-200">Borrador</Badge>}
                             {s.estado === "aceptado" && <Badge className="bg-green-100 text-green-700 border-green-200">Aceptado</Badge>}
                             {s.estado === "rechazado" && <Badge className="bg-red-100 text-red-700 border-red-200">Rechazado</Badge>}
                             {s.estado === "convertido_oc" && <Badge className="bg-blue-100 text-blue-700 border-blue-200">Convertido a OC</Badge>}
                           </td>
-                          <td className="px-4 py-3 text-center">
+                          <td className="px-3 py-3 text-center">
                             <div className="flex items-center justify-center gap-1">
                               {s.estado === "borrador" && (
                                 <>
@@ -368,12 +420,27 @@ export default function ComprasPage() {
                                 </>
                               )}
                               {(s.estado === "borrador" || s.estado === "aceptado") && (
-                                <Link
-                                  href={`/admin/compras/nueva?producto=${encodeURIComponent(s.producto_nombre || "")}&codigo=${encodeURIComponent(s.producto_codigo || "")}&cantidad=${s.cantidad_faltante || 0}&solicitud_id=${s.id}`}
+                                <button
+                                  onClick={() => {
+                                    // Find proveedor habitual if product has one in compras history
+                                    const provHabitual = proveedores.find((p) =>
+                                      compras.some((c) =>
+                                        c.proveedor_id === p.id &&
+                                        normalizeSearch(c.articulo || "").includes(normalizeSearch(s.producto_nombre || ""))
+                                      )
+                                    )
+                                    setOcForm({
+                                      proveedor_nombre: provHabitual?.nombre || provHabitual?.razon_social || "",
+                                      proveedor_id: provHabitual?.id || "",
+                                      importe_total: 0,
+                                      razon_social: provHabitual?.razon_social || "",
+                                    })
+                                    setConvertingOC(s)
+                                  }}
                                   className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
                                 >
                                   Convertir en OC
-                                </Link>
+                                </button>
                               )}
                             </div>
                           </td>
@@ -939,6 +1006,54 @@ export default function ComprasPage() {
           <DialogFooter>
             <button onClick={() => setDeletingOrden(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
             <button onClick={handleDeleteOrden} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">Eliminar</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========== DIALOG - CONVERTIR EN OC ========== */}
+      <Dialog open={!!convertingOC} onOpenChange={(open) => !open && setConvertingOC(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Convertir Solicitud en Orden de Compra</DialogTitle>
+          </DialogHeader>
+          {convertingOC && (
+            <div className="space-y-4">
+              <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
+                <div><strong>Producto:</strong> {convertingOC.producto_codigo && <span className="font-mono text-gray-500 mr-1">{convertingOC.producto_codigo}</span>}{convertingOC.producto_nombre}</div>
+                <div><strong>Cantidad faltante:</strong> <span className="text-red-600 font-bold">{convertingOC.cantidad_faltante}</span></div>
+                <div><strong>Pedido origen:</strong> {convertingOC.pedido_serial || convertingOC.order_id?.slice(0, 8) || "-"}</div>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">Proveedor</label>
+                <input
+                  type="text"
+                  value={ocForm.proveedor_nombre}
+                  onChange={(e) => setOcForm((f) => ({ ...f, proveedor_nombre: e.target.value, proveedor_id: "" }))}
+                  className="w-full p-2 border rounded-lg text-sm"
+                  placeholder="Nombre del proveedor"
+                  list="prov-list-oc"
+                />
+                <datalist id="prov-list-oc">
+                  {proveedores.map((p) => (
+                    <option key={p.id} value={p.nombre || p.razon_social || ""} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">Razon Social</label>
+                <input type="text" value={ocForm.razon_social} onChange={(e) => setOcForm((f) => ({ ...f, razon_social: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" placeholder="Razon social" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">Importe Total</label>
+                <input type="number" value={ocForm.importe_total} onChange={(e) => setOcForm((f) => ({ ...f, importe_total: Number(e.target.value) }))} className="w-full p-2 border rounded-lg text-sm" min={0} step={0.01} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <button onClick={() => setConvertingOC(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm" disabled={ocSubmitting}>Cancelar</button>
+            <button onClick={handleConvertirOC} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm" disabled={ocSubmitting || !ocForm.proveedor_nombre.trim()}>
+              {ocSubmitting ? "Creando..." : "Crear Orden de Compra"}
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

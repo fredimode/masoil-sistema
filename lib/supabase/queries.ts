@@ -222,48 +222,53 @@ export async function createOrder(order: {
   const { error: itemsError } = await supabase.from("order_items").insert(items)
   if (itemsError) throw itemsError
 
-  // Reserve stock: deduct from products
+  // Reserve stock: deduct from products and track shortages
+  const shortages: { productId: string; originalStock: number; quantity: number; name: string; code: string }[] = []
   for (const item of order.items) {
     if (item.productId) {
       const { data: product } = await supabase
         .from("products")
-        .select("stock")
+        .select("stock, name, code")
         .eq("id", item.productId)
         .single()
       if (product) {
-        const newStock = Math.max(0, product.stock - item.quantity)
+        const originalStock = product.stock ?? 0
+        const newStock = Math.max(0, originalStock - item.quantity)
         await supabase.from("products").update({ stock: newStock }).eq("id", item.productId)
+        // Track items where original stock < quantity requested
+        if (originalStock < item.quantity) {
+          shortages.push({
+            productId: item.productId,
+            originalStock,
+            quantity: item.quantity,
+            name: product.name,
+            code: product.code,
+          })
+        }
       }
     }
   }
 
   // Create purchase requests for items with insufficient stock
-  const { data: orderItemsData } = await supabase
-    .from("order_items")
-    .select("id, product_id, quantity")
-    .eq("order_id", orderData.id)
+  if (shortages.length > 0) {
+    const { data: orderItemsData } = await supabase
+      .from("order_items")
+      .select("id, product_id, quantity")
+      .eq("order_id", orderData.id)
 
-  if (orderItemsData) {
-    for (const oi of orderItemsData) {
-      const matchingItem = order.items.find((i) => i.productId === oi.product_id)
-      if (!matchingItem) continue
-      const { data: prod } = await supabase
-        .from("products")
-        .select("stock, name, code")
-        .eq("id", oi.product_id)
-        .single()
-      // Stock was already deducted above, so if stock < 0, there's a shortage
-      if (prod && prod.stock < 0) {
-        const faltante = Math.abs(prod.stock)
+    if (orderItemsData) {
+      for (const shortage of shortages) {
+        const oi = orderItemsData.find((o) => o.product_id === shortage.productId)
+        if (!oi) continue
         await supabase.from("solicitudes_compra").insert({
           order_id: orderData.id,
           order_item_id: oi.id,
-          product_id: oi.product_id,
-          producto_nombre: prod.name,
-          producto_codigo: prod.code,
-          cantidad_solicitada: oi.quantity,
-          cantidad_stock: Math.max(0, prod.stock + oi.quantity), // original stock before deduction
-          cantidad_faltante: faltante,
+          product_id: shortage.productId,
+          producto_nombre: shortage.name,
+          producto_codigo: shortage.code,
+          cantidad_solicitada: shortage.quantity,
+          cantidad_stock: shortage.originalStock,
+          cantidad_faltante: shortage.quantity - shortage.originalStock,
           estado: "borrador",
         })
       }
@@ -765,17 +770,59 @@ export async function fetchSolicitudesCompra(): Promise<any[]> {
   const supabase = createSupabaseClient()
   const { data, error } = await supabase
     .from("solicitudes_compra")
-    .select("*")
+    .select("*, orders:order_id(order_number_serial)")
     .order("created_at", { ascending: false })
     .limit(5000)
   if (error) throw error
-  return data || []
+  return (data || []).map((s: any) => ({
+    ...s,
+    pedido_serial: s.orders?.order_number_serial || null,
+  }))
 }
 
 export async function updateSolicitudCompra(id: string, updates: Record<string, any>): Promise<void> {
   const supabase = createSupabaseClient()
   const { error } = await supabase.from("solicitudes_compra").update(updates).eq("id", id)
   if (error) throw error
+}
+
+export async function createOrdenCompra(oc: {
+  proveedor_nombre: string
+  proveedor_id?: string | null
+  importe_total?: number
+  estado?: string
+  nro_oc?: string
+  razon_social?: string
+  articulo?: string
+}): Promise<string> {
+  const supabase = createSupabaseClient()
+
+  // Generate next OC number
+  const { data: lastOC } = await supabase
+    .from("ordenes_compra")
+    .select("nro_oc")
+    .not("nro_oc", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single()
+  const lastNum = lastOC?.nro_oc ? parseInt(lastOC.nro_oc.replace("OC-", ""), 10) : 0
+  const nroOc = `OC-${String((lastNum || 0) + 1).padStart(4, "0")}`
+
+  const { data, error } = await supabase
+    .from("ordenes_compra")
+    .insert({
+      fecha: new Date().toISOString().slice(0, 10),
+      proveedor_nombre: oc.proveedor_nombre,
+      proveedor_id: oc.proveedor_id || null,
+      importe_total: oc.importe_total || 0,
+      estado: oc.estado || "Pendiente",
+      nro_oc: oc.nro_oc || nroOc,
+      razon_social: oc.razon_social || null,
+    })
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id
 }
 
 // ---------------------------------------------------------------------------
