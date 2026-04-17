@@ -165,7 +165,7 @@ export default function CotizacionVentaDetallePage() {
       const orderId = await createOrder({
         clientId: cot.client_id,
         clientName: cot.client_name || client.businessName,
-        vendedorId: cot.vendedor_id || "",
+        vendedorId: cot.vendedor_id || null,
         vendedorName: cot.vendedor_nombre || "",
         zona: cot.zona || client.zona || "",
         notes: [cot.observaciones, `Origen: Cotización ${cot.numero}`].filter(Boolean).join(" - "),
@@ -173,7 +173,7 @@ export default function CotizacionVentaDetallePage() {
         isUrgent: false,
         total: itemsAConvertir.reduce((s, i) => s + (Number(i.subtotal) || 0), 0),
         items: itemsAConvertir.map((i) => ({
-          productId: i.product_id || "",
+          productId: i.product_id || null,
           productCode: i.producto_codigo || "",
           productName: i.producto_nombre,
           quantity: Number(i.cantidad) || 1,
@@ -183,9 +183,15 @@ export default function CotizacionVentaDetallePage() {
       })
       await updateCotizacionVenta(id, { estado: "convertida_pedido", order_id: orderId })
       router.push(`/admin/pedidos/${orderId}`)
-    } catch (e) {
-      console.error(e)
-      alert("Error al convertir en pedido")
+    } catch (e: any) {
+      console.error("Error convertir cotización en pedido:", {
+        message: e?.message,
+        code: e?.code,
+        details: e?.details,
+        hint: e?.hint,
+        full: e,
+      })
+      alert(`Error al convertir en pedido: ${e?.message || e?.details || "desconocido"}`)
       setConverting(false)
     }
   }

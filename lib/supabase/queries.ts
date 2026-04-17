@@ -165,14 +165,14 @@ export async function fetchOrdersByVendedor(vendedorId: string): Promise<Order[]
 export async function createOrder(order: {
   clientId: string
   clientName: string
-  vendedorId: string
+  vendedorId: string | null
   vendedorName: string
   zona: string
   notes: string
   isCustom: boolean
   isUrgent: boolean
   total: number
-  items: { productId: string; productCode: string; productName: string; quantity: number; price: number }[]
+  items: { productId: string | null; productCode: string; productName: string; quantity: number; price: number }[]
   razonSocial?: string
 }): Promise<string> {
   const supabase = createSupabaseClient()
@@ -217,6 +217,8 @@ export async function createOrder(order: {
   }
   const orderNumberSerial = `${prefix}${String(lastNum + 1).padStart(4, "0")}`
 
+  const vendedorIdSafe = order.vendedorId && order.vendedorId.trim() !== "" ? order.vendedorId : null
+
   // Insert order
   const { data: orderData, error: orderError } = await supabase
     .from("orders")
@@ -225,7 +227,7 @@ export async function createOrder(order: {
       order_number_serial: orderNumberSerial,
       client_id: order.clientId,
       client_name: order.clientName,
-      vendedor_id: order.vendedorId,
+      vendedor_id: vendedorIdSafe,
       vendedor_name: order.vendedorName,
       zona: order.zona,
       status: "INGRESADO",
@@ -239,12 +241,20 @@ export async function createOrder(order: {
     .select("id")
     .single()
 
-  if (orderError) throw orderError
+  if (orderError) {
+    console.error("createOrder: orders insert failed", {
+      message: orderError.message,
+      code: orderError.code,
+      details: orderError.details,
+      hint: orderError.hint,
+    })
+    throw orderError
+  }
 
   // Insert order items
   const items = order.items.map((item) => ({
     order_id: orderData.id,
-    product_id: item.productId,
+    product_id: item.productId && item.productId.trim() !== "" ? item.productId : null,
     quantity: item.quantity,
     unit_price: item.price,
     reservado: true,
@@ -252,7 +262,15 @@ export async function createOrder(order: {
   }))
 
   const { error: itemsError } = await supabase.from("order_items").insert(items)
-  if (itemsError) throw itemsError
+  if (itemsError) {
+    console.error("createOrder: order_items insert failed", {
+      message: itemsError.message,
+      code: itemsError.code,
+      details: itemsError.details,
+      hint: itemsError.hint,
+    })
+    throw itemsError
+  }
 
   // Reserve stock: deduct from products and track shortages
   const shortages: { productId: string; originalStock: number; quantity: number; name: string; code: string }[] = []
@@ -311,9 +329,17 @@ export async function createOrder(order: {
   const { error: histError } = await supabase.from("order_status_history").insert({
     order_id: orderData.id,
     status: "INGRESADO",
-    changed_by: order.vendedorId,
+    changed_by: vendedorIdSafe,
   })
-  if (histError) throw histError
+  if (histError) {
+    console.error("createOrder: order_status_history insert failed", {
+      message: histError.message,
+      code: histError.code,
+      details: histError.details,
+      hint: histError.hint,
+    })
+    throw histError
+  }
 
   return orderData.id
 }
