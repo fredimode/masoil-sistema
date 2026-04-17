@@ -16,7 +16,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const router = useRouter()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
-  const [userRole, setUserRole] = useState<UserRole>("admin")
+  const [userRole, setUserRole] = useState<UserRole>("usuario")
   const [userName, setUserName] = useState<string>("")
 
   useEffect(() => {

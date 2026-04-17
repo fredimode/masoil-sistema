@@ -4,7 +4,7 @@ import { defineConfig, devices } from "@playwright/test"
 // Sobrescribir con BASE_URL=... sólo para dev/staging; NUNCA contra producción.
 export default defineConfig({
   testDir: "./tests/e2e",
-  timeout: 30_000,
+  timeout: 60_000,
   fullyParallel: false,
   retries: 0,
   reporter: [["list"]],

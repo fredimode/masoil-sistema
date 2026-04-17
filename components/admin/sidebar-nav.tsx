@@ -105,7 +105,7 @@ interface AdminSidebarContentProps {
   userName?: string
 }
 
-export function AdminSidebarContent({ onNavigate, userRole = "admin", userName }: AdminSidebarContentProps) {
+export function AdminSidebarContent({ onNavigate, userRole = "usuario", userName }: AdminSidebarContentProps) {
   const pathname = usePathname()
 
   const visibleSections = navSections.filter((s) => s.roles.includes(userRole))

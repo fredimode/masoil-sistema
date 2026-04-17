@@ -16,7 +16,9 @@ test.describe("Autenticación y roles", () => {
     // Sidebar puede cargarse un instante después; esperamos a que aparezca algo clave
     await expect(page.getByText(/Pedidos|Clientes|Stock/i).first()).toBeVisible({ timeout: 10_000 })
 
-    await expect(page.getByText("Finanzas", { exact: false })).toHaveCount(0)
-    await expect(page.getByText("Sistema", { exact: false })).toHaveCount(0)
+    // Labels exactos de secciones del sidebar admin-only (evita matches parciales
+    // como "Vista general del sistema de pedidos" en el dashboard).
+    await expect(page.getByText("Finanzas", { exact: true })).toHaveCount(0)
+    await expect(page.getByText("Sistema", { exact: true })).toHaveCount(0)
   })
 })
