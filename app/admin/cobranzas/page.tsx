@@ -1252,56 +1252,142 @@ function TabInforme({ cobranzas, clients }: { cobranzas: any[]; clients: any[] }
   const [filtroRS, setFiltroRS] = useState("Todas")
   const [desde, setDesde] = useState("")
   const [hasta, setHasta] = useState("")
+  const [clienteFiltro, setClienteFiltro] = useState("todos") // "todos" | clientId
+  const [clienteSearch, setClienteSearch] = useState("")
+  const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
   const [page, setPage] = useState(1)
 
   const clientMap = useMemo(() => {
-    const map: Record<string, string> = {}
-    clients.forEach((c) => { map[c.id] = c.businessName })
+    const map: Record<string, any> = {}
+    clients.forEach((c) => { map[c.id] = c })
     return map
   }, [clients])
 
-  const filtered = useMemo(() => {
-    let rows = cobranzas
+  // Filtrar comprobantes: solo los con saldo pendiente > 0
+  const pendientes = useMemo(() => {
+    let rows = cobranzas.filter((c) => {
+      const saldo = Number(c.saldo_pendiente ?? c.total ?? 0)
+      return saldo > 0
+    })
     if (filtroRS !== "Todas") {
       rows = rows.filter((c) => (c.razon_social || "").toLowerCase() === filtroRS.toLowerCase())
     }
-    if (desde) rows = rows.filter((c) => (c.fecha || c.created_at || "") >= desde)
-    if (hasta) rows = rows.filter((c) => (c.fecha || c.created_at || "") <= hasta)
+    const fechaCampo = (c: any) => c.fecha_comprobante || c.fecha || c.created_at || ""
+    if (desde) rows = rows.filter((c) => fechaCampo(c) >= desde)
+    if (hasta) rows = rows.filter((c) => fechaCampo(c) <= hasta)
+    if (clienteFiltro !== "todos") {
+      rows = rows.filter((c) => c.client_id === clienteFiltro)
+    }
     return rows
-  }, [cobranzas, filtroRS, desde, hasta])
+  }, [cobranzas, filtroRS, desde, hasta, clienteFiltro])
 
-  const totals = useMemo(() => {
-    return filtered.reduce(
-      (acc, c) => ({
-        total: acc.total + (c.total || 0),
-        saldo: acc.saldo + (c.saldo_pendiente || c.total || 0),
-      }),
-      { total: 0, saldo: 0 }
-    )
-  }, [filtered])
+  // Agrupar por cliente
+  const porCliente = useMemo(() => {
+    type Grupo = { client_id: string; client_name: string; facturas: any[]; total: number }
+    const map = new Map<string, Grupo>()
+    for (const c of pendientes) {
+      const id = c.client_id || "sin_cliente"
+      const cli = clientMap[id]
+      const name = cli?.businessName || c.client_name || "Sin cliente"
+      const saldo = Number(c.saldo_pendiente ?? c.total ?? 0)
+      const entry: Grupo = map.get(id) || { client_id: id, client_name: name, facturas: [] as any[], total: 0 }
+      entry.facturas.push(c)
+      entry.total += saldo
+      map.set(id, entry)
+    }
+    return Array.from(map.values()).sort((a, b) => b.total - a.total)
+  }, [pendientes, clientMap])
 
-  const pag = usePagination(filtered, 50)
+  const totalGeneral = useMemo(() => porCliente.reduce((s, c) => s + c.total, 0), [porCliente])
+
+  const pag = usePagination(porCliente, 50)
+  const currentPage = Math.min(page, pag.totalPages)
+
+  // Búsqueda de clientes para el filtro
+  const clientesFiltrados = useMemo(() => {
+    if (!clienteSearch.trim()) return clients.slice(0, 20)
+    const q = normalizeSearch(clienteSearch)
+    return clients.filter((c) => normalizeSearch(c.businessName || "").includes(q)).slice(0, 20)
+  }, [clients, clienteSearch])
+
+  function toggleExpand(id: string) {
+    setExpandedClients((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function expandAll() {
+    setExpandedClients(new Set(porCliente.map((c) => c.client_id)))
+  }
+
+  function collapseAll() {
+    setExpandedClients(new Set())
+  }
 
   function exportXLSX() {
-    const ws = XLSX.utils.json_to_sheet(
-      filtered.map((c) => ({
-        Cliente: clientMap[c.client_id] || c.client_name || "-",
-        Comprobante: c.comprobante || c.tipo_comprobante || "",
-        Fecha: formatDateStr(c.fecha || c.created_at),
-        Total: c.total || 0,
-        "Saldo Pendiente": c.saldo_pendiente || c.total || 0,
-      }))
-    )
+    const rows: any[] = []
+    for (const grupo of porCliente) {
+      for (const f of grupo.facturas) {
+        rows.push({
+          Cliente: grupo.client_name,
+          "Razón Social": f.razon_social || "-",
+          Tipo: f.comprobante || f.tipo_comprobante || "",
+          Número: f.numero_comprobante || f.pv_numero || "",
+          Fecha: formatDateStr(f.fecha_comprobante || f.fecha || f.created_at),
+          Total: Number(f.total) || 0,
+          "Saldo Pendiente": Number(f.saldo_pendiente ?? f.total ?? 0),
+        })
+      }
+    }
+    const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "Cobranzas Pendientes")
-    XLSX.writeFile(wb, "cobranzas_pendientes.xlsx")
+    const empresaTxt = filtroRS === "Todas" ? "todas" : filtroRS.toLowerCase()
+    XLSX.writeFile(wb, `cobranzas_pendientes_${empresaTxt}.xlsx`)
+  }
+
+  function handlePrint() {
+    const w = window.open("", "_blank")
+    if (!w) return
+    const empresaTxt = filtroRS === "Todas" ? "Todas las empresas" : filtroRS
+    const rangoTxt = desde || hasta ? `Período: ${desde || "..."} a ${hasta || "..."}` : ""
+    const grupos = porCliente.map((g) => {
+      const filas = g.facturas.map((f) => `
+        <tr>
+          <td>${f.comprobante || f.tipo_comprobante || "-"}</td>
+          <td>${f.numero_comprobante || f.pv_numero || "-"}</td>
+          <td>${formatDateStr(f.fecha_comprobante || f.fecha || f.created_at)}</td>
+          <td style="text-align:right">${formatCurrency(Number(f.total) || 0)}</td>
+          <td style="text-align:right;font-weight:bold">${formatCurrency(Number(f.saldo_pendiente ?? f.total ?? 0))}</td>
+        </tr>`).join("")
+      return `
+        <tr class="cliente"><td colspan="5">${g.client_name} — <strong>${formatCurrency(g.total)}</strong></td></tr>
+        ${filas}
+      `
+    }).join("")
+    w.document.write(`<html><head><title>Cobranzas Pendientes - ${empresaTxt}</title>
+      <style>body{font-family:sans-serif;max-width:1000px;margin:30px auto}h2{margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #ddd;padding:6px 8px;font-size:12px}th{background:#f5f5f5;text-align:left}tr.cliente td{background:#eef2ff;font-weight:600}.totals td{font-weight:bold;background:#f0f0f0}</style></head><body>
+      <h2>Informe de Cobranzas Pendientes</h2>
+      <p><strong>${empresaTxt}</strong>${rangoTxt ? " — " + rangoTxt : ""}</p>
+      <table>
+        <thead><tr><th>Tipo</th><th>Número</th><th>Fecha</th><th style="text-align:right">Total</th><th style="text-align:right">Saldo Pendiente</th></tr></thead>
+        <tbody>
+          ${grupos}
+          <tr class="totals"><td colspan="4" style="text-align:right">TOTAL GENERAL</td><td style="text-align:right">${formatCurrency(totalGeneral)}</td></tr>
+        </tbody>
+      </table>
+      <script>window.print()<\/script></body></html>`)
   }
 
   return (
     <Card className="p-4 space-y-4">
+      {/* Filtros */}
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="text-sm font-medium mb-1 block">Razón Social</label>
+          <label className="text-sm font-medium mb-1 block">Empresa</label>
           <select value={filtroRS} onChange={(e) => setFiltroRS(e.target.value)} className="border rounded-md px-3 py-2 text-sm">
             {RAZONES_SOCIALES.map((rs) => (
               <option key={rs} value={rs}>{rs}</option>
@@ -1316,50 +1402,135 @@ function TabInforme({ cobranzas, clients }: { cobranzas: any[]; clients: any[] }
           <label className="text-sm font-medium mb-1 block">Hasta</label>
           <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="border rounded-md px-3 py-2 text-sm" />
         </div>
-        <button onClick={exportXLSX} className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700" disabled={filtered.length === 0}>
+        <div className="flex-1 min-w-[200px]">
+          <label className="text-sm font-medium mb-1 block">Cliente</label>
+          <div className="flex gap-2">
+            <select
+              value={clienteFiltro}
+              onChange={(e) => setClienteFiltro(e.target.value)}
+              className="border rounded-md px-3 py-2 text-sm flex-1"
+            >
+              <option value="todos">Todos los clientes</option>
+              {(clienteFiltro !== "todos" && !clientesFiltrados.some((c) => c.id === clienteFiltro) && clientMap[clienteFiltro]) && (
+                <option value={clienteFiltro}>{clientMap[clienteFiltro].businessName}</option>
+              )}
+              {clientesFiltrados.map((c) => (
+                <option key={c.id} value={c.id}>{c.businessName}</option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={clienteSearch}
+              onChange={(e) => setClienteSearch(e.target.value)}
+              placeholder="Buscar..."
+              className="border rounded-md px-3 py-2 text-sm w-32"
+            />
+          </div>
+        </div>
+        <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-2 bg-gray-600 text-white rounded-md text-sm hover:bg-gray-700" disabled={porCliente.length === 0}>
+          <Printer className="h-4 w-4" /> Imprimir
+        </button>
+        <button onClick={exportXLSX} className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700" disabled={porCliente.length === 0}>
           <Download className="h-4 w-4" /> XLSX
         </button>
       </div>
 
+      {/* Resumen + expandir */}
+      <div className="flex items-center justify-between text-sm">
+        <div>
+          <span className="text-muted-foreground">Total clientes con deuda: </span>
+          <span className="font-semibold">{porCliente.length}</span>
+          <span className="ml-4 text-muted-foreground">Saldo total: </span>
+          <span className="font-semibold text-red-600">{formatCurrency(totalGeneral)}</span>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={expandAll} className="text-xs text-blue-600 hover:underline">Expandir todo</button>
+          <button onClick={collapseAll} className="text-xs text-blue-600 hover:underline">Colapsar todo</button>
+        </div>
+      </div>
+
+      {/* Tabla agrupada */}
       <div className="border rounded-md overflow-auto">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10"></TableHead>
               <TableHead>Cliente</TableHead>
-              <TableHead>Comprobante</TableHead>
-              <TableHead>Fecha</TableHead>
-              <TableHead className="text-right">Total</TableHead>
-              <TableHead className="text-right">Saldo Pendiente</TableHead>
+              <TableHead className="text-right">Cant. Facturas</TableHead>
+              <TableHead className="text-right">Saldo Total</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {pag.getPage(page).length === 0 ? (
+            {porCliente.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-gray-500 py-8">Sin cobranzas pendientes</TableCell>
+                <TableCell colSpan={4} className="text-center text-gray-500 py-8">Sin cobranzas pendientes con los filtros actuales</TableCell>
               </TableRow>
             ) : (
-              pag.getPage(page).map((c: any, i: number) => (
-                <TableRow key={c.id || i}>
-                  <TableCell>{clientMap[c.client_id] || c.client_name || "-"}</TableCell>
-                  <TableCell>{c.comprobante || c.tipo_comprobante || "-"}</TableCell>
-                  <TableCell>{formatDateStr(c.fecha || c.created_at)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(c.total || 0)}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(c.saldo_pendiente || c.total || 0)}</TableCell>
-                </TableRow>
+              pag.getPage(currentPage).map((g) => (
+                <GrupoCliente
+                  key={g.client_id}
+                  grupo={g}
+                  expanded={expandedClients.has(g.client_id)}
+                  onToggle={() => toggleExpand(g.client_id)}
+                />
               ))
             )}
-            {filtered.length > 0 && (
+            {porCliente.length > 0 && (
               <TableRow className="bg-gray-50 font-bold">
-                <TableCell colSpan={3}>TOTALES</TableCell>
-                <TableCell className="text-right">{formatCurrency(totals.total)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(totals.saldo)}</TableCell>
+                <TableCell colSpan={3} className="text-right">TOTAL GENERAL</TableCell>
+                <TableCell className="text-right">{formatCurrency(totalGeneral)}</TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
-      <TablePagination currentPage={page} totalPages={pag.totalPages} totalItems={pag.totalItems} pageSize={pag.pageSize} onPageChange={setPage} />
+      <TablePagination currentPage={currentPage} totalPages={pag.totalPages} totalItems={pag.totalItems} pageSize={pag.pageSize} onPageChange={setPage} />
     </Card>
+  )
+}
+
+function GrupoCliente({ grupo, expanded, onToggle }: { grupo: { client_id: string; client_name: string; facturas: any[]; total: number }; expanded: boolean; onToggle: () => void }) {
+  return (
+    <>
+      <TableRow onClick={onToggle} className="cursor-pointer hover:bg-blue-50">
+        <TableCell>
+          <span className="inline-block w-4 text-gray-500">{expanded ? "▼" : "▶"}</span>
+        </TableCell>
+        <TableCell className="font-medium">{grupo.client_name}</TableCell>
+        <TableCell className="text-right">{grupo.facturas.length}</TableCell>
+        <TableCell className="text-right font-semibold text-red-600">{formatCurrency(grupo.total)}</TableCell>
+      </TableRow>
+      {expanded && (
+        <TableRow>
+          <TableCell colSpan={4} className="p-0">
+            <div className="bg-gray-50 p-3">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-muted-foreground">
+                    <th className="px-2 py-1">Tipo</th>
+                    <th className="px-2 py-1">Número</th>
+                    <th className="px-2 py-1">Fecha</th>
+                    <th className="px-2 py-1 text-right">Total</th>
+                    <th className="px-2 py-1 text-right">Saldo Pendiente</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {grupo.facturas.map((f, i) => (
+                    <tr key={f.id || i} className="border-t border-gray-200">
+                      <td className="px-2 py-1">{f.comprobante || f.tipo_comprobante || "-"}</td>
+                      <td className="px-2 py-1 font-mono">{f.numero_comprobante || f.pv_numero || "-"}</td>
+                      <td className="px-2 py-1">{formatDateStr(f.fecha_comprobante || f.fecha || f.created_at)}</td>
+                      <td className="px-2 py-1 text-right">{formatCurrency(Number(f.total) || 0)}</td>
+                      <td className="px-2 py-1 text-right font-medium">{formatCurrency(Number(f.saldo_pendiente ?? f.total ?? 0))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+    </>
   )
 }
 
