@@ -1460,3 +1460,71 @@ export async function createOrdenCompraItems(items: Record<string, any>[]): Prom
   const { error } = await supabase.from("orden_compra_items").insert(items)
   if (error) throw error
 }
+
+// ---------------------------------------------------------------------------
+// Producto-Proveedor (asociación con precios)
+// ---------------------------------------------------------------------------
+
+export async function fetchProveedoresByProducto(productId: string): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("producto_proveedor")
+    .select("*, proveedores:proveedor_id(id, nombre, razon_social, cuit, empresa, email_comercial)")
+    .eq("product_id", productId)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return (data || []).map((r: any) => ({
+    ...r,
+    proveedor_nombre: r.proveedores?.nombre || r.proveedores?.razon_social || "",
+    proveedor_cuit: r.proveedores?.cuit || "",
+    proveedor_empresa: r.proveedores?.empresa || "",
+    proveedor_email: r.proveedores?.email_comercial || "",
+  }))
+}
+
+export async function fetchProductosByProveedor(proveedorId: string): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("producto_proveedor")
+    .select("*, products:product_id(id, code, name, price)")
+    .eq("proveedor_id", proveedorId)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return (data || []).map((r: any) => ({
+    ...r,
+    product_code: r.products?.code || "",
+    product_name: r.products?.name || "",
+    product_price: r.products?.price || 0,
+  }))
+}
+
+export async function upsertProductoProveedor(row: {
+  product_id: string
+  proveedor_id: string
+  precio_proveedor?: number | null
+  codigo_proveedor?: string | null
+  observaciones?: string | null
+}): Promise<string> {
+  const supabase = createSupabaseClient()
+  const hoy = new Date().toISOString().slice(0, 10)
+  const { data, error } = await supabase
+    .from("producto_proveedor")
+    .upsert({
+      product_id: row.product_id,
+      proveedor_id: row.proveedor_id,
+      precio_proveedor: row.precio_proveedor ?? null,
+      codigo_proveedor: row.codigo_proveedor ?? null,
+      observaciones: row.observaciones ?? null,
+      ultimo_precio_fecha: row.precio_proveedor ? hoy : null,
+    }, { onConflict: "product_id,proveedor_id" })
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+export async function deleteProductoProveedor(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("producto_proveedor").delete().eq("id", id)
+  if (error) throw error
+}

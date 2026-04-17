@@ -14,6 +14,7 @@ import type { Product } from "@/lib/types"
 import { Search, Plus, Download, Upload, Trash2 } from "lucide-react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
+import { ProductoProveedoresSection } from "@/components/admin/producto-proveedores-section"
 
 export default function AdminStockPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -356,7 +357,7 @@ export default function AdminStockPage() {
         >
           <div className="fixed inset-0 bg-black/50 -z-10" />
           <div
-            className="relative bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4"
+            className="relative bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl mx-4 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >
@@ -403,6 +404,11 @@ export default function AdminStockPage() {
                   />
                 </div>
               </div>
+
+              <div className="mt-6 pt-4 border-t">
+                <ProductoProveedoresSection productId={editProduct.id} productPrice={editProduct.price} />
+              </div>
+
               <div className="flex justify-end gap-2 mt-6">
                 <button
                   type="button"

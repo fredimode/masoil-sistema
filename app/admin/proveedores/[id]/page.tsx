@@ -24,6 +24,7 @@ import { formatCurrency } from "@/lib/utils"
 import { ArrowLeft, Edit, MessageCircle, Save } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { ProveedorProductosSection } from "@/components/admin/proveedor-productos-section"
 
 export default function AdminProveedorDetailPage({
   params,
@@ -239,6 +240,11 @@ export default function AdminProveedorDetailPage({
             </div>
           )}
         </div>
+      </Card>
+
+      {/* Productos que provee */}
+      <Card className="p-6">
+        <ProveedorProductosSection proveedorId={id} />
       </Card>
 
       {/* Historial de Compras */}

@@ -11,12 +11,12 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { fetchClients, fetchProducts, fetchVendedores, createOrder, esVendedorComercial } from "@/lib/supabase/queries"
+import { fetchClients, fetchProducts, fetchVendedores, createOrder, esVendedorComercial, fetchProveedoresByProducto } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/client"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import type { Client, Product, Vendedor } from "@/lib/types"
 import { formatCurrency } from "@/lib/utils"
-import { ArrowLeft, Plus, Trash2, Search, AlertTriangle, PackagePlus, History, CircleDot } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, Search, AlertTriangle, PackagePlus, History, CircleDot, Truck } from "lucide-react"
 import Link from "next/link"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
@@ -64,6 +64,18 @@ export default function AdminNuevoPedidoPage() {
 
   // Price history per product
   const [priceHistory, setPriceHistory] = useState<Record<string, { fecha: string; precio: number }[]>>({})
+
+  // Proveedores asociados al producto (informativo)
+  const [provsByProduct, setProvsByProduct] = useState<Record<string, any[]>>({})
+  async function loadProveedoresProducto(productId: string) {
+    if (provsByProduct[productId]) return
+    try {
+      const data = await fetchProveedoresByProducto(productId)
+      setProvsByProduct((prev) => ({ ...prev, [productId]: data }))
+    } catch {
+      // non-blocking
+    }
+  }
 
   async function loadPriceHistory(productId: string) {
     if (priceHistory[productId]) return
@@ -467,6 +479,32 @@ export default function AdminNuevoPedidoPage() {
                                   <p key={i} className="text-xs">{h.fecha}: {formatCurrency(h.precio)}</p>
                                 ))
                               )}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-0.5"
+                                onMouseEnter={() => loadProveedoresProducto(item.productId)}
+                              >
+                                <Truck className="h-3 w-3" /> Proveedores
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-xs">
+                              <p className="font-semibold text-xs mb-1">Proveedores asociados:</p>
+                              {(() => {
+                                const list = provsByProduct[item.productId]
+                                if (!list) return <p className="text-xs text-gray-400">Cargando...</p>
+                                if (list.length === 0) return <p className="text-xs text-gray-400">Sin proveedores asociados</p>
+                                return list.map((p, i) => (
+                                  <p key={i} className="text-xs">
+                                    {p.proveedor_nombre}{p.precio_proveedor ? ` - ${formatCurrency(Number(p.precio_proveedor))}` : ""}
+                                  </p>
+                                ))
+                              })()}
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>

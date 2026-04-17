@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect, useMemo, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { fetchProveedores, fetchCompras, fetchProducts, updateSolicitudCompra, createOrdenCompra } from "@/lib/supabase/queries"
+import { fetchProveedores, fetchCompras, fetchProducts, updateSolicitudCompra, createOrdenCompra, fetchProveedoresByProducto } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/client"
 import { normalizeSearch, formatCurrency } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -47,6 +47,7 @@ function NuevaCompraForm() {
   const [prodSearch, setProdSearch] = useState("")
   const [showProdDropdown, setShowProdDropdown] = useState(false)
   const [compraItems, setCompraItems] = useState<CompraItem[]>([])
+  const [proveedoresAsociados, setProveedoresAsociados] = useState<any[]>([])
   const [articuloMode, setArticuloMode] = useState<"productos" | "texto">("productos")
   const [presupuestoFile, setPresupuestoFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -120,10 +121,65 @@ function NuevaCompraForm() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Proveedores sugeridos: los que compraron antes alguno de los productos del carrito
+  // Load asociaciones producto-proveedor cada vez que cambian los items
+  useEffect(() => {
+    async function loadAsoc() {
+      const productIds = compraItems.map((i) => i.productId).filter(Boolean)
+      if (productIds.length === 0) {
+        setProveedoresAsociados([])
+        return
+      }
+      try {
+        const results = await Promise.all(productIds.map((id) => fetchProveedoresByProducto(id as string)))
+        const flat = results.flat()
+        setProveedoresAsociados(flat)
+      } catch (e) {
+        console.error(e)
+      }
+    }
+    loadAsoc()
+  }, [compraItems])
+
+  // Auto-seleccionar el proveedor si todos los productos están asociados al mismo único proveedor
+  useEffect(() => {
+    if (form.proveedor_id || proveedoresAsociados.length === 0) return
+    const productIds = compraItems.map((i) => i.productId).filter(Boolean)
+    if (productIds.length === 0) return
+    // Proveedores únicos que cubren TODOS los productos
+    const byProv: Record<string, Set<string>> = {}
+    for (const a of proveedoresAsociados) {
+      const pid = String(a.proveedor_id)
+      byProv[pid] = byProv[pid] || new Set()
+      byProv[pid].add(String(a.product_id))
+    }
+    const cubrenTodos = Object.entries(byProv).filter(([, set]) => productIds.every((pid) => set.has(String(pid))))
+    if (cubrenTodos.length === 1) {
+      const [uniqueProvId] = cubrenTodos[0]
+      const prov = proveedores.find((p) => String(p.id) === uniqueProvId)
+      if (prov) {
+        selectProveedor(prov)
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proveedoresAsociados])
+
+  // Proveedores sugeridos combinando historial + asociación
   const proveedoresSugeridos = useMemo(() => {
     if (compraItems.length === 0) return []
-    const ids = new Set<string>()
+    const map = new Map<string, { prov: any; precio?: number; origen: "asociado" | "historial" }>()
+    // Asociados (prioridad, mostramos precio)
+    for (const a of proveedoresAsociados) {
+      const pid = String(a.proveedor_id)
+      const prov = proveedores.find((p) => String(p.id) === pid)
+      if (prov && !map.has(pid)) {
+        map.set(pid, {
+          prov,
+          precio: a.precio_proveedor ? Number(a.precio_proveedor) : undefined,
+          origen: "asociado",
+        })
+      }
+    }
+    // Historial (completan)
     for (const item of compraItems) {
       compras.forEach((c) => {
         if (
@@ -133,12 +189,16 @@ function NuevaCompraForm() {
             (item.code && normalizeSearch(c.articulo || "").includes(normalizeSearch(item.code)))
           )
         ) {
-          ids.add(String(c.proveedor_id))
+          const pid = String(c.proveedor_id)
+          if (!map.has(pid)) {
+            const prov = proveedores.find((p) => String(p.id) === pid)
+            if (prov) map.set(pid, { prov, origen: "historial" })
+          }
         }
       })
     }
-    return proveedores.filter((p) => ids.has(String(p.id))).slice(0, 6)
-  }, [compras, proveedores, compraItems])
+    return Array.from(map.values()).slice(0, 8)
+  }, [compras, proveedores, compraItems, proveedoresAsociados])
 
   const filteredProveedores = useMemo(() => {
     if (!provSearch.trim()) return []
@@ -344,19 +404,21 @@ function NuevaCompraForm() {
               <Input id="fecha" type="date" value={form.fecha} onChange={(e) => setForm((prev) => ({ ...prev, fecha: e.target.value }))} />
             </div>
 
-            {/* Proveedores sugeridos (chips) - si hay productos cargados y hay historial */}
+            {/* Proveedores sugeridos (chips) - asociados + historial */}
             {proveedoresSugeridos.length > 0 && !form.proveedor_id && (
               <div className="space-y-1 rounded-lg border border-blue-200 bg-blue-50 p-3">
                 <p className="text-xs text-blue-800 font-medium">Proveedores sugeridos para estos productos</p>
                 <div className="flex flex-wrap gap-2">
-                  {proveedoresSugeridos.map((p) => (
+                  {proveedoresSugeridos.map((s) => (
                     <button
-                      key={p.id}
+                      key={s.prov.id}
                       type="button"
-                      onClick={() => selectProveedor(p)}
-                      className="px-3 py-1 text-xs bg-white border border-blue-300 rounded-full hover:bg-blue-100"
+                      onClick={() => selectProveedor(s.prov)}
+                      className={`px-3 py-1 text-xs rounded-full hover:bg-blue-100 border ${s.origen === "asociado" ? "bg-green-50 border-green-300 text-green-800" : "bg-white border-blue-300"}`}
                     >
-                      {p.nombre || p.razon_social}
+                      <span className="font-medium">{s.prov.nombre || s.prov.razon_social}</span>
+                      {s.precio ? <span className="ml-1 text-[10px] opacity-80">({formatCurrency(s.precio)})</span> : null}
+                      {s.origen === "asociado" && <span className="ml-1 text-[10px] opacity-60">★</span>}
                     </button>
                   ))}
                 </div>

@@ -9,10 +9,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Search, Trash2 } from "lucide-react"
+import { ArrowLeft, Search, Trash2, Truck } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   fetchClients, fetchProducts, fetchVendedores,
   createCotizacionVenta, getNextCotizacionVentaNumero, esVendedorComercial,
+  fetchProveedoresByProducto,
 } from "@/lib/supabase/queries"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import type { Client, Product, Vendedor } from "@/lib/types"
@@ -62,6 +64,17 @@ export default function NuevaCotizacionVentaPage() {
   const [plazoEntrega, setPlazoEntrega] = useState("")
   const [observaciones, setObservaciones] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [provsByProduct, setProvsByProduct] = useState<Record<string, any[]>>({})
+
+  async function loadProveedoresProducto(productId: string) {
+    if (provsByProduct[productId]) return
+    try {
+      const data = await fetchProveedoresByProducto(productId)
+      setProvsByProduct((prev) => ({ ...prev, [productId]: data }))
+    } catch {
+      // non-blocking
+    }
+  }
 
   useEffect(() => {
     Promise.all([fetchClients(), fetchProducts(), fetchVendedores()])
@@ -313,7 +326,37 @@ export default function NuevaCotizacionVentaPage() {
                 <div key={item.productId || item.productCode || item.productName} className="grid grid-cols-[1fr,70px,100px,110px,40px] gap-2 p-3 border-t items-center">
                   <div>
                     <p className="font-medium text-sm">{item.productName}</p>
-                    <span className="text-xs text-muted-foreground">{item.productCode}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">{item.productCode}</span>
+                      {item.productId && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-0.5"
+                                onMouseEnter={() => loadProveedoresProducto(item.productId as string)}
+                              >
+                                <Truck className="h-3 w-3" /> Proveedores
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-xs">
+                              <p className="font-semibold text-xs mb-1">Proveedores asociados:</p>
+                              {(() => {
+                                const list = provsByProduct[item.productId as string]
+                                if (!list) return <p className="text-xs text-gray-400">Cargando...</p>
+                                if (list.length === 0) return <p className="text-xs text-gray-400">Sin proveedores asociados</p>
+                                return list.map((p, i) => (
+                                  <p key={i} className="text-xs">
+                                    {p.proveedor_nombre}{p.precio_proveedor ? ` - ${formatCurrency(Number(p.precio_proveedor))}` : ""}
+                                  </p>
+                                ))
+                              })()}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
                   </div>
                   <Input
                     type="number"
