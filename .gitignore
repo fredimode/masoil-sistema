@@ -38,3 +38,9 @@ package-lock.json
 
 # Excel data files (contienen datos reales, no subir)
 scripts/data/*.xlsx
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
