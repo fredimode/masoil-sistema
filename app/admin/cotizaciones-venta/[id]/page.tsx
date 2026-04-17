@@ -13,6 +13,8 @@ import {
   fetchCotizacionVentaById, fetchCotizacionVentaItems, updateCotizacionVenta,
   updateCotizacionVentaItemAprobado, fetchClientById, createOrder,
 } from "@/lib/supabase/queries"
+import { createClient as createSupabaseClient } from "@/lib/supabase/client"
+import { generateCotizacionPDF } from "@/lib/pdf/cotizacion-pdf"
 import { formatCurrency, formatDateStr } from "@/lib/utils"
 
 const ESTADO_BADGES: Record<string, { label: string; cls: string }> = {
@@ -36,6 +38,60 @@ export default function CotizacionVentaDetallePage() {
   const [parcialMode, setParcialMode] = useState(false)
   const [resendOpen, setResendOpen] = useState(false)
   const [converting, setConverting] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [sending, setSending] = useState(false)
+
+  function buildPDFData() {
+    if (!cot) return null
+    return {
+      numero: cot.numero,
+      fecha: cot.fecha || cot.created_at,
+      validez_fecha: cot.validez_fecha,
+      forma_pago: cot.forma_pago,
+      plazo_entrega: cot.plazo_entrega,
+      observaciones: cot.observaciones,
+      total: Number(cot.total) || 0,
+      razon_social: cot.razon_social,
+      cliente: {
+        razon_social: cot.client_name || client?.businessName || "",
+        cuit: client?.cuit || client?.numeroDocum || "",
+        domicilio: client?.address || client?.domicilioEntrega || "",
+        contacto: client?.contactName || "",
+      },
+      items: items.map((i) => ({
+        cantidad: Number(i.cantidad) || 0,
+        producto_nombre: i.producto_nombre || "",
+        producto_codigo: i.producto_codigo || "",
+        precio_unitario: Number(i.precio_unitario) || 0,
+        subtotal: Number(i.subtotal) || 0,
+      })),
+    }
+  }
+
+  async function ensurePDFUrl(): Promise<string | null> {
+    if (!cot) return null
+    const pdfData = buildPDFData()
+    if (!pdfData) return null
+    const blob = generateCotizacionPDF(pdfData)
+    const supabase = createSupabaseClient()
+    const path = `cotizaciones/${cot.id}.pdf`
+    const { error: upErr } = await supabase.storage
+      .from("cotizaciones")
+      .upload(path, blob, { upsert: true, contentType: "application/pdf" })
+    if (upErr) {
+      console.error("Error subiendo PDF:", upErr)
+      return null
+    }
+    const { data: signed } = await supabase.storage
+      .from("cotizaciones")
+      .createSignedUrl(path, 60 * 60 * 24 * 7) // 7 días
+    const url = signed?.signedUrl || null
+    if (url && url !== cot.pdf_url) {
+      await updateCotizacionVenta(cot.id, { pdf_url: url })
+      setCot({ ...cot, pdf_url: url })
+    }
+    return url
+  }
 
   async function loadAll() {
     setLoading(true)
@@ -134,55 +190,79 @@ export default function CotizacionVentaDetallePage() {
     }
   }
 
-  function handleImprimir() {
-    const w = window.open("", "_blank")
-    if (!w || !cot) return
-    const rows = items.map((i) => `
-      <tr>
-        <td>${i.producto_codigo || ""}</td>
-        <td>${i.producto_nombre || ""}</td>
-        <td style="text-align:center">${i.cantidad}</td>
-        <td style="text-align:right">${formatCurrency(Number(i.precio_unitario) || 0)}</td>
-        <td style="text-align:right">${formatCurrency(Number(i.subtotal) || 0)}</td>
-      </tr>`).join("")
-    w.document.write(`<html><head><title>${cot.numero}</title>
-      <style>body{font-family:sans-serif;max-width:900px;margin:30px auto}h1{font-size:20px}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #ddd;padding:6px 8px;font-size:12px}th{background:#f5f5f5;text-align:left}.totals{font-weight:bold;background:#f0f0f0}.info{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px;font-size:13px}</style></head><body>
-      <h1>Cotización ${cot.numero}</h1>
-      <div class="info">
-        <div><strong>Fecha:</strong> ${formatDateStr(cot.fecha)}</div>
-        <div><strong>Válida hasta:</strong> ${cot.validez_fecha ? formatDateStr(cot.validez_fecha) : "-"}</div>
-        <div><strong>Cliente:</strong> ${cot.client_name || "-"}</div>
-        <div><strong>Razón Social:</strong> ${cot.razon_social || "-"}</div>
-        <div><strong>Vendedor:</strong> ${cot.vendedor_nombre || "-"} ${cot.vendedor_iniciales ? `(${cot.vendedor_iniciales})` : ""}</div>
-        <div><strong>Forma de pago:</strong> ${cot.forma_pago || "-"}</div>
-        <div><strong>Plazo de entrega:</strong> ${cot.plazo_entrega || "-"}</div>
-      </div>
-      <table><thead><tr><th>Código</th><th>Producto</th><th style="text-align:center">Cant.</th><th style="text-align:right">P. Unit.</th><th style="text-align:right">Subtotal</th></tr></thead>
-      <tbody>${rows}
-      <tr class="totals"><td colspan="4" style="text-align:right">TOTAL</td><td style="text-align:right">${formatCurrency(Number(cot.total) || 0)}</td></tr>
-      </tbody></table>
-      ${cot.observaciones ? `<p style="margin-top:15px"><strong>Observaciones:</strong> ${cot.observaciones}</p>` : ""}
-      <script>window.print()<\/script></body></html>`)
+  async function handleImprimir() {
+    if (!cot) return
+    setPdfBusy(true)
+    try {
+      const pdfData = buildPDFData()
+      if (!pdfData) return
+      const blob = generateCotizacionPDF(pdfData)
+      const url = URL.createObjectURL(blob)
+      window.open(url, "_blank")
+      // También sube al storage en background para que quede accesible al reenviar
+      ensurePDFUrl().catch(() => {})
+    } catch (e) {
+      console.error("Error imprimiendo PDF:", e)
+      alert("Error al generar PDF")
+    } finally {
+      setPdfBusy(false)
+    }
   }
 
-  function handleReenviarEmail() {
+  async function handleReenviarEmail() {
+    if (!cot) return
     if (!client?.email) {
       alert("El cliente no tiene email cargado")
       return
     }
-    const subject = encodeURIComponent(`Cotización ${cot?.numero} - ${cot?.razon_social || ""}`)
-    const body = encodeURIComponent(`Adjuntamos la cotización ${cot?.numero} por un total de ${formatCurrency(Number(cot?.total) || 0)}.`)
-    window.open(`mailto:${client.email}?subject=${subject}&body=${body}`, "_blank")
+    setSending(true)
+    try {
+      await ensurePDFUrl()
+      const res = await fetch("/api/admin/cotizaciones/enviar-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cotizacionId: cot.id, email: client.email }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error || "Error al enviar")
+      setCot({ ...cot, enviada: true, enviada_at: new Date().toISOString(), enviada_medio: "email" })
+      setResendOpen(false)
+      alert(`Email enviado a ${client.email}`)
+    } catch (e: any) {
+      console.error(e)
+      alert("Error al enviar email: " + (e?.message || ""))
+    } finally {
+      setSending(false)
+    }
   }
 
-  function handleReenviarWhatsapp() {
+  async function handleReenviarWhatsapp() {
+    if (!cot) return
     const tel = (client?.whatsapp || client?.telefono || "").replace(/\D/g, "")
     if (!tel) {
       alert("El cliente no tiene WhatsApp/teléfono cargado")
       return
     }
-    const text = encodeURIComponent(`Hola, te envío la cotización ${cot?.numero} por ${formatCurrency(Number(cot?.total) || 0)}.`)
-    window.open(`https://wa.me/${tel}?text=${text}`, "_blank")
+    setSending(true)
+    try {
+      const url = await ensurePDFUrl()
+      const text = encodeURIComponent(
+        `Hola, le enviamos la cotización ${cot.numero} por un total de ${formatCurrency(Number(cot.total) || 0)}.${url ? `\n${url}` : ""}`,
+      )
+      window.open(`https://wa.me/${tel}?text=${text}`, "_blank")
+      await updateCotizacionVenta(cot.id, {
+        enviada: true,
+        enviada_at: new Date().toISOString(),
+        enviada_medio: "whatsapp",
+      })
+      setCot({ ...cot, enviada: true, enviada_at: new Date().toISOString(), enviada_medio: "whatsapp" })
+      setResendOpen(false)
+    } catch (e: any) {
+      console.error(e)
+      alert("Error al enviar por WhatsApp: " + (e?.message || ""))
+    } finally {
+      setSending(false)
+    }
   }
 
   if (loading) {
@@ -225,11 +305,13 @@ export default function CotizacionVentaDetallePage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleImprimir}>
-              <Printer className="h-4 w-4 mr-2" /> Imprimir
+            <Button variant="outline" onClick={handleImprimir} disabled={pdfBusy}>
+              <Printer className="h-4 w-4 mr-2" />
+              {pdfBusy ? "Generando..." : "Imprimir"}
             </Button>
             <Button variant="outline" onClick={() => setResendOpen(true)}>
               <Send className="h-4 w-4 mr-2" /> Reenviar
+              {cot.enviada && <span className="ml-1 text-[10px] text-green-600">✓</span>}
             </Button>
           </div>
         </div>
@@ -367,30 +449,31 @@ export default function CotizacionVentaDetallePage() {
       <Dialog open={resendOpen} onOpenChange={setResendOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Reenviar cotización</DialogTitle>
+            <DialogTitle>Reenviar cotización {cot.numero}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Elegí el medio para reenviar la cotización al cliente.
+              Se genera el PDF, se sube al storage y se envía por el medio elegido.
             </p>
-            <div className="grid grid-cols-2 gap-3">
-              <Button variant="outline" onClick={handleReenviarEmail}>
-                Email
-                {client?.email && <span className="ml-2 text-xs text-muted-foreground truncate">{client.email}</span>}
+            <div className="grid grid-cols-1 gap-2">
+              <Button variant="outline" onClick={handleReenviarEmail} disabled={sending || !client?.email} className="justify-between">
+                <span>Enviar por Email</span>
+                <span className="text-xs text-muted-foreground truncate max-w-[200px]">{client?.email || "sin email"}</span>
               </Button>
-              <Button variant="outline" onClick={handleReenviarWhatsapp}>
-                WhatsApp
-                {(client?.whatsapp || client?.telefono) && (
-                  <span className="ml-2 text-xs text-muted-foreground truncate">{client.whatsapp || client.telefono}</span>
-                )}
+              <Button variant="outline" onClick={handleReenviarWhatsapp} disabled={sending || !(client?.whatsapp || client?.telefono)} className="justify-between">
+                <span>Enviar por WhatsApp</span>
+                <span className="text-xs text-muted-foreground">{client?.whatsapp || client?.telefono || "sin whatsapp"}</span>
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              El contenido se completa automáticamente. Asegurate de adjuntar el PDF antes de enviar.
-            </p>
+            {cot.enviada && (
+              <p className="text-xs text-green-700 bg-green-50 p-2 rounded border border-green-200">
+                Última vez enviada: {cot.enviada_at ? new Date(cot.enviada_at).toLocaleString("es-AR") : "-"}
+                {cot.enviada_medio ? ` por ${cot.enviada_medio}` : ""}
+              </p>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setResendOpen(false)}>Cerrar</Button>
+            <Button variant="ghost" onClick={() => setResendOpen(false)} disabled={sending}>Cerrar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
