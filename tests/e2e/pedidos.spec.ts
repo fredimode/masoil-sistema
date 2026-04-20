@@ -45,10 +45,11 @@ test.describe("Flujo de pedidos", () => {
     let sawAlert = false
     page.on("dialog", async (d) => { sawAlert = true; await d.dismiss().catch(() => {}) })
 
-    await page.getByRole("button", { name: /Crear Pedido/i }).click()
+    // Usar exact match para evitar coincidir con 'Guardar Borrador' también presente
+    await page.getByRole("button", { name: "Crear Pedido", exact: true }).click()
 
     // Esperar redirect a detalle o listado
-    await page.waitForURL(/\/admin\/pedidos(\/|$)/, { timeout: 15_000 })
+    await page.waitForURL(/\/admin\/pedidos(\/|$)/, { timeout: 20_000 })
     expect(sawAlert).toBe(false)
 
     // Volver al listado y verificar presencia

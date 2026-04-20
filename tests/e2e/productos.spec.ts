@@ -5,7 +5,7 @@ test.describe("CRUD productos", () => {
   test("crear → editar → eliminar producto de prueba", async ({ page }) => {
     await loginAdmin(page)
     await page.goto("/admin/stock")
-    await expect(page.getByRole("heading", { name: /Stock|Productos/i }).first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByRole("heading", { name: /Control de Inventario|Stock|Productos/i }).first()).toBeVisible({ timeout: 10_000 })
 
     // Crear
     await page.getByRole("link", { name: /Nuevo Producto|\+ Nuevo/i }).first().click().catch(async () => {

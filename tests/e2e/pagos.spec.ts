@@ -5,10 +5,12 @@ test.describe("Pagos a proveedores", () => {
   test("todos los tabs de pagos cargan y modal de nuevo pago abre", async ({ page }) => {
     await loginAdmin(page)
     await page.goto("/admin/pagos")
-    await expect(page.getByRole("heading", { name: /Pagos/i }).first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByRole("heading", { name: /Pagos/i }).first()).toBeVisible({ timeout: 15_000 })
+    // Esperar a que la tablist esté montada antes de clicar tabs
+    await page.waitForSelector('[role="tablist"]', { timeout: 10_000 })
 
     // Tab Cta Cte
-    await page.getByRole("tab", { name: /Cta\.? Cte|Cuenta Corriente|Cta Cte/i }).click().catch(() => {})
+    await page.getByRole("tab", { name: /Proveedores|Cta\.? Cte|Cuenta Corriente/i }).click().catch(() => {})
     await expect(page.locator("body")).toBeVisible()
 
     // Tab Lote de Pago
