@@ -6,7 +6,8 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { StockIndicator } from "@/components/vendedor/stock-indicator"
 import { formatCurrency, cn } from "@/lib/utils"
 import type { Product } from "@/lib/types"
-import { Edit, Trash2 } from "lucide-react"
+import { Edit, Trash2, Eye } from "lucide-react"
+import Link from "next/link"
 
 interface ProductTableProps {
   products: Product[]
@@ -119,6 +120,11 @@ export function ProductTable({ products, onEdit, onDelete, selectedIds, onSelect
                 <TableCell className="text-right font-semibold">{formatCurrency(product.price)}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
+                    <Button asChild size="sm" variant="ghost">
+                      <Link href={`/admin/stock/${product.id}`} title="Ver detalle">
+                        <Eye className="h-4 w-4" />
+                      </Link>
+                    </Button>
                     <Button size="sm" variant="ghost" onClick={() => onEdit?.(product)}>
                       <Edit className="h-4 w-4" />
                     </Button>

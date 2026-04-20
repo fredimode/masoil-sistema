@@ -994,6 +994,43 @@ export async function fetchFacturas(): Promise<any[]> {
   return data || []
 }
 
+export async function fetchProductById(id: string): Promise<Product | null> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase.from("products").select("*").eq("id", id).single()
+  if (error) return null
+  return mapProduct(data)
+}
+
+export async function fetchVentasByProducto(productId: string, limit: number = 20): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  // Ventas vía order_items + orders + facturas
+  const { data, error } = await supabase
+    .from("order_items")
+    .select(`
+      id, quantity, unit_price, created_at,
+      orders!inner(id, order_number, order_number_serial, client_id, client_name, factura_id, created_at)
+    `)
+    .eq("product_id", productId)
+    .order("created_at", { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return (data || []).map((row: any) => {
+    const ord = Array.isArray(row.orders) ? row.orders[0] : row.orders
+    return {
+      id: row.id,
+      fecha: row.created_at,
+      cantidad: row.quantity,
+      precio_unitario: Number(row.unit_price) || 0,
+      subtotal: (Number(row.unit_price) || 0) * (Number(row.quantity) || 0),
+      order_id: ord?.id || null,
+      order_number: ord?.order_number_serial || ord?.order_number || null,
+      client_id: ord?.client_id || null,
+      client_name: ord?.client_name || "",
+      factura_id: ord?.factura_id || null,
+    }
+  })
+}
+
 export async function fetchFacturasByClient(clientId: string, limit: number = 10): Promise<any[]> {
   const supabase = createSupabaseClient()
   // Unifica facturas nuevas (client_id) con GestionPro (client_id)
