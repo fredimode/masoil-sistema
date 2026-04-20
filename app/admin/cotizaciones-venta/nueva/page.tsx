@@ -179,9 +179,15 @@ export default function NuevaCotizacionVentaPage() {
         })),
       })
       router.push(`/admin/cotizaciones-venta/${id}`)
-    } catch (e) {
-      console.error("Error creando cotización:", e)
-      alert("Error al crear la cotización")
+    } catch (e: any) {
+      console.error("Error creando cotización:", {
+        message: e?.message,
+        code: e?.code,
+        details: e?.details,
+        hint: e?.hint,
+        full: e,
+      })
+      alert(`Error al crear la cotización: ${e?.message || e?.details || e?.hint || "desconocido"}`)
     } finally {
       setSubmitting(false)
     }
