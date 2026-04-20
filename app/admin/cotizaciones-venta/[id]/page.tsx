@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { ArrowLeft, Printer, Send, CheckCircle2, XCircle, ListChecks, ShoppingCart } from "lucide-react"
+import { ArrowLeft, Printer, Send, CheckCircle2, XCircle, ListChecks, ShoppingCart, Download } from "lucide-react"
+import * as XLSX from "xlsx"
 import {
   fetchCotizacionVentaById, fetchCotizacionVentaItems, updateCotizacionVenta,
   updateCotizacionVentaItemAprobado, fetchClientById, createOrder,
@@ -215,6 +216,37 @@ export default function CotizacionVentaDetallePage() {
     }
   }
 
+  function handleExportXLSX() {
+    if (!cot) return
+    const rows = items.map((i) => ({
+      Código: i.producto_codigo || "",
+      Producto: i.producto_nombre || "",
+      Cantidad: Number(i.cantidad) || 0,
+      "Precio Unit.": Number(i.precio_unitario) || 0,
+      Subtotal: Number(i.subtotal) || 0,
+      Aprobado: i.aprobado ? "Sí" : "No",
+    }))
+    const ws = XLSX.utils.json_to_sheet(rows)
+    // Info sheet con datos generales
+    const infoRows = [
+      ["Número", cot.numero || ""],
+      ["Fecha", cot.fecha || ""],
+      ["Cliente", cot.client_name || ""],
+      ["Razón social", cot.razon_social || ""],
+      ["Vendedor", `${cot.vendedor_nombre || ""}${cot.vendedor_iniciales ? ` (${cot.vendedor_iniciales})` : ""}`],
+      ["Validez", cot.validez_fecha || ""],
+      ["Forma de pago", cot.forma_pago || ""],
+      ["Plazo entrega", cot.plazo_entrega || ""],
+      ["Total", Number(cot.total) || 0],
+      ["Estado", cot.estado || ""],
+    ]
+    const infoWs = XLSX.utils.aoa_to_sheet(infoRows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, infoWs, "Datos")
+    XLSX.utils.book_append_sheet(wb, ws, "Productos")
+    XLSX.writeFile(wb, `cotizacion_${cot.numero || cot.id}.xlsx`)
+  }
+
   async function handleReenviarEmail() {
     if (!cot) return
     if (!client?.email) {
@@ -313,7 +345,10 @@ export default function CotizacionVentaDetallePage() {
           <div className="flex gap-2">
             <Button variant="outline" onClick={handleImprimir} disabled={pdfBusy}>
               <Printer className="h-4 w-4 mr-2" />
-              {pdfBusy ? "Generando..." : "Imprimir"}
+              {pdfBusy ? "Generando..." : "Imprimir PDF"}
+            </Button>
+            <Button variant="outline" onClick={handleExportXLSX}>
+              <Download className="h-4 w-4 mr-2" /> XLSX
             </Button>
             <Button variant="outline" onClick={() => setResendOpen(true)}>
               <Send className="h-4 w-4 mr-2" /> Reenviar
