@@ -44,6 +44,18 @@ type RetencionForm = {
 const TIPOS_RETENCION = ["ARBA", "ARCA", "IIBB_CABA", "IIBB_BSAS", "IVA", "GANANCIAS", "Otro"]
 const RAZONES_SOCIALES = ["Masoil", "Aquiles", "Conancap", "Todas"]
 
+// Normaliza tipos históricos a códigos cortos FC/NC/ND/RC/RT
+function normalizeTipoComp(t: string | null | undefined): string {
+  if (!t) return "-"
+  const up = String(t).toUpperCase()
+  if (up === "RECIBO") return "RC"
+  if (up === "RETENCION" || up === "RETENCIÓN") return "RT"
+  if (up === "FACTURA" || up.startsWith("FACTURA ")) return "FC"
+  if (up === "NOTA DE CREDITO" || up === "NOTA DE CRÉDITO") return "NC"
+  if (up === "NOTA DE DEBITO" || up === "NOTA DE DÉBITO") return "ND"
+  return t
+}
+
 function uid() {
   return Math.random().toString(36).slice(2, 10)
 }
@@ -196,7 +208,7 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
       await createMovimientoCuentaCorriente({
         client_id: selectedClient.id,
         fecha: retForm.fecha,
-        tipo_comprobante: "RETENCION",
+        tipo_comprobante: "RT",
         punto_venta: 0,
         numero_comprobante: retForm.nro_comprobante || "",
         haber: retForm.importe,
@@ -308,7 +320,7 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
     const ws = XLSX.utils.json_to_sheet(
       withSaldo.map((m) => ({
         Fecha: formatDateStr(m.fecha),
-        "Tipo Comprobante": m.tipo_comprobante || "",
+        "Tipo Comprobante": normalizeTipoComp(m.tipo_comprobante),
         "Número": m.punto_venta && m.numero_comprobante
           ? `${String(m.punto_venta).padStart(4, "0")}-${String(m.numero_comprobante).padStart(8, "0")}`
           : m.pv_numero || "",
@@ -329,7 +341,7 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
     const rows = withSaldo.map((m) => `
       <tr>
         <td>${formatDateStr(m.fecha)}</td>
-        <td>${m.tipo_comprobante || "-"}</td>
+        <td>${normalizeTipoComp(m.tipo_comprobante)}</td>
         <td>${m.punto_venta && m.numero_comprobante ? `${String(m.punto_venta).padStart(4, "0")}-${String(m.numero_comprobante).padStart(8, "0")}` : m.pv_numero || "-"}</td>
         <td style="text-align:right">${m.debe ? formatCurrency(m.debe) : "-"}</td>
         <td style="text-align:right">${m.haber ? formatCurrency(m.haber) : "-"}</td>
@@ -418,7 +430,7 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
                 {displayRows.map((m, i) => (
                   <TableRow key={m.id || i}>
                     <TableCell>{formatDateStr(m.fecha)}</TableCell>
-                    <TableCell>{m.tipo_comprobante || "-"}</TableCell>
+                    <TableCell>{normalizeTipoComp(m.tipo_comprobante)}</TableCell>
                     <TableCell>
                       {m.punto_venta && m.numero_comprobante
                         ? `${String(m.punto_venta).padStart(4, "0")}-${String(m.numero_comprobante).padStart(8, "0")}`
@@ -702,7 +714,7 @@ function TabRegistrarCobro({
       await createMovimientoCuentaCorriente({
         client_id: selectedClient.id,
         fecha,
-        tipo_comprobante: "RECIBO",
+        tipo_comprobante: "RC",
         punto_venta: 0,
         numero_comprobante: reciboLabel,
         haber: totalMedios,
@@ -716,7 +728,7 @@ function TabRegistrarCobro({
         await createMovimientoCuentaCorriente({
           client_id: selectedClient.id,
           fecha,
-          tipo_comprobante: "RETENCION",
+          tipo_comprobante: "RT",
           punto_venta: 0,
           numero_comprobante: reciboLabel,
           haber: totalRets,
