@@ -24,6 +24,9 @@ import {
   deleteLotePago,
   updateLotePagoItem,
   enviarFacturaALote,
+  fetchServiciosFijos,
+  createServicioFijo,
+  updateServicioFijo,
 } from "@/lib/supabase/queries"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -109,6 +112,7 @@ export default function PagosPage() {
   // Nuevo reclamo
   const [dialogOpen, setDialogOpen] = useState(false)
   const [nuevoReclamo, setNuevoReclamo] = useState({
+    proveedor_id: "" as string | null,
     proveedor_nombre: "",
     empresa: "",
     forma_pago: "",
@@ -135,6 +139,25 @@ export default function PagosPage() {
   const [enviarALoteFC, setEnviarALoteFC] = useState<any | null>(null)
   const [enviarALoteId, setEnviarALoteId] = useState("")
   const [enviandoALote, setEnviandoALote] = useState(false)
+
+  // Servicios administración
+  const [serviciosList, setServiciosList] = useState<any[]>([])
+  const [servicioDialogOpen, setServicioDialogOpen] = useState(false)
+  const [servicioForm, setServicioForm] = useState({
+    id: "" as string | undefined,
+    servicio: "",
+    forma_pago: "",
+    nro_fc_pendiente: "",
+    importe: "" as string | number,
+    fecha_vencimiento: "",
+    observaciones: "",
+    bonificaciones: "",
+  })
+  const [guardandoServicio, setGuardandoServicio] = useState(false)
+
+  useEffect(() => {
+    fetchServiciosFijos().then(setServiciosList).catch((err) => console.error(err))
+  }, [])
 
   async function handleReenviarEmail(pago: any) {
     setEnviandoEmail(pago.id)
@@ -260,13 +283,41 @@ export default function PagosPage() {
     setCreando(true)
     try {
       await createReclamo(nuevoReclamo)
-      setNuevoReclamo({ proveedor_nombre: "", empresa: "", forma_pago: "", fecha_reclamo: "", observaciones: "", estado: "PENDIENTE" })
+      setNuevoReclamo({ proveedor_id: null, proveedor_nombre: "", empresa: "", forma_pago: "", fecha_reclamo: "", observaciones: "", estado: "PENDIENTE" })
       setDialogOpen(false)
       await cargarDatos()
     } catch (error) {
       console.error("Error creando reclamo:", error)
     } finally {
       setCreando(false)
+    }
+  }
+
+  async function handleGuardarServicio() {
+    setGuardandoServicio(true)
+    try {
+      const payload: Record<string, any> = {
+        servicio: servicioForm.servicio,
+        forma_pago: servicioForm.forma_pago || null,
+        nro_fc_pendiente: servicioForm.nro_fc_pendiente || null,
+        importe: servicioForm.importe ? Number(servicioForm.importe) : null,
+        fecha_vencimiento: servicioForm.fecha_vencimiento || null,
+        observaciones: servicioForm.observaciones || null,
+        bonificaciones: servicioForm.bonificaciones || null,
+      }
+      if (servicioForm.id) {
+        await updateServicioFijo(servicioForm.id, payload)
+      } else {
+        await createServicioFijo(payload)
+      }
+      const fresh = await fetchServiciosFijos()
+      setServiciosList(fresh)
+      setServicioDialogOpen(false)
+      setServicioForm({ id: undefined, servicio: "", forma_pago: "", nro_fc_pendiente: "", importe: "", fecha_vencimiento: "", observaciones: "", bonificaciones: "" })
+    } catch (err: any) {
+      alert("Error al guardar: " + (err?.message || ""))
+    } finally {
+      setGuardandoServicio(false)
     }
   }
 
@@ -556,6 +607,8 @@ export default function PagosPage() {
         <TabsList>
           <TabsTrigger value="proveedores">Proveedores / Cta Cte</TabsTrigger>
           <TabsTrigger value="lote-pago">Lote de Pago</TabsTrigger>
+          <TabsTrigger value="en-proceso">Pagos en Proceso</TabsTrigger>
+          <TabsTrigger value="servicios-admin">Servicios Administración</TabsTrigger>
           <TabsTrigger value="reclamos">Reclamos</TabsTrigger>
         </TabsList>
 
@@ -929,6 +982,122 @@ export default function PagosPage() {
           </div>
         </TabsContent>
 
+        {/* ============ TAB PAGOS EN PROCESO ============ */}
+        <TabsContent value="en-proceso">
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            {pagos.filter((p) => p.estado_pago === "EN_PROCESO" || p.estado_pago === "EN PROCESO").length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                <p>No hay pagos en proceso</p>
+                <p className="text-xs mt-1">Los pagos en proceso son aquellos confirmados pero no completados</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Proveedor</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Empresa</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Forma de pago</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Fecha de pago</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Observaciones</th>
+                      <th className="px-3 py-3 text-center font-semibold text-gray-700">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagos
+                      .filter((p) => p.estado_pago === "EN_PROCESO" || p.estado_pago === "EN PROCESO")
+                      .map((p, idx) => (
+                        <tr key={p.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                          <td className="px-3 py-3 font-medium">{p.proveedor_nombre || "-"}</td>
+                          <td className="px-3 py-3">{p.empresa || "-"}</td>
+                          <td className="px-3 py-3">{p.forma_pago || "-"}</td>
+                          <td className="px-3 py-3">{p.fecha_pago ? formatDateStr(p.fecha_pago) : "-"}</td>
+                          <td className="px-3 py-3 text-gray-600 truncate max-w-[300px]" title={p.observaciones_proceso || ""}>
+                            {p.observaciones_proceso || "-"}
+                          </td>
+                          <td className="px-3 py-3 text-center">{estadoBadge(p.estado_pago || "")}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* ============ TAB SERVICIOS ADMINISTRACIÓN ============ */}
+        <TabsContent value="servicios-admin">
+          <div className="bg-white rounded-lg shadow p-4 mb-4">
+            <div className="flex justify-between items-center">
+              <p className="text-sm text-gray-600">Servicios fijos de la oficina (Edesur, internet, etc.)</p>
+              <button
+                onClick={() => {
+                  setServicioForm({ id: undefined, servicio: "", forma_pago: "", nro_fc_pendiente: "", importe: "", fecha_vencimiento: "", observaciones: "", bonificaciones: "" })
+                  setServicioDialogOpen(true)
+                }}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm font-medium"
+              >
+                + Nuevo Servicio
+              </button>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            {serviciosList.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">No hay servicios registrados</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-100">
+                    <tr>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Servicio</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Forma de Pago</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Nº FC Pendiente</th>
+                      <th className="px-3 py-3 text-right font-semibold text-gray-700">Importe</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Vto</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Observaciones</th>
+                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Bonificaciones</th>
+                      <th className="px-3 py-3 text-center font-semibold text-gray-700 w-20">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {serviciosList.map((s, idx) => (
+                      <tr key={s.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                        <td className="px-3 py-3 font-medium">{s.servicio || "-"}</td>
+                        <td className="px-3 py-3">{s.forma_pago || "-"}</td>
+                        <td className="px-3 py-3 font-mono text-xs">{s.nro_fc_pendiente || "-"}</td>
+                        <td className="px-3 py-3 text-right font-semibold">{s.importe != null ? formatCurrency(Number(s.importe)) : "-"}</td>
+                        <td className="px-3 py-3">{s.fecha_vencimiento ? formatDateStr(s.fecha_vencimiento) : "-"}</td>
+                        <td className="px-3 py-3 text-gray-600 truncate max-w-[200px]" title={s.observaciones || ""}>{s.observaciones || "-"}</td>
+                        <td className="px-3 py-3 text-gray-600 truncate max-w-[150px]" title={s.bonificaciones || ""}>{s.bonificaciones || "-"}</td>
+                        <td className="px-3 py-3 text-center">
+                          <button
+                            onClick={() => {
+                              setServicioForm({
+                                id: s.id,
+                                servicio: s.servicio || "",
+                                forma_pago: s.forma_pago || "",
+                                nro_fc_pendiente: s.nro_fc_pendiente || "",
+                                importe: s.importe != null ? String(s.importe) : "",
+                                fecha_vencimiento: s.fecha_vencimiento || "",
+                                observaciones: s.observaciones || "",
+                                bonificaciones: s.bonificaciones || "",
+                              })
+                              setServicioDialogOpen(true)
+                            }}
+                            className="p-1 hover:bg-gray-200 rounded"
+                          >
+                            <Pencil className="h-4 w-4 text-blue-600" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
         {/* ============ TAB RECLAMOS ============ */}
         <TabsContent value="reclamos">
           <div className="bg-white rounded-lg shadow p-4 mb-6">
@@ -958,7 +1127,24 @@ export default function PagosPage() {
                   <div className="space-y-4 py-4">
                     <div>
                       <label className="text-sm text-gray-600 block mb-1">Proveedor *</label>
-                      <input type="text" value={nuevoReclamo.proveedor_nombre} onChange={(e) => setNuevoReclamo((prev) => ({ ...prev, proveedor_nombre: e.target.value }))} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm" placeholder="Nombre del proveedor" />
+                      <select
+                        value={nuevoReclamo.proveedor_id || ""}
+                        onChange={(e) => {
+                          const prov = proveedoresList.find((p) => p.id === e.target.value)
+                          setNuevoReclamo((prev) => ({
+                            ...prev,
+                            proveedor_id: e.target.value || null,
+                            proveedor_nombre: prov?.nombre || "",
+                            empresa: prov?.empresa || prev.empresa,
+                          }))
+                        }}
+                        className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                      >
+                        <option value="">Seleccionar proveedor...</option>
+                        {proveedoresList.map((p) => (
+                          <option key={p.id} value={p.id}>{p.nombre}</option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <label className="text-sm text-gray-600 block mb-1">Empresa</label>
@@ -1159,6 +1345,7 @@ export default function PagosPage() {
               <label className="text-sm text-gray-600 block mb-1">Estado</label>
               <select value={editPagoForm.estado_pago || ""} onChange={(e) => setEditPagoForm((f: any) => ({ ...f, estado_pago: e.target.value }))} className="w-full p-2 border rounded-lg text-sm">
                 <option value="PENDIENTE">PENDIENTE</option>
+                <option value="EN_PROCESO">EN PROCESO</option>
                 <option value="PAGADO">PAGADO</option>
               </select>
             </div>
@@ -1245,6 +1432,59 @@ export default function PagosPage() {
           <DialogFooter>
             <button onClick={() => setDeletingReclamo(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
             <button onClick={handleDeleteReclamo} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">Eliminar</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Servicio Admin Dialog */}
+      <Dialog open={servicioDialogOpen} onOpenChange={setServicioDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{servicioForm.id ? "Editar" : "Nuevo"} Servicio de Administración</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Servicio *</label>
+              <input
+                type="text"
+                value={servicioForm.servicio}
+                onChange={(e) => setServicioForm((f) => ({ ...f, servicio: e.target.value }))}
+                placeholder="Edesur, Internet, etc."
+                className="w-full p-2 border rounded-lg text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">Forma de Pago</label>
+                <input type="text" value={servicioForm.forma_pago} onChange={(e) => setServicioForm((f) => ({ ...f, forma_pago: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">Nº FC Pendiente</label>
+                <input type="text" value={servicioForm.nro_fc_pendiente} onChange={(e) => setServicioForm((f) => ({ ...f, nro_fc_pendiente: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">Importe</label>
+                <input type="number" step="0.01" value={servicioForm.importe} onChange={(e) => setServicioForm((f) => ({ ...f, importe: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">Vencimiento</label>
+                <input type="date" value={servicioForm.fecha_vencimiento} onChange={(e) => setServicioForm((f) => ({ ...f, fecha_vencimiento: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Bonificaciones</label>
+              <input type="text" value={servicioForm.bonificaciones} onChange={(e) => setServicioForm((f) => ({ ...f, bonificaciones: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Observaciones</label>
+              <textarea value={servicioForm.observaciones} onChange={(e) => setServicioForm((f) => ({ ...f, observaciones: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" rows={2} />
+            </div>
+          </div>
+          <DialogFooter>
+            <button onClick={() => setServicioDialogOpen(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
+            <button onClick={handleGuardarServicio} disabled={guardandoServicio || !servicioForm.servicio} className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-gray-400 text-sm">
+              {guardandoServicio ? "Guardando..." : "Guardar"}
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

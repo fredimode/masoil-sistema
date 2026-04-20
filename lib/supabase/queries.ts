@@ -714,6 +714,19 @@ export async function fetchReclamos(): Promise<any[]> {
   return data || []
 }
 
+export async function fetchReclamosByProveedor(proveedorId: string, proveedorNombre?: string): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  let query = supabase.from("reclamos_pagos_proveedores").select("*")
+  if (proveedorNombre) {
+    query = query.or(`proveedor_id.eq.${proveedorId},proveedor_nombre.eq.${proveedorNombre}`)
+  } else {
+    query = query.eq("proveedor_id", proveedorId)
+  }
+  const { data, error } = await query.order("created_at", { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
 export async function createReclamo(reclamo: Record<string, any>): Promise<void> {
   const supabase = createSupabaseClient()
   const { error } = await supabase.from("reclamos_pagos_proveedores").insert(reclamo)

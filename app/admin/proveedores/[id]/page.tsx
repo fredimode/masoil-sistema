@@ -17,7 +17,7 @@ import {
   fetchProveedorById,
   fetchCompras,
   fetchPagosProveedores,
-  fetchReclamos,
+  fetchReclamosByProveedor,
   updateProveedor,
 } from "@/lib/supabase/queries"
 import { formatCurrency } from "@/lib/utils"
@@ -45,18 +45,17 @@ export default function AdminProveedorDetailPage({
   useEffect(() => {
     async function load() {
       try {
-        const [proveedorData, allCompras, allPagos, allReclamos] =
-          await Promise.all([
-            fetchProveedorById(id),
-            fetchCompras(),
-            fetchPagosProveedores(),
-            fetchReclamos(),
-          ])
-
+        const proveedorData = await fetchProveedorById(id)
         if (!proveedorData) {
           setNotFoundState(true)
           return
         }
+
+        const [allCompras, allPagos, reclamosProv] = await Promise.all([
+          fetchCompras(),
+          fetchPagosProveedores(),
+          fetchReclamosByProveedor(id, proveedorData.nombre),
+        ])
 
         setProveedor(proveedorData)
         setObservacionesPagos(proveedorData.observaciones_pagos || "")
@@ -76,11 +75,7 @@ export default function AdminProveedorDetailPage({
               p.proveedor_nombre === proveedorData.nombre
           )
         )
-        setReclamos(
-          allReclamos.filter(
-            (r) => r.proveedor_nombre === proveedorData.nombre
-          )
-        )
+        setReclamos(reclamosProv)
       } catch (err) {
         console.error("Error loading proveedor:", err)
       } finally {
@@ -249,30 +244,40 @@ export default function AdminProveedorDetailPage({
 
       {/* Historial de Compras */}
       <Card className="p-6">
-        <h3 className="text-lg font-semibold mb-4">Historial de Compras</h3>
+        <h3 className="text-lg font-semibold mb-2">Datos de últimas compras</h3>
+        <p className="text-xs text-muted-foreground mb-4">Últimas 10 compras / OC</p>
         {compras.length > 0 ? (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Fecha</TableHead>
-                <TableHead>Articulo</TableHead>
+                <TableHead>Artículo</TableHead>
+                <TableHead className="text-right">Monto</TableHead>
                 <TableHead>Estado</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {compras.map((c, i) => (
-                <TableRow key={i}>
-                  <TableCell>
-                    {c.fecha
-                      ? new Date(c.fecha).toLocaleDateString("es-AR")
-                      : "-"}
-                  </TableCell>
-                  <TableCell>{c.articulo || "-"}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{c.estado || "-"}</Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {[...compras]
+                .sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || "")))
+                .slice(0, 10)
+                .map((c, i) => (
+                  <TableRow key={i}>
+                    <TableCell>
+                      {c.fecha
+                        ? new Date(c.fecha).toLocaleDateString("es-AR")
+                        : "-"}
+                    </TableCell>
+                    <TableCell className="max-w-[300px] truncate" title={c.articulo || ""}>
+                      {c.articulo || "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {c.total != null ? formatCurrency(Number(c.total)) : "-"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{c.estado || "-"}</Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
         ) : (
