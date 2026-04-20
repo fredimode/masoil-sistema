@@ -88,8 +88,8 @@ export function ClientTable({ clients, allClients, selectedIds, onToggleSelect, 
                 <TableCell className="max-w-[100px] truncate text-sm" title={client.condicionIva || ""}>
                   {client.condicionIva || "-"}
                 </TableCell>
-                <TableCell className="max-w-[120px] truncate text-sm" title={client.condicionPago || ""}>
-                  {client.condicionPago || "-"}
+                <TableCell className="max-w-[120px] truncate text-sm" title={client.condicionPago || client.paymentTerms || ""}>
+                  {client.condicionPago || client.paymentTerms || "-"}
                 </TableCell>
                 <TableCell className="text-right font-semibold">{client.totalOrders}</TableCell>
                 <TableCell className="text-right">

@@ -37,6 +37,9 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
     creditLimit: 0,
     notes: "",
     domicilioEntrega: "",
+    sucursal: "",
+    sucursalEntrega: "",
+    cuit: "",
   })
 
   // Contactos de Cobranzas
@@ -81,6 +84,9 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
           creditLimit: clientData.creditLimit || 0,
           notes: clientData.notes || "",
           domicilioEntrega: (clientData as any).domicilioEntrega || "",
+          sucursal: (clientData as any).sucursal || "",
+          sucursalEntrega: (clientData as any).sucursalEntrega || "",
+          cuit: (clientData as any).cuit || (clientData as any).numeroDocum || "",
         })
         const rawMail = (clientData as any).cobranzas_mail
         const rawTel = (clientData as any).cobranzas_telefono
@@ -124,7 +130,10 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
         payment_terms: editForm.paymentTerms,
         credit_limit: editForm.creditLimit,
         notes: editForm.notes,
-        domicilio_entrega: editForm.domicilioEntrega,
+        domicilio_entrega: editForm.domicilioEntrega || null,
+        sucursal: editForm.sucursal || null,
+        sucursal_entrega: editForm.sucursalEntrega || null,
+        cuit: editForm.cuit || null,
       })
       setClient((prev) => prev ? {
         ...prev,
@@ -161,6 +170,9 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
       creditLimit: client.creditLimit || 0,
       notes: client.notes || "",
       domicilioEntrega: (client as any).domicilioEntrega || "",
+      sucursal: (client as any).sucursal || "",
+      sucursalEntrega: (client as any).sucursalEntrega || "",
+      cuit: (client as any).cuit || (client as any).numeroDocum || "",
     })
     setEditOpen(true)
   }
@@ -310,6 +322,24 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
                   <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
                   <span>{client.address}</span>
                 </div>
+                {(client as any).domicilioEntrega && (
+                  <div className="flex items-start gap-2 text-sm pl-6">
+                    <span className="text-muted-foreground text-xs">Domicilio entrega:</span>
+                    <span>{(client as any).domicilioEntrega}</span>
+                  </div>
+                )}
+                {(client as any).sucursalEntrega && (
+                  <div className="flex items-start gap-2 text-sm pl-6">
+                    <span className="text-muted-foreground text-xs">Sucursal entrega:</span>
+                    <span>{(client as any).sucursalEntrega}</span>
+                  </div>
+                )}
+                {(client as any).cuit && (
+                  <div className="flex items-start gap-2 text-sm pl-6">
+                    <span className="text-muted-foreground text-xs">CUIT:</span>
+                    <span className="font-mono">{(client as any).cuit}</span>
+                  </div>
+                )}
               </div>
               <Separator />
               <Button asChild className="w-full bg-transparent" variant="outline">
@@ -571,6 +601,35 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
                 onChange={(e) => setEditForm((f) => ({ ...f, domicilioEntrega: e.target.value }))}
                 className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
                 placeholder="Dirección de entrega (si difiere de la principal)"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Sucursal</label>
+                <input
+                  value={editForm.sucursal}
+                  onChange={(e) => setEditForm((f) => ({ ...f, sucursal: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                  placeholder="Casa Central, Sucursal Norte..."
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Sucursal de Entrega</label>
+                <input
+                  value={editForm.sucursalEntrega}
+                  onChange={(e) => setEditForm((f) => ({ ...f, sucursalEntrega: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                  placeholder="Planta San Martín, Depósito..."
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">CUIT</label>
+              <input
+                value={editForm.cuit}
+                onChange={(e) => setEditForm((f) => ({ ...f, cuit: e.target.value }))}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                placeholder="20-12345678-9"
               />
             </div>
             <div className="grid grid-cols-2 gap-3">

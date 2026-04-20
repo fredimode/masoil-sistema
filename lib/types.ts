@@ -99,6 +99,7 @@ export interface Client {
   cuit?: string | null
   numeroDocum?: string | null
   domicilioEntrega?: string | null
+  sucursalEntrega?: string | null
 }
 
 export interface Vendedor {

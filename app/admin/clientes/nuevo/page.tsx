@@ -51,6 +51,8 @@ export default function AdminNuevoClientePage() {
     creditLimit: "",
     notes: "",
     sucursal: "",
+    sucursalEntrega: "",
+    domicilioEntrega: "",
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -106,6 +108,10 @@ export default function AdminNuevoClientePage() {
         paymentTerms: formData.paymentTerms,
         creditLimit: parseInt(formData.creditLimit) || 0,
         notes: formData.notes,
+        sucursal: formData.sucursal,
+        sucursalEntrega: formData.sucursalEntrega,
+        domicilioEntrega: formData.domicilioEntrega,
+        cuit: formData.cuit,
       })
       router.push("/admin/clientes")
     } catch (err) {
@@ -209,6 +215,26 @@ export default function AdminNuevoClientePage() {
                 value={formData.sucursal}
                 onChange={(e) => handleChange("sucursal", e.target.value)}
                 placeholder="Ej: Casa Central, Sucursal Norte"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="sucursalEntrega">Sucursal de Entrega</Label>
+              <Input
+                id="sucursalEntrega"
+                value={formData.sucursalEntrega}
+                onChange={(e) => handleChange("sucursalEntrega", e.target.value)}
+                placeholder="Ej: Planta San Martín"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="domicilioEntrega">Domicilio de Entrega</Label>
+              <Input
+                id="domicilioEntrega"
+                value={formData.domicilioEntrega}
+                onChange={(e) => handleChange("domicilioEntrega", e.target.value)}
+                placeholder="Si difiere de la dirección principal"
               />
             </div>
           </div>
