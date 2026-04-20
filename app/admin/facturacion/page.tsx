@@ -303,18 +303,22 @@ export default function FacturacionPage() {
                         const deuda = deudaMap[f.id] ?? (Number(f.total) || 0)
                         // Format tipo + numero as "A-00005-00001234"
                         const tipoLetra = (f.tipo || "").replace(/^(FACTURA|NOTA DE CREDITO|NOTA DE DEBITO)\s*/i, "").trim() || ""
-                        const nroDisplay = f.comprobante_nro || f.numero || "-"
-                        const tipoNumero = tipoLetra ? `${tipoLetra}-${nroDisplay}` : nroDisplay
+                        let tipoNumero: string
+                        if (f.punto_venta != null && (f.numero_comprobante || f.numero)) {
+                          const pv = String(f.punto_venta).padStart(5, "0")
+                          const nro = String(f.numero_comprobante || f.numero).padStart(8, "0")
+                          tipoNumero = tipoLetra ? `${tipoLetra}-${pv}-${nro}` : `${pv}-${nro}`
+                        } else {
+                          const nroDisplay = f.comprobante_nro || f.numero || "-"
+                          tipoNumero = tipoLetra ? `${tipoLetra}-${nroDisplay}` : nroDisplay
+                        }
                         return (
                           <tr key={f.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                             <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                               {f.fecha ? formatDateStr(f.fecha) : "-"}
                             </td>
-                            <td className="px-4 py-3">
-                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                                {f.tipo || "-"}
-                              </Badge>
-                              <span className="ml-2 text-gray-900 font-medium">{nroDisplay}</span>
+                            <td className="px-4 py-3 font-mono text-gray-900 font-medium">
+                              {tipoNumero}
                             </td>
                             <td className="px-4 py-3">
                               <span className="block truncate max-w-[180px] text-gray-900" title={f.razon_social || ""}>

@@ -13,9 +13,15 @@ interface ClienteDB {
   cuit: string | null
   numero_docum: string | null
   condicion_iva: string | null
+  condicion_pago: string | null
+  payment_terms: string | null
   domicilio: string | null
   provincia: string | null
   email: string | null
+  sector?: string | null
+  solicita?: string | null
+  recibe?: string | null
+  sucursal_entrega?: string | null
 }
 
 interface ProductoDB {
@@ -101,7 +107,7 @@ export default function NuevaFacturaPage() {
       try {
         const { data } = await supabase
           .from("clients")
-          .select("id, business_name, razon_social, cuit, numero_docum, condicion_iva, domicilio, provincia, email")
+          .select("id, business_name, razon_social, cuit, numero_docum, condicion_iva, condicion_pago, payment_terms, domicilio, provincia, email, sucursal_entrega")
           .or(`razon_social.ilike.%${clienteSearch}%,business_name.ilike.%${clienteSearch}%,cuit.ilike.%${clienteSearch}%,numero_docum.ilike.%${clienteSearch}%`)
           .limit(15)
 
@@ -491,6 +497,12 @@ export default function NuevaFacturaPage() {
               <div>
                 <span className="text-gray-500 block">Condición IVA</span>
                 <span className="font-medium text-gray-900">{clienteSeleccionado.condicion_iva || "No registrada"}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block">Condición de Pago</span>
+                <span className="font-medium text-gray-900">
+                  {clienteSeleccionado.condicion_pago || clienteSeleccionado.payment_terms || "No registrada"}
+                </span>
               </div>
               <div>
                 <span className="text-gray-500 block">Domicilio</span>
