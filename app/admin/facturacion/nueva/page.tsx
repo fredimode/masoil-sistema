@@ -518,6 +518,12 @@ export default function NuevaFacturaPage() {
                   {tipoFactura}
                 </span>
               </div>
+              {clienteSeleccionado.sucursal_entrega && (
+                <div className="md:col-span-3">
+                  <span className="text-gray-500 block">Sucursal de Entrega</span>
+                  <span className="font-medium text-gray-900">{clienteSeleccionado.sucursal_entrega}</span>
+                </div>
+              )}
             </div>
           </div>
         )}
