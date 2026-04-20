@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
-import { fetchClientById, fetchOrders, fetchVendedores, updateClient } from "@/lib/supabase/queries"
+import { fetchClientById, fetchOrders, fetchVendedores, updateClient, fetchFacturasByClient } from "@/lib/supabase/queries"
 import type { Client, Order, Vendedor } from "@/lib/types"
 import { formatCurrency, formatDate } from "@/lib/utils"
 import { getStatusConfig } from "@/lib/status-config"
@@ -22,6 +22,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
   const [vendedor, setVendedor] = useState<Vendedor | null>(null)
   const [loading, setLoading] = useState(true)
   const [notFoundState, setNotFoundState] = useState(false)
+  const [ultimasFacturas, setUltimasFacturas] = useState<any[]>([])
 
   const [editOpen, setEditOpen] = useState(false)
   const [allVendedores, setAllVendedores] = useState<Vendedor[]>([])
@@ -71,6 +72,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
 
         setClient(clientData)
         setClientOrders(allOrders.filter((o) => o.clientId === clientData.id))
+        fetchFacturasByClient(clientData.id, 10).then(setUltimasFacturas).catch(() => setUltimasFacturas([]))
         setVendedor(allVendedores.find((v) => v.id === clientData.vendedorId) || null)
         setEditForm({
           businessName: clientData.businessName,
@@ -286,6 +288,34 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
               <div className="text-center py-8 text-muted-foreground">
                 <p>No hay pedidos registrados</p>
               </div>
+            )}
+          </Card>
+
+          {/* Últimas Facturas */}
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-2">Últimas facturas</h3>
+            <p className="text-xs text-muted-foreground mb-4">Últimas 10 ventas al cliente</p>
+            {ultimasFacturas.length > 0 ? (
+              <div className="space-y-2">
+                {ultimasFacturas.map((f: any, i: number) => {
+                  const tipoLetra = (f.tipo || "").replace(/^(FACTURA|NOTA DE CREDITO|NOTA DE DEBITO)\s*/i, "").trim()
+                  const nro = f.punto_venta && (f.numero_comprobante || f.numero)
+                    ? `${String(f.punto_venta).padStart(5, "0")}-${String(f.numero_comprobante || f.numero).padStart(8, "0")}`
+                    : f.comprobante_nro || f.numero || "-"
+                  const comp = tipoLetra ? `${tipoLetra}-${nro}` : nro
+                  return (
+                    <div key={f.id || i} className="flex items-center justify-between p-3 border rounded-lg text-sm">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono">{comp}</span>
+                        <span className="text-muted-foreground">{f.fecha ? formatDate(new Date(f.fecha)) : "-"}</span>
+                      </div>
+                      <span className="font-semibold">{formatCurrency(Number(f.total) || 0)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No hay facturas registradas</p>
             )}
           </Card>
 

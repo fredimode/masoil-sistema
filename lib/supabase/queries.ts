@@ -994,6 +994,18 @@ export async function fetchFacturas(): Promise<any[]> {
   return data || []
 }
 
+export async function fetchFacturasByClient(clientId: string, limit: number = 10): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  // Unifica facturas nuevas (client_id) con GestionPro (client_id)
+  const [{ data: newer }, { data: gp }] = await Promise.all([
+    supabase.from("facturas").select("*").eq("client_id", clientId).order("fecha", { ascending: false }).limit(limit),
+    supabase.from("facturas_gestionpro").select("*").eq("client_id", clientId).order("fecha", { ascending: false }).limit(limit),
+  ])
+  const all = [...(newer || []), ...(gp || [])]
+  all.sort((a, b) => String(b.fecha || "").localeCompare(String(a.fecha || "")))
+  return all.slice(0, limit)
+}
+
 // ---------------------------------------------------------------------------
 // Facturas GestionPro
 // ---------------------------------------------------------------------------
