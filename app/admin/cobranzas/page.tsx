@@ -155,7 +155,7 @@ export default function CobranzasPage() {
         </TabsContent>
 
         <TabsContent value="informe">
-          <TabInforme cobranzas={cobranzas} clients={clients} />
+          <TabInforme cobranzas={cobranzas} clients={clients} empresaFilter={empresaFilter} />
         </TabsContent>
       </Tabs>
     </div>
@@ -1248,8 +1248,7 @@ function TabRetenciones({ retenciones, clients }: { retenciones: any[]; clients:
 
 // ─── Tab 4: Informe Cobranzas Pendientes ────────────────────────────────────
 
-function TabInforme({ cobranzas, clients }: { cobranzas: any[]; clients: any[] }) {
-  const [filtroRS, setFiltroRS] = useState("Todas")
+function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; clients: any[]; empresaFilter: string }) {
   const [desde, setDesde] = useState("")
   const [hasta, setHasta] = useState("")
   const [clienteFiltro, setClienteFiltro] = useState("todos") // "todos" | clientId
@@ -1269,8 +1268,8 @@ function TabInforme({ cobranzas, clients }: { cobranzas: any[]; clients: any[] }
       const saldo = Number(c.saldo_pendiente ?? c.total ?? 0)
       return saldo > 0
     })
-    if (filtroRS !== "Todas") {
-      rows = rows.filter((c) => (c.razon_social || "").toLowerCase() === filtroRS.toLowerCase())
+    if (empresaFilter !== "Todas") {
+      rows = rows.filter((c) => (c.razon_social || "").toLowerCase() === empresaFilter.toLowerCase())
     }
     const fechaCampo = (c: any) => c.fecha_comprobante || c.fecha || c.created_at || ""
     if (desde) rows = rows.filter((c) => fechaCampo(c) >= desde)
@@ -1279,7 +1278,7 @@ function TabInforme({ cobranzas, clients }: { cobranzas: any[]; clients: any[] }
       rows = rows.filter((c) => c.client_id === clienteFiltro)
     }
     return rows
-  }, [cobranzas, filtroRS, desde, hasta, clienteFiltro])
+  }, [cobranzas, empresaFilter, desde, hasta, clienteFiltro])
 
   // Agrupar por cliente
   const porCliente = useMemo(() => {
@@ -1330,39 +1329,57 @@ function TabInforme({ cobranzas, clients }: { cobranzas: any[]; clients: any[] }
   function exportXLSX() {
     const rows: any[] = []
     for (const grupo of porCliente) {
-      for (const f of grupo.facturas) {
+      let acumulado = 0
+      const ordenadas = [...grupo.facturas].sort((a, b) => {
+        const fa = a.fecha_comprobante || a.fecha || a.created_at || ""
+        const fb = b.fecha_comprobante || b.fecha || b.created_at || ""
+        return String(fa).localeCompare(String(fb))
+      })
+      for (const f of ordenadas) {
+        const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
+        acumulado += saldo
         rows.push({
           Cliente: grupo.client_name,
-          "Razón Social": f.razon_social || "-",
-          Tipo: f.comprobante || f.tipo_comprobante || "",
-          Número: f.numero_comprobante || f.pv_numero || "",
           Fecha: formatDateStr(f.fecha_comprobante || f.fecha || f.created_at),
+          Comprobante: [f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero]
+            .filter(Boolean).join(" "),
           Total: Number(f.total) || 0,
-          "Saldo Pendiente": Number(f.saldo_pendiente ?? f.total ?? 0),
+          Saldo: saldo,
+          Acumulado: acumulado,
         })
       }
     }
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "Cobranzas Pendientes")
-    const empresaTxt = filtroRS === "Todas" ? "todas" : filtroRS.toLowerCase()
+    const empresaTxt = empresaFilter === "Todas" ? "todas" : empresaFilter.toLowerCase()
     XLSX.writeFile(wb, `cobranzas_pendientes_${empresaTxt}.xlsx`)
   }
 
   function handlePrint() {
     const w = window.open("", "_blank")
     if (!w) return
-    const empresaTxt = filtroRS === "Todas" ? "Todas las empresas" : filtroRS
+    const empresaTxt = empresaFilter === "Todas" ? "Todas las empresas" : empresaFilter
     const rangoTxt = desde || hasta ? `Período: ${desde || "..."} a ${hasta || "..."}` : ""
     const grupos = porCliente.map((g) => {
-      const filas = g.facturas.map((f) => `
+      let acumulado = 0
+      const ordenadas = [...g.facturas].sort((a, b) => {
+        const fa = a.fecha_comprobante || a.fecha || a.created_at || ""
+        const fb = b.fecha_comprobante || b.fecha || b.created_at || ""
+        return String(fa).localeCompare(String(fb))
+      })
+      const filas = ordenadas.map((f) => {
+        const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
+        acumulado += saldo
+        return `
         <tr>
-          <td>${f.comprobante || f.tipo_comprobante || "-"}</td>
-          <td>${f.numero_comprobante || f.pv_numero || "-"}</td>
           <td>${formatDateStr(f.fecha_comprobante || f.fecha || f.created_at)}</td>
+          <td>${[f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero].filter(Boolean).join(" ") || "-"}</td>
           <td style="text-align:right">${formatCurrency(Number(f.total) || 0)}</td>
-          <td style="text-align:right;font-weight:bold">${formatCurrency(Number(f.saldo_pendiente ?? f.total ?? 0))}</td>
-        </tr>`).join("")
+          <td style="text-align:right;font-weight:bold">${formatCurrency(saldo)}</td>
+          <td style="text-align:right">${formatCurrency(acumulado)}</td>
+        </tr>`
+      }).join("")
       return `
         <tr class="cliente"><td colspan="5">${g.client_name} — <strong>${formatCurrency(g.total)}</strong></td></tr>
         ${filas}
@@ -1373,10 +1390,10 @@ function TabInforme({ cobranzas, clients }: { cobranzas: any[]; clients: any[] }
       <h2>Informe de Cobranzas Pendientes</h2>
       <p><strong>${empresaTxt}</strong>${rangoTxt ? " — " + rangoTxt : ""}</p>
       <table>
-        <thead><tr><th>Tipo</th><th>Número</th><th>Fecha</th><th style="text-align:right">Total</th><th style="text-align:right">Saldo Pendiente</th></tr></thead>
+        <thead><tr><th>Fecha</th><th>Comprobante</th><th style="text-align:right">Total</th><th style="text-align:right">Saldo</th><th style="text-align:right">Acumulado</th></tr></thead>
         <tbody>
           ${grupos}
-          <tr class="totals"><td colspan="4" style="text-align:right">TOTAL GENERAL</td><td style="text-align:right">${formatCurrency(totalGeneral)}</td></tr>
+          <tr class="totals"><td colspan="3" style="text-align:right">TOTAL GENERAL</td><td style="text-align:right">${formatCurrency(totalGeneral)}</td><td></td></tr>
         </tbody>
       </table>
       <script>window.print()<\/script></body></html>`)
@@ -1387,14 +1404,6 @@ function TabInforme({ cobranzas, clients }: { cobranzas: any[]; clients: any[] }
       {/* Filtros */}
       <div className="flex flex-wrap gap-3 items-end">
         <div>
-          <label className="text-sm font-medium mb-1 block">Empresa</label>
-          <select value={filtroRS} onChange={(e) => setFiltroRS(e.target.value)} className="border rounded-md px-3 py-2 text-sm">
-            {RAZONES_SOCIALES.map((rs) => (
-              <option key={rs} value={rs}>{rs}</option>
-            ))}
-          </select>
-        </div>
-        <div>
           <label className="text-sm font-medium mb-1 block">Desde</label>
           <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="border rounded-md px-3 py-2 text-sm" />
         </div>
@@ -1402,15 +1411,15 @@ function TabInforme({ cobranzas, clients }: { cobranzas: any[]; clients: any[] }
           <label className="text-sm font-medium mb-1 block">Hasta</label>
           <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="border rounded-md px-3 py-2 text-sm" />
         </div>
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-sm font-medium mb-1 block">Cliente</label>
+        <div className="flex-1 min-w-[260px]">
+          <label className="text-sm font-medium mb-1 block">Búsqueda de Cliente</label>
           <div className="flex gap-2">
             <select
               value={clienteFiltro}
               onChange={(e) => setClienteFiltro(e.target.value)}
               className="border rounded-md px-3 py-2 text-sm flex-1"
             >
-              <option value="todos">Todos los clientes</option>
+              <option value="todos">Todos</option>
               {(clienteFiltro !== "todos" && !clientesFiltrados.some((c) => c.id === clienteFiltro) && clientMap[clienteFiltro]) && (
                 <option value={clienteFiltro}>{clientMap[clienteFiltro].businessName}</option>
               )}
@@ -1490,6 +1499,11 @@ function TabInforme({ cobranzas, clients }: { cobranzas: any[]; clients: any[] }
 }
 
 function GrupoCliente({ grupo, expanded, onToggle }: { grupo: { client_id: string; client_name: string; facturas: any[]; total: number }; expanded: boolean; onToggle: () => void }) {
+  const ordenadas = [...grupo.facturas].sort((a, b) => {
+    const fa = a.fecha_comprobante || a.fecha || a.created_at || ""
+    const fb = b.fecha_comprobante || b.fecha || b.created_at || ""
+    return String(fa).localeCompare(String(fb))
+  })
   return (
     <>
       <TableRow onClick={onToggle} className="cursor-pointer hover:bg-blue-50">
@@ -1507,23 +1521,33 @@ function GrupoCliente({ grupo, expanded, onToggle }: { grupo: { client_id: strin
               <table className="w-full text-xs">
                 <thead>
                   <tr className="text-left text-muted-foreground">
-                    <th className="px-2 py-1">Tipo</th>
-                    <th className="px-2 py-1">Número</th>
+                    <th className="px-2 py-1">Cliente</th>
                     <th className="px-2 py-1">Fecha</th>
+                    <th className="px-2 py-1">Comprobante</th>
                     <th className="px-2 py-1 text-right">Total</th>
-                    <th className="px-2 py-1 text-right">Saldo Pendiente</th>
+                    <th className="px-2 py-1 text-right">Saldo</th>
+                    <th className="px-2 py-1 text-right">Acumulado</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {grupo.facturas.map((f, i) => (
-                    <tr key={f.id || i} className="border-t border-gray-200">
-                      <td className="px-2 py-1">{f.comprobante || f.tipo_comprobante || "-"}</td>
-                      <td className="px-2 py-1 font-mono">{f.numero_comprobante || f.pv_numero || "-"}</td>
-                      <td className="px-2 py-1">{formatDateStr(f.fecha_comprobante || f.fecha || f.created_at)}</td>
-                      <td className="px-2 py-1 text-right">{formatCurrency(Number(f.total) || 0)}</td>
-                      <td className="px-2 py-1 text-right font-medium">{formatCurrency(Number(f.saldo_pendiente ?? f.total ?? 0))}</td>
-                    </tr>
-                  ))}
+                  {(() => {
+                    let acum = 0
+                    return ordenadas.map((f, i) => {
+                      const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
+                      acum += saldo
+                      const num = [f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero].filter(Boolean).join(" ")
+                      return (
+                        <tr key={f.id || i} className="border-t border-gray-200">
+                          <td className="px-2 py-1">{grupo.client_name}</td>
+                          <td className="px-2 py-1">{formatDateStr(f.fecha_comprobante || f.fecha || f.created_at)}</td>
+                          <td className="px-2 py-1 font-mono">{num || "-"}</td>
+                          <td className="px-2 py-1 text-right">{formatCurrency(Number(f.total) || 0)}</td>
+                          <td className="px-2 py-1 text-right font-medium">{formatCurrency(saldo)}</td>
+                          <td className="px-2 py-1 text-right">{formatCurrency(acum)}</td>
+                        </tr>
+                      )
+                    })
+                  })()}
                 </tbody>
               </table>
             </div>
