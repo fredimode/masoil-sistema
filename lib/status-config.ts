@@ -1,6 +1,14 @@
 import type { StatusConfig, OrderStatus } from "./types"
 
 export const statusConfig: Record<OrderStatus, StatusConfig> = {
+  BORRADOR: {
+    status: "BORRADOR",
+    icon: "📝",
+    color: "text-gray-700",
+    bgColor: "bg-gray-100 border-gray-300",
+    label: "Borrador",
+    description: "Pedido en preparación (no enviado)",
+  },
   INGRESADO: {
     status: "INGRESADO",
     icon: "📥",
@@ -69,6 +77,7 @@ export const statusConfig: Record<OrderStatus, StatusConfig> = {
 
 // Valid transitions map
 export const validTransitions: Record<OrderStatus, OrderStatus[]> = {
+  BORRADOR: ["INGRESADO", "CANCELADO"],
   INGRESADO: ["PREPARADO", "ESPERANDO_MERCADERIA", "CANCELADO"],
   PREPARADO: ["FACTURADO", "FACTURADO_PARCIAL", "CANCELADO"],
   FACTURADO_PARCIAL: ["FACTURADO", "CANCELADO"],

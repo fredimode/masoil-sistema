@@ -233,7 +233,7 @@ export default function AdminNuevoPedidoPage() {
   const subtotal = orderItems.reduce((sum, i) => sum + i.price * i.quantity, 0)
   const hayItemsCotizacion = orderItems.some((i) => i.requiereCotizacion)
 
-  async function handleSubmit() {
+  async function handleSubmit(asDraft: boolean = false) {
     if (!selectedClientId || orderItems.length === 0) {
       alert("Seleccioná un cliente y agregá al menos un producto")
       return
@@ -262,6 +262,7 @@ export default function AdminNuevoPedidoPage() {
           price: i.price,
         })),
         razonSocial,
+        status: asDraft ? "BORRADOR" : "INGRESADO",
       })
 
       // Update additional fields
@@ -626,7 +627,19 @@ export default function AdminNuevoPedidoPage() {
           <Button asChild variant="outline" className="flex-1">
             <Link href="/admin/pedidos">Cancelar</Link>
           </Button>
-          <Button onClick={handleSubmit} className="flex-1" disabled={!selectedClientId || orderItems.length === 0 || submitting}>
+          <Button
+            onClick={() => handleSubmit(true)}
+            variant="outline"
+            className="flex-1"
+            disabled={!selectedClientId || orderItems.length === 0 || submitting}
+          >
+            {submitting ? "Guardando..." : "Guardar Borrador"}
+          </Button>
+          <Button
+            onClick={() => handleSubmit(false)}
+            className="flex-1"
+            disabled={!selectedClientId || orderItems.length === 0 || submitting}
+          >
             {submitting ? "Creando..." : "Crear Pedido"}
           </Button>
         </div>

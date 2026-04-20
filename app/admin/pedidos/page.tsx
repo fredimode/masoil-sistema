@@ -159,6 +159,7 @@ export default function AdminPedidosPage() {
             <SelectItem value="todos">Todos los estados</SelectItem>
             <SelectItem value="pendientes">Pendientes</SelectItem>
             <SelectItem value="urgentes">Urgentes</SelectItem>
+            <SelectItem value="BORRADOR">Borrador</SelectItem>
             <SelectItem value="INGRESADO">Ingresado</SelectItem>
             <SelectItem value="PREPARADO">Preparado</SelectItem>
             <SelectItem value="FACTURADO_PARCIAL">Facturado Parcial</SelectItem>

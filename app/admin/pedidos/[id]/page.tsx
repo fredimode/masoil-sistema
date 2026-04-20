@@ -11,10 +11,11 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { StatusTimeline } from "@/components/vendedor/status-timeline"
 import { CountdownWidget } from "@/components/vendedor/countdown-widget"
-import { fetchOrderById, fetchClientById, updateOrderStatus } from "@/lib/supabase/queries"
+import { fetchOrderById, fetchClientById, updateOrderStatus, addItemsToOrder, fetchProducts } from "@/lib/supabase/queries"
 import { getStatusConfig, getNextStatuses } from "@/lib/status-config"
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils"
-import type { Order, Client, OrderStatus } from "@/lib/types"
+import type { Order, Client, OrderStatus, Product } from "@/lib/types"
+import { normalizeSearch } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ArrowLeft, Printer, MessageCircle, Phone, XCircle, FileText } from "lucide-react"
 import Link from "next/link"
@@ -43,6 +44,14 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [facturarOpen, setFacturarOpen] = useState(false)
   const [facturarItems, setFacturarItems] = useState<Record<string, boolean>>({})
   const [facturando, setFacturando] = useState(false)
+
+  // Agregar productos a pedido existente
+  const [agregarOpen, setAgregarOpen] = useState(false)
+  const [prodList, setProdList] = useState<Product[]>([])
+  const [prodSearch, setProdSearch] = useState("")
+  const [prodToAdd, setProdToAdd] = useState<{ product: Product; qty: number; price: number }[]>([])
+  const [agregando, setAgregando] = useState(false)
+
   const { vendedor: currentUser } = useCurrentVendedor()
 
   useEffect(() => {
@@ -451,6 +460,39 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             </Button>
           )}
 
+          {/* Agregar productos */}
+          {["INGRESADO", "PREPARADO", "BORRADOR"].includes(currentStatus) && (
+            <Button
+              variant="outline"
+              onClick={async () => {
+                if (prodList.length === 0) setProdList(await fetchProducts())
+                setAgregarOpen(true)
+              }}
+            >
+              + Agregar productos
+            </Button>
+          )}
+
+          {/* Confirmar (BORRADOR → INGRESADO) */}
+          {currentStatus === "BORRADOR" && (
+            <Button
+              variant="default"
+              onClick={async () => {
+                if (!confirm("¿Confirmar pedido y pasarlo a INGRESADO?")) return
+                const uid = currentUser?.id || o.vendedorId || ""
+                const uname = currentUser?.name || o.vendedorName || "Admin"
+                try {
+                  await updateOrderStatus(o.id, "INGRESADO", uid, uname, "Confirmación desde borrador")
+                  setCurrentStatus("INGRESADO")
+                } catch (e: any) {
+                  alert("Error: " + (e?.message || ""))
+                }
+              }}
+            >
+              Confirmar Pedido
+            </Button>
+          )}
+
           {/* Hoja de ruta button */}
           {orderExtra?.hoja_ruta_url && (
             <Button asChild variant="outline">
@@ -786,6 +828,112 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                 {facturando ? "Generando factura..." : "Generar Factura"}
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Agregar productos Dialog */}
+      <Dialog open={agregarOpen} onOpenChange={setAgregarOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Agregar productos al pedido</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <input
+              type="text"
+              placeholder="Buscar producto..."
+              value={prodSearch}
+              onChange={(e) => setProdSearch(e.target.value)}
+              className="w-full p-2 border rounded-md text-sm"
+            />
+            {prodSearch.length >= 2 && (
+              <div className="border rounded-md max-h-48 overflow-auto">
+                {prodList
+                  .filter((p) => {
+                    const q = normalizeSearch(prodSearch)
+                    return normalizeSearch(p.name).includes(q) || normalizeSearch(p.code || "").includes(q)
+                  })
+                  .slice(0, 20)
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => {
+                        if (prodToAdd.find((x) => x.product.id === p.id)) return
+                        setProdToAdd([...prodToAdd, { product: p, qty: 1, price: p.price }])
+                        setProdSearch("")
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 border-b"
+                    >
+                      <div className="flex justify-between">
+                        <span>{p.name} <span className="text-xs text-gray-500">{p.code}</span></span>
+                        <span className="font-medium">{formatCurrency(p.price)}</span>
+                      </div>
+                    </button>
+                  ))}
+              </div>
+            )}
+            {prodToAdd.length > 0 && (
+              <div className="border rounded-md">
+                <div className="grid grid-cols-[1fr,80px,120px,40px] gap-2 p-2 bg-gray-50 text-xs font-medium">
+                  <span>Producto</span><span>Cant.</span><span>Precio</span><span></span>
+                </div>
+                {prodToAdd.map((it, i) => (
+                  <div key={it.product.id} className="grid grid-cols-[1fr,80px,120px,40px] gap-2 p-2 border-t items-center">
+                    <span className="text-sm">{it.product.name}</span>
+                    <input
+                      type="number" min={1} value={it.qty}
+                      onChange={(e) => {
+                        const q = parseInt(e.target.value) || 1
+                        setProdToAdd(prodToAdd.map((x, j) => j === i ? { ...x, qty: q } : x))
+                      }}
+                      className="p-1 border rounded text-sm w-16"
+                    />
+                    <input
+                      type="number" step={0.01} value={it.price}
+                      onChange={(e) => {
+                        const pr = parseFloat(e.target.value) || 0
+                        setProdToAdd(prodToAdd.map((x, j) => j === i ? { ...x, price: pr } : x))
+                      }}
+                      className="p-1 border rounded text-sm"
+                    />
+                    <button
+                      onClick={() => setProdToAdd(prodToAdd.filter((_, j) => j !== i))}
+                      className="text-red-600 text-sm"
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2 justify-end mt-4">
+            <Button variant="outline" onClick={() => { setAgregarOpen(false); setProdToAdd([]); setProdSearch("") }}>Cancelar</Button>
+            <Button
+              disabled={agregando || prodToAdd.length === 0}
+              onClick={async () => {
+                setAgregando(true)
+                try {
+                  await addItemsToOrder(o.id, prodToAdd.map((x) => ({
+                    productId: x.product.id,
+                    productCode: x.product.code || "",
+                    productName: x.product.name,
+                    quantity: x.qty,
+                    price: x.price,
+                  })))
+                  alert("Productos agregados. TODO: notificar a Matías")
+                  // TODO: notificación a Matías cuando se agrega productos a pedido existente
+                  setAgregarOpen(false)
+                  setProdToAdd([])
+                  setProdSearch("")
+                  window.location.reload()
+                } catch (e: any) {
+                  alert("Error: " + (e?.message || ""))
+                } finally {
+                  setAgregando(false)
+                }
+              }}
+            >
+              {agregando ? "Agregando..." : "Agregar"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

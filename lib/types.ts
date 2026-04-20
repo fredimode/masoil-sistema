@@ -3,6 +3,7 @@
 export type Zona = "Norte" | "Capital" | "Sur" | "Oeste" | "GBA"
 
 export type OrderStatus =
+  | "BORRADOR"
   | "INGRESADO"
   | "PREPARADO"
   | "FACTURADO"

@@ -175,6 +175,7 @@ export async function createOrder(order: {
   total: number
   items: { productId: string | null; productCode: string; productName: string; quantity: number; price: number }[]
   razonSocial?: string
+  status?: "BORRADOR" | "INGRESADO"
 }): Promise<string> {
   const supabase = createSupabaseClient()
 
@@ -231,7 +232,7 @@ export async function createOrder(order: {
       vendedor_id: vendedorIdSafe,
       vendedor_name: order.vendedorName,
       zona: order.zona,
-      status: "INGRESADO",
+      status: order.status || "INGRESADO",
       total: order.total,
       notes: order.notes,
       is_custom: order.isCustom,
@@ -343,6 +344,52 @@ export async function createOrder(order: {
   }
 
   return orderData.id
+}
+
+export async function addItemsToOrder(
+  orderId: string,
+  items: { productId: string | null; productCode: string; productName: string; quantity: number; price: number }[]
+): Promise<void> {
+  const supabase = createSupabaseClient()
+  if (items.length === 0) return
+
+  const rows = items.map((item) => ({
+    order_id: orderId,
+    product_id: item.productId && item.productId.trim() !== "" ? item.productId : null,
+    quantity: item.quantity,
+    unit_price: item.price,
+    reservado: true,
+    reservado_at: new Date().toISOString(),
+  }))
+  const { error: itemsError } = await supabase.from("order_items").insert(rows)
+  if (itemsError) throw itemsError
+
+  // Recalcular total sumando lo nuevo
+  const { data: currentOrder } = await supabase
+    .from("orders")
+    .select("total")
+    .eq("id", orderId)
+    .single()
+  const delta = items.reduce((s, i) => s + i.quantity * i.price, 0)
+  const newTotal = Number(currentOrder?.total || 0) + delta
+  await supabase
+    .from("orders")
+    .update({ total: newTotal, updated_at: new Date().toISOString() })
+    .eq("id", orderId)
+
+  // Descontar stock
+  for (const item of items) {
+    if (!item.productId) continue
+    const { data: product } = await supabase
+      .from("products")
+      .select("stock")
+      .eq("id", item.productId)
+      .single()
+    if (product) {
+      const newStock = Math.max(0, (product.stock ?? 0) - item.quantity)
+      await supabase.from("products").update({ stock: newStock }).eq("id", item.productId)
+    }
+  }
 }
 
 export async function updateOrderStatus(
