@@ -25,6 +25,7 @@ import {
   ScrollText,
   FileInput,
   Landmark,
+  Wallet,
 } from "lucide-react"
 
 type UserRole = "admin" | "usuario"
@@ -78,6 +79,13 @@ const navSections: NavSection[] = [
     roles: ["admin", "usuario"],
     items: [
       { href: "/admin/estadisticas", label: "Estadísticas", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "Tesorería",
+    roles: ["admin", "usuario"],
+    items: [
+      { href: "/admin/caja-chica", label: "Caja Chica", icon: Wallet },
     ],
   },
   {
