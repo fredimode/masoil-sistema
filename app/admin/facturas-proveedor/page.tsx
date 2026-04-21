@@ -43,7 +43,10 @@ const PROVINCIAS_ARGENTINA = [
   "Santiago del Estero", "Tierra del Fuego", "Tucumán",
 ]
 
+const EMPRESAS_FACTURA = ["Masoil", "Aquiles", "Conancap"]
+
 const INITIAL_FORM = {
+  empresa: "",
   proveedor_id: "",
   proveedor_nombre: "",
   cuit: "",
@@ -276,6 +279,7 @@ export default function FacturasProveedorPage() {
     try {
       const totalNum = parseFloat(form.total) || 0
       const facturaData: Record<string, any> = {
+        empresa: form.empresa || null,
         proveedor_id: form.proveedor_id || null,
         proveedor_nombre: form.proveedor_nombre,
         cuit: form.cuit || null,
@@ -556,6 +560,22 @@ export default function FacturasProveedorPage() {
           </DialogHeader>
 
           <div className="grid gap-3 py-2">
+            {/* Empresa - primer campo */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Empresa *</label>
+              <select
+                value={form.empresa}
+                onChange={(e) => setForm((prev) => ({ ...prev, empresa: e.target.value }))}
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                required
+              >
+                <option value="">Seleccionar empresa...</option>
+                {EMPRESAS_FACTURA.map((e) => (
+                  <option key={e} value={e}>{e}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Proveedor autocomplete */}
             <div className="relative">
               <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor *</label>

@@ -80,6 +80,9 @@ export default function NuevaFacturaPage() {
   const [modo, setModo] = useState<"pedido" | "manual">("manual")
   const [orderId, setOrderId] = useState<string | null>(null)
 
+  // Empresa emisora
+  const [empresaFactura, setEmpresaFactura] = useState<"Masoil" | "Aquiles" | "Conancap" | "">("")
+
   // Tipo de comprobante: FACTURA, NOTA_CREDITO, NOTA_DEBITO
   const [tipoComprobante, setTipoComprobante] = useState<"FACTURA" | "NOTA_CREDITO" | "NOTA_DEBITO">("FACTURA")
   const [facturaReferenciaId, setFacturaReferenciaId] = useState<string>("")
@@ -264,6 +267,7 @@ export default function NuevaFacturaPage() {
     try {
       const payload: Record<string, unknown> = {
         clientId: clienteSeleccionado.id,
+        empresa: empresaFactura || undefined,
         tipoComprobante,
         items: items.map((it) => ({
           productId: it.productId,
@@ -434,6 +438,22 @@ export default function NuevaFacturaPage() {
         <p className="text-sm text-amber-800">
           <strong>TESTING</strong> — Punto de venta de desarrollo. Las facturas no se envían a AFIP.
         </p>
+      </div>
+
+      {/* Empresa - primer campo */}
+      <div className="bg-white rounded-lg shadow p-6 mb-6">
+        <label className="font-bold text-gray-900 block mb-2">Empresa *</label>
+        <select
+          value={empresaFactura}
+          onChange={(e) => setEmpresaFactura(e.target.value as any)}
+          className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+          required
+        >
+          <option value="">Seleccionar empresa...</option>
+          <option value="Masoil">Masoil</option>
+          <option value="Aquiles">Aquiles</option>
+          <option value="Conancap">Conancap</option>
+        </select>
       </div>
 
       {/* Paso 1: Seleccionar cliente */}

@@ -385,6 +385,22 @@ export default function NuevoPagoPage() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Empresa */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <label className="font-semibold text-gray-900 block mb-2">Empresa *</label>
+          <select
+            value={form.empresa}
+            onChange={(e) => setForm((prev) => ({ ...prev, empresa: e.target.value }))}
+            className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+            required
+          >
+            <option value="">Seleccionar empresa...</option>
+            {EMPRESAS.map((e) => (
+              <option key={e} value={e}>{e}</option>
+            ))}
+          </select>
+        </div>
+
         {/* Proveedor Autocomplete */}
         <div className="bg-white rounded-lg shadow p-6">
           <h3 className="font-semibold text-gray-900 mb-4">Proveedor</h3>
