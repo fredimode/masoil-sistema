@@ -392,6 +392,8 @@ export async function addItemsToOrder(
   }
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function updateOrderStatus(
   orderId: string,
   newStatus: OrderStatus,
@@ -408,10 +410,36 @@ export async function updateOrderStatus(
 
   if (updateError) throw updateError
 
+  // Resolver vendedor real desde auth si userId no es UUID válido
+  let changedBy: string | null = null
+  let resolvedName = userName
+  if (userId && UUID_REGEX.test(userId)) {
+    changedBy = userId
+  } else {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: vend } = await supabase
+          .from("vendedores")
+          .select("id, name")
+          .eq("auth_user_id", user.id)
+          .single()
+        if (vend) {
+          changedBy = vend.id
+          resolvedName = vend.name || userName
+        }
+      }
+    } catch {
+      // ignore: dejamos changedBy en null
+    }
+  }
+
   const { error: histError } = await supabase.from("order_status_history").insert({
     order_id: orderId,
     status: newStatus,
-    changed_by: userId,
+    changed_by: changedBy,
+    user_id: changedBy,
+    user_name: resolvedName || null,
     notes: notes || null,
   })
 

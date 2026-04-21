@@ -21,13 +21,14 @@ export function OrderTable({ orders: initialOrders }: OrderTableProps) {
   async function handleStatusChange(order: Order, newStatus: string) {
     if (newStatus === order.status) return
     try {
-      await updateOrderStatus(order.id, newStatus as OrderStatus, "Admin", "admin")
+      // updateOrderStatus resuelve el user desde auth si userId no es UUID valido
+      await updateOrderStatus(order.id, newStatus as OrderStatus, "", "Admin")
       setOrders((prev) =>
         prev.map((o) => o.id === order.id ? { ...o, status: newStatus as OrderStatus } : o)
       )
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error updating status:", err)
-      alert("Error al actualizar el estado")
+      alert("Error al actualizar el estado: " + (err?.message || err?.details || "desconocido"))
     }
   }
 
