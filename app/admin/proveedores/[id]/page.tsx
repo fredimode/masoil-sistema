@@ -20,7 +20,7 @@ import {
   fetchReclamosByProveedor,
   updateProveedor,
 } from "@/lib/supabase/queries"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, formatDate } from "@/lib/utils"
 import { ArrowLeft, Edit, MessageCircle, Save } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -360,14 +360,18 @@ export default function AdminProveedorDetailPage({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Proveedor</TableHead>
-                <TableHead>Estado</TableHead>
+                <TableHead>Observaciones</TableHead>
+                <TableHead className="w-36">Fecha</TableHead>
+                <TableHead className="w-32">Estado</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {reclamos.map((r, i) => (
                 <TableRow key={i}>
-                  <TableCell>{r.proveedor_nombre || "-"}</TableCell>
+                  <TableCell className="whitespace-pre-wrap">{r.observaciones || "-"}</TableCell>
+                  <TableCell className="text-sm">
+                    {r.fecha_reclamo ? formatDate(new Date(r.fecha_reclamo)) : r.fecha_pago ? formatDate(new Date(r.fecha_pago)) : "-"}
+                  </TableCell>
                   <TableCell>
                     <Badge variant="outline">{r.estado || "-"}</Badge>
                   </TableCell>
