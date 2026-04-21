@@ -186,47 +186,6 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
   const [hasta, setHasta] = useState("")
   const [todos, setTodos] = useState(false)
   const [page, setPage] = useState(1)
-  const [retOpen, setRetOpen] = useState(false)
-  const [retForm, setRetForm] = useState({ tipo: "ARBA", nro_comprobante: "", fecha: new Date().toISOString().slice(0, 10), importe: 0 })
-  const [retSaving, setRetSaving] = useState(false)
-
-  async function handleGuardarRetencion() {
-    if (!selectedClient) return
-    if (!retForm.importe || retForm.importe <= 0) {
-      alert("Indicá un importe válido")
-      return
-    }
-    setRetSaving(true)
-    try {
-      const retId = await createRetencion({
-        client_id: selectedClient.id,
-        tipo: retForm.tipo,
-        numero_comprobante: retForm.nro_comprobante || null,
-        fecha: retForm.fecha,
-        importe: retForm.importe,
-      })
-      await createMovimientoCuentaCorriente({
-        client_id: selectedClient.id,
-        fecha: retForm.fecha,
-        tipo_comprobante: "RT",
-        punto_venta: 0,
-        numero_comprobante: retForm.nro_comprobante || "",
-        haber: retForm.importe,
-        debe: 0,
-        referencia_id: retId,
-        observaciones: `Retención ${retForm.tipo} cargada desde CC`,
-      })
-      setRetOpen(false)
-      setRetForm({ tipo: "ARBA", nro_comprobante: "", fecha: new Date().toISOString().slice(0, 10), importe: 0 })
-      await loadMovimientos(selectedClient.id)
-    } catch (e: any) {
-      console.error(e)
-      alert("Error al guardar retención: " + (e?.message || ""))
-    } finally {
-      setRetSaving(false)
-    }
-  }
-
   const filteredClients = useMemo(() => {
     if (!search.trim()) return []
     const norm = normalizeSearch(search)
@@ -458,77 +417,6 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
         </p>
       )}
 
-      {/* Cargar Retención desde CC */}
-      {selectedClient && (
-        <div className="flex justify-end border-t pt-4">
-          <button
-            onClick={() => setRetOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-md text-sm hover:bg-indigo-700"
-          >
-            <Plus className="h-4 w-4" /> Cargar Retención
-          </button>
-        </div>
-      )}
-
-      <Dialog open={retOpen} onOpenChange={setRetOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Cargar Retención — {selectedClient?.businessName}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium mb-1 block">Tipo</label>
-              <select
-                value={retForm.tipo}
-                onChange={(e) => setRetForm((f) => ({ ...f, tipo: e.target.value }))}
-                className="w-full border rounded-md px-3 py-2 text-sm"
-              >
-                {TIPOS_RETENCION.map((t) => (<option key={t} value={t}>{t}</option>))}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium mb-1 block">Nro Comprobante</label>
-                <input
-                  type="text"
-                  value={retForm.nro_comprobante}
-                  onChange={(e) => setRetForm((f) => ({ ...f, nro_comprobante: e.target.value }))}
-                  className="w-full border rounded-md px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-1 block">Fecha</label>
-                <input
-                  type="date"
-                  value={retForm.fecha}
-                  onChange={(e) => setRetForm((f) => ({ ...f, fecha: e.target.value }))}
-                  className="w-full border rounded-md px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-1 block">Importe</label>
-              <input
-                type="number"
-                step="0.01"
-                value={retForm.importe || ""}
-                onChange={(e) => setRetForm((f) => ({ ...f, importe: parseFloat(e.target.value) || 0 }))}
-                className="w-full border rounded-md px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <button onClick={() => setRetOpen(false)} className="px-3 py-2 bg-gray-100 rounded-md text-sm hover:bg-gray-200" disabled={retSaving}>Cancelar</button>
-            <button
-              onClick={handleGuardarRetencion}
-              className="px-3 py-2 bg-primary text-white rounded-md text-sm hover:bg-primary/90 disabled:opacity-50"
-              disabled={retSaving || !retForm.importe}
-            >
-              {retSaving ? "Guardando..." : "Guardar Retención"}
-            </button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </Card>
   )
 }
@@ -551,6 +439,48 @@ function TabRegistrarCobro({
   const [nextRecibo, setNextRecibo] = useState<number>(0)
   // Unified CUIT pendientes
   const [pendientesUnificados, setPendientesUnificados] = useState<any[]>([])
+
+  // Carga rápida de retención (sin recibo)
+  const [retOpen, setRetOpen] = useState(false)
+  const [retForm, setRetForm] = useState({ tipo: "ARBA", nro_comprobante: "", fecha: new Date().toISOString().slice(0, 10), importe: 0 })
+  const [retSaving, setRetSaving] = useState(false)
+
+  async function handleGuardarRetencionRapida() {
+    if (!selectedClient) return
+    if (!retForm.importe || retForm.importe <= 0) {
+      alert("Indicá un importe válido")
+      return
+    }
+    setRetSaving(true)
+    try {
+      const retId = await createRetencion({
+        client_id: selectedClient.id,
+        tipo: retForm.tipo,
+        numero_comprobante: retForm.nro_comprobante || null,
+        fecha: retForm.fecha,
+        importe: retForm.importe,
+      })
+      await createMovimientoCuentaCorriente({
+        client_id: selectedClient.id,
+        fecha: retForm.fecha,
+        tipo_comprobante: "RT",
+        punto_venta: 0,
+        numero_comprobante: retForm.nro_comprobante || "",
+        haber: retForm.importe,
+        debe: 0,
+        referencia_id: retId,
+        observaciones: `Retención ${retForm.tipo} cargada desde Registrar Cobro`,
+      })
+      setRetOpen(false)
+      setRetForm({ tipo: "ARBA", nro_comprobante: "", fecha: new Date().toISOString().slice(0, 10), importe: 0 })
+      alert("Retención registrada")
+    } catch (e: any) {
+      console.error(e)
+      alert("Error al guardar retención: " + (e?.message || ""))
+    } finally {
+      setRetSaving(false)
+    }
+  }
 
   // Load next recibo number on mount
   useEffect(() => {
@@ -803,6 +733,16 @@ function TabRegistrarCobro({
             </div>
           </div>
         </div>
+        {selectedClient && (
+          <div className="flex justify-end mt-3 pt-3 border-t">
+            <button
+              onClick={() => setRetOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-md text-sm hover:bg-indigo-700"
+            >
+              <Plus className="h-4 w-4" /> Cargar Retenciones
+            </button>
+          </div>
+        )}
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1137,6 +1077,66 @@ function TabRegistrarCobro({
           </div>
         </Card>
       </div>
+
+      <Dialog open={retOpen} onOpenChange={setRetOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cargar Retenciones — {selectedClient?.businessName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Tipo</label>
+              <select
+                value={retForm.tipo}
+                onChange={(e) => setRetForm((f) => ({ ...f, tipo: e.target.value }))}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              >
+                {TIPOS_RETENCION.map((t) => (<option key={t} value={t}>{t}</option>))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Nro Comprobante</label>
+                <input
+                  type="text"
+                  value={retForm.nro_comprobante}
+                  onChange={(e) => setRetForm((f) => ({ ...f, nro_comprobante: e.target.value }))}
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Fecha</label>
+                <input
+                  type="date"
+                  value={retForm.fecha}
+                  onChange={(e) => setRetForm((f) => ({ ...f, fecha: e.target.value }))}
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Importe</label>
+              <input
+                type="number"
+                step="0.01"
+                value={retForm.importe || ""}
+                onChange={(e) => setRetForm((f) => ({ ...f, importe: parseFloat(e.target.value) || 0 }))}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <button onClick={() => setRetOpen(false)} className="px-3 py-2 bg-gray-100 rounded-md text-sm hover:bg-gray-200" disabled={retSaving}>Cancelar</button>
+            <button
+              onClick={handleGuardarRetencionRapida}
+              className="px-3 py-2 bg-primary text-white rounded-md text-sm hover:bg-primary/90 disabled:opacity-50"
+              disabled={retSaving || !retForm.importe}
+            >
+              {retSaving ? "Guardando..." : "Guardar Retención"}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
