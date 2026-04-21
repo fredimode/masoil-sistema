@@ -36,7 +36,7 @@ export function OrderTable({ orders: initialOrders }: OrderTableProps) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-28">ID Pedido</TableHead>
+            <TableHead className="w-16">N°</TableHead>
             <TableHead>Cliente</TableHead>
             <TableHead className="w-24">Zona</TableHead>
             <TableHead>Vendedor</TableHead>
@@ -55,18 +55,18 @@ export function OrderTable({ orders: initialOrders }: OrderTableProps) {
 
             return (
               <TableRow key={order.id} className={cn(order.isUrgent && "bg-red-50")}>
-                <TableCell className="font-mono text-sm">
-                  {order.orderNumber}
-                  {order.isUrgent && (
-                    <Badge variant="destructive" className="ml-1 text-xs">
-                      URG
-                    </Badge>
-                  )}
-                  {(order as any).esIncompleto && (
-                    <Badge className="ml-1 text-xs bg-amber-100 text-amber-800 border-amber-300">
-                      INCOMPLETO
-                    </Badge>
-                  )}
+                <TableCell className="font-mono text-xs px-2">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="truncate">{order.orderNumber}</span>
+                    <div className="flex flex-wrap gap-0.5">
+                      {order.isUrgent && (
+                        <Badge variant="destructive" className="text-[10px] px-1 py-0 h-4">URG</Badge>
+                      )}
+                      {(order as any).esIncompleto && (
+                        <Badge className="text-[10px] px-1 py-0 h-4 bg-amber-100 text-amber-800 border-amber-300">INC</Badge>
+                      )}
+                    </div>
+                  </div>
                 </TableCell>
                 <TableCell className="font-medium">{order.clientName}</TableCell>
                 <TableCell>
