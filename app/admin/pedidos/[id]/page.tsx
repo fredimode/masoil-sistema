@@ -43,6 +43,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [updating, setUpdating] = useState(false)
   const [facturarOpen, setFacturarOpen] = useState(false)
   const [facturarItems, setFacturarItems] = useState<Record<string, boolean>>({})
+  const [facturarOverrides, setFacturarOverrides] = useState<Record<string, { nombre: string; precio: number }>>({})
   const [facturando, setFacturando] = useState(false)
 
   // Agregar productos a pedido existente
@@ -329,8 +330,13 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
 
   function openFacturarDialog() {
     const initial: Record<string, boolean> = {}
-    itemsPendientesFactura.forEach((p) => { initial[p.productId] = true })
+    const overrides: Record<string, { nombre: string; precio: number }> = {}
+    itemsPendientesFactura.forEach((p) => {
+      initial[p.productId] = true
+      overrides[p.productId] = { nombre: p.productName, precio: p.price }
+    })
     setFacturarItems(initial)
+    setFacturarOverrides(overrides)
     setFacturarOpen(true)
   }
 
@@ -348,13 +354,16 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         body: JSON.stringify({
           orderId: o.id,
           clientId: o.clientId,
-          items: selectedProducts.map((p) => ({
-            productId: p.productId,
-            producto_nombre: p.productName,
-            producto_codigo: p.productCode,
-            cantidad: p.quantity,
-            precioUnitario: p.price,
-          })),
+          items: selectedProducts.map((p) => {
+            const override = facturarOverrides[p.productId]
+            return {
+              productId: p.productId,
+              producto_nombre: override?.nombre || p.productName,
+              producto_codigo: p.productCode,
+              cantidad: p.quantity,
+              precioUnitario: override?.precio ?? p.price,
+            }
+          }),
         }),
       })
       const data = await res.json()
@@ -783,30 +792,78 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
 
       {/* Facturar Dialog */}
       <Dialog open={facturarOpen} onOpenChange={setFacturarOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>Facturar Pedido {o.orderNumber}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <p className="text-sm text-muted-foreground">
-              Seleccioná los items a facturar. Si no facturás todos, el pedido quedará en estado "Facturado Parcial".
+              Seleccioná los items a facturar y editá nombre o precio si es necesario. El código no se puede modificar. Si no facturás todos, el pedido quedará en estado "Facturado Parcial".
             </p>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {itemsPendientesFactura.map((product) => (
-                <label key={product.productId} className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50">
-                  <Checkbox
-                    checked={facturarItems[product.productId] || false}
-                    onCheckedChange={(checked) =>
-                      setFacturarItems((prev) => ({ ...prev, [product.productId]: checked === true }))
-                    }
-                  />
-                  <div className="flex-1">
-                    <p className="font-medium text-sm">{product.productName}</p>
-                    <p className="text-xs text-muted-foreground">{product.productCode} - Cant: {product.quantity}</p>
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+              {itemsPendientesFactura.map((product) => {
+                const override = facturarOverrides[product.productId] || { nombre: product.productName, precio: product.price }
+                const subtotal = (Number(override.precio) || 0) * product.quantity
+                const isChecked = facturarItems[product.productId] || false
+                return (
+                  <div key={product.productId} className={`p-3 border rounded-lg ${isChecked ? "bg-white" : "bg-muted/30 opacity-70"}`}>
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={isChecked}
+                        onCheckedChange={(checked) =>
+                          setFacturarItems((prev) => ({ ...prev, [product.productId]: checked === true }))
+                        }
+                        className="mt-1"
+                      />
+                      <div className="flex-1 grid grid-cols-12 gap-2">
+                        <div className="col-span-2 text-xs font-mono text-muted-foreground self-center">
+                          {product.productCode}
+                        </div>
+                        <div className="col-span-6">
+                          <label className="text-[10px] uppercase text-muted-foreground block">Nombre/descripción</label>
+                          <input
+                            type="text"
+                            value={override.nombre}
+                            onChange={(e) =>
+                              setFacturarOverrides((prev) => ({
+                                ...prev,
+                                [product.productId]: { ...override, nombre: e.target.value },
+                              }))
+                            }
+                            disabled={!isChecked}
+                            className="w-full p-1 border rounded text-sm"
+                          />
+                        </div>
+                        <div className="col-span-1 text-center self-end">
+                          <span className="text-[10px] uppercase text-muted-foreground block">Cant.</span>
+                          <span className="text-sm font-medium">{product.quantity}</span>
+                        </div>
+                        <div className="col-span-2">
+                          <label className="text-[10px] uppercase text-muted-foreground block">Precio</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.01}
+                            value={override.precio}
+                            onChange={(e) =>
+                              setFacturarOverrides((prev) => ({
+                                ...prev,
+                                [product.productId]: { ...override, precio: parseFloat(e.target.value) || 0 },
+                              }))
+                            }
+                            disabled={!isChecked}
+                            className="w-full p-1 border rounded text-sm text-right"
+                          />
+                        </div>
+                        <div className="col-span-1 text-right self-end">
+                          <span className="text-[10px] uppercase text-muted-foreground block">Subtotal</span>
+                          <span className="text-sm font-semibold">{formatCurrency(subtotal)}</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <span className="font-semibold text-sm">{formatCurrency(product.price * product.quantity)}</span>
-                </label>
-              ))}
+                )
+              })}
             </div>
             <div className="flex justify-between items-center pt-2 border-t">
               <span className="font-semibold">Total a facturar</span>
@@ -814,7 +871,11 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                 {formatCurrency(
                   itemsPendientesFactura
                     .filter((p) => facturarItems[p.productId])
-                    .reduce((sum, p) => sum + p.price * p.quantity, 0)
+                    .reduce((sum, p) => {
+                      const ov = facturarOverrides[p.productId]
+                      const precio = ov?.precio ?? p.price
+                      return sum + precio * p.quantity
+                    }, 0)
                 )}
               </span>
             </div>
