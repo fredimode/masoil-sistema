@@ -546,6 +546,7 @@ export async function createClient(client: {
   sucursalEntrega?: string;
   domicilioEntrega?: string;
   cuit?: string;
+  condicionIva?: string;
 }): Promise<void> {
   const supabase = createSupabaseClient()
   const { error } = await supabase.from("clients").insert({
@@ -564,6 +565,7 @@ export async function createClient(client: {
     sucursal_entrega: client.sucursalEntrega || null,
     domicilio_entrega: client.domicilioEntrega || null,
     cuit: client.cuit || null,
+    condicion_iva: client.condicionIva || null,
   })
   if (error) throw error
 }

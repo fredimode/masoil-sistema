@@ -41,6 +41,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
     sucursal: "",
     sucursalEntrega: "",
     cuit: "",
+    condicionIva: "",
   })
 
   // Contactos de Cobranzas
@@ -89,6 +90,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
           sucursal: (clientData as any).sucursal || "",
           sucursalEntrega: (clientData as any).sucursalEntrega || "",
           cuit: (clientData as any).cuit || (clientData as any).numeroDocum || "",
+          condicionIva: (clientData as any).condicionIva || "",
         })
         const rawMail = (clientData as any).cobranzas_mail
         const rawTel = (clientData as any).cobranzas_telefono
@@ -136,6 +138,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
         sucursal: editForm.sucursal || null,
         sucursal_entrega: editForm.sucursalEntrega || null,
         cuit: editForm.cuit || null,
+        condicion_iva: editForm.condicionIva || null,
       })
       setClient((prev) => prev ? {
         ...prev,
@@ -175,6 +178,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
       sucursal: (client as any).sucursal || "",
       sucursalEntrega: (client as any).sucursalEntrega || "",
       cuit: (client as any).cuit || (client as any).numeroDocum || "",
+      condicionIva: (client as any).condicionIva || "",
     })
     setEditOpen(true)
   }
@@ -209,10 +213,18 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold mb-1">{client.businessName}</h1>
-          <div className="flex items-center gap-2 text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            {((client as any).cuit || (client as any).numeroDocum) && (
+              <Badge variant="secondary" className="font-mono">
+                CUIT: {(client as any).cuit || (client as any).numeroDocum}
+              </Badge>
+            )}
+            {(client as any).condicionIva && (
+              <Badge variant="secondary">IVA: {(client as any).condicionIva}</Badge>
+            )}
             <Badge variant="outline">{client.zona}</Badge>
-            <span>•</span>
-            <span>{client.totalOrders} pedidos realizados</span>
+            <span className="text-muted-foreground">•</span>
+            <span className="text-muted-foreground">{client.totalOrders} pedidos realizados</span>
           </div>
         </div>
         <div className="flex gap-2">
@@ -653,14 +665,31 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
                 />
               </div>
             </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">CUIT</label>
-              <input
-                value={editForm.cuit}
-                onChange={(e) => setEditForm((f) => ({ ...f, cuit: e.target.value }))}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-                placeholder="20-12345678-9"
-              />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">CUIT</label>
+                <input
+                  value={editForm.cuit}
+                  onChange={(e) => setEditForm((f) => ({ ...f, cuit: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                  placeholder="20-12345678-9"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Condición IVA</label>
+                <select
+                  value={editForm.condicionIva}
+                  onChange={(e) => setEditForm((f) => ({ ...f, condicionIva: e.target.value }))}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                >
+                  <option value="">Sin definir</option>
+                  <option value="Responsable Inscripto">Responsable Inscripto</option>
+                  <option value="Monotributo">Monotributo</option>
+                  <option value="Exento">Exento</option>
+                  <option value="Consumidor Final">Consumidor Final</option>
+                  <option value="No Responsable">No Responsable</option>
+                </select>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>

@@ -42,6 +42,7 @@ export default function AdminNuevoClientePage() {
     businessName: "",
     contactName: "",
     cuit: "",
+    condicionIva: "",
     address: "",
     whatsapp: "",
     email: "",
@@ -50,9 +51,6 @@ export default function AdminNuevoClientePage() {
     paymentTerms: "30 días",
     creditLimit: "",
     notes: "",
-    sucursal: "",
-    sucursalEntrega: "",
-    domicilioEntrega: "",
   })
 
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -108,10 +106,8 @@ export default function AdminNuevoClientePage() {
         paymentTerms: formData.paymentTerms,
         creditLimit: parseInt(formData.creditLimit) || 0,
         notes: formData.notes,
-        sucursal: formData.sucursal,
-        sucursalEntrega: formData.sucursalEntrega,
-        domicilioEntrega: formData.domicilioEntrega,
         cuit: formData.cuit,
+        condicionIva: formData.condicionIva,
       })
       router.push("/admin/clientes")
     } catch (err) {
@@ -197,6 +193,25 @@ export default function AdminNuevoClientePage() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="condicionIva">Condición IVA</Label>
+              <Select
+                value={formData.condicionIva}
+                onValueChange={(value) => handleChange("condicionIva", value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Responsable Inscripto">Responsable Inscripto</SelectItem>
+                  <SelectItem value="Monotributo">Monotributo</SelectItem>
+                  <SelectItem value="Exento">Exento</SelectItem>
+                  <SelectItem value="Consumidor Final">Consumidor Final</SelectItem>
+                  <SelectItem value="No Responsable">No Responsable</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
               <Label htmlFor="address">Dirección *</Label>
               <Input
                 id="address"
@@ -206,36 +221,6 @@ export default function AdminNuevoClientePage() {
                 className={errors.address ? "border-destructive" : ""}
               />
               {errors.address && <p className="text-sm text-destructive">{errors.address}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="sucursal">Sucursal</Label>
-              <Input
-                id="sucursal"
-                value={formData.sucursal}
-                onChange={(e) => handleChange("sucursal", e.target.value)}
-                placeholder="Ej: Casa Central, Sucursal Norte"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="sucursalEntrega">Sucursal de Entrega</Label>
-              <Input
-                id="sucursalEntrega"
-                value={formData.sucursalEntrega}
-                onChange={(e) => handleChange("sucursalEntrega", e.target.value)}
-                placeholder="Ej: Planta San Martín"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="domicilioEntrega">Domicilio de Entrega</Label>
-              <Input
-                id="domicilioEntrega"
-                value={formData.domicilioEntrega}
-                onChange={(e) => handleChange("domicilioEntrega", e.target.value)}
-                placeholder="Si difiere de la dirección principal"
-              />
             </div>
           </div>
         </Card>
