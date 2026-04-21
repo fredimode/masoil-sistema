@@ -8,11 +8,13 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { ArrowLeft, Printer, Send, CheckCircle2, XCircle, ListChecks, ShoppingCart, Download } from "lucide-react"
+import { ArrowLeft, Printer, Send, CheckCircle2, XCircle, ListChecks, ShoppingCart, Download, Plus, Trash2, Pencil, Save, X } from "lucide-react"
 import * as XLSX from "xlsx"
 import {
   fetchCotizacionVentaById, fetchCotizacionVentaItems, updateCotizacionVenta,
   updateCotizacionVentaItemAprobado, fetchClientById, createOrder,
+  updateCotizacionVentaItem, createCotizacionVentaItem, deleteCotizacionVentaItem,
+  fetchProducts,
 } from "@/lib/supabase/queries"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 import { generateCotizacionPDF } from "@/lib/pdf/cotizacion-pdf"
@@ -41,6 +43,17 @@ export default function CotizacionVentaDetallePage() {
   const [converting, setConverting] = useState(false)
   const [pdfBusy, setPdfBusy] = useState(false)
   const [sending, setSending] = useState(false)
+
+  // Edición inline de items
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ producto_nombre: "", cantidad: 1, precio_unitario: 0 })
+  const [addOpen, setAddOpen] = useState(false)
+  const [addSearch, setAddSearch] = useState("")
+  const [addCantidad, setAddCantidad] = useState(1)
+  const [addPrecio, setAddPrecio] = useState(0)
+  const [addProduct, setAddProduct] = useState<any | null>(null)
+  const [products, setProducts] = useState<any[]>([])
+  const [savingItem, setSavingItem] = useState(false)
 
   function buildPDFData() {
     if (!cot) return null
@@ -127,6 +140,104 @@ export default function CotizacionVentaDetallePage() {
   async function toggleItem(itemId: string, aprobado: boolean) {
     await updateCotizacionVentaItemAprobado(itemId, aprobado)
     setItems((prev) => prev.map((i) => (i.id === itemId ? { ...i, aprobado } : i)))
+  }
+
+  function startEditItem(item: any) {
+    setEditingItemId(item.id)
+    setEditForm({
+      producto_nombre: item.producto_nombre || "",
+      cantidad: Number(item.cantidad) || 1,
+      precio_unitario: Number(item.precio_unitario) || 0,
+    })
+  }
+
+  async function saveEditItem() {
+    if (!editingItemId) return
+    setSavingItem(true)
+    try {
+      const cantidad = Number(editForm.cantidad) || 0
+      const precio = Number(editForm.precio_unitario) || 0
+      const subtotal = cantidad * precio
+      await updateCotizacionVentaItem(editingItemId, {
+        producto_nombre: editForm.producto_nombre,
+        cantidad,
+        precio_unitario: precio,
+        subtotal,
+      })
+      setItems((prev) => prev.map((i) => i.id === editingItemId ? { ...i, ...editForm, subtotal } : i))
+      await recalcCotizacionTotal()
+      setEditingItemId(null)
+    } catch (e: any) {
+      console.error(e)
+      alert("Error al guardar: " + (e?.message || ""))
+    } finally {
+      setSavingItem(false)
+    }
+  }
+
+  async function handleDeleteItem(itemId: string) {
+    if (!confirm("¿Eliminar este item?")) return
+    try {
+      await deleteCotizacionVentaItem(itemId)
+      setItems((prev) => prev.filter((i) => i.id !== itemId))
+      await recalcCotizacionTotal()
+    } catch (e: any) {
+      alert("Error al eliminar: " + (e?.message || ""))
+    }
+  }
+
+  async function recalcCotizacionTotal() {
+    const its = await fetchCotizacionVentaItems(id)
+    const total = its.reduce((s, i) => s + (Number(i.subtotal) || 0), 0)
+    await updateCotizacionVenta(id, { total })
+    setItems(its)
+    setCot((prev: any) => prev ? { ...prev, total } : prev)
+  }
+
+  async function openAddProduct() {
+    if (products.length === 0) {
+      try { setProducts(await fetchProducts()) } catch {}
+    }
+    setAddSearch("")
+    setAddProduct(null)
+    setAddCantidad(1)
+    setAddPrecio(0)
+    setAddOpen(true)
+  }
+
+  const filteredAddProducts = useMemo(() => {
+    if (!addSearch.trim()) return []
+    const q = addSearch.toLowerCase()
+    return products.filter((p: any) =>
+      (p.name || "").toLowerCase().includes(q) ||
+      (p.code || "").toLowerCase().includes(q)
+    ).slice(0, 10)
+  }, [addSearch, products])
+
+  async function saveAddProduct() {
+    if (!addProduct) {
+      alert("Seleccioná un producto")
+      return
+    }
+    setSavingItem(true)
+    try {
+      const subtotal = addCantidad * addPrecio
+      await createCotizacionVentaItem({
+        cotizacion_id: id,
+        product_id: addProduct.id,
+        producto_nombre: addProduct.name,
+        producto_codigo: addProduct.code,
+        cantidad: addCantidad,
+        precio_unitario: addPrecio,
+        subtotal,
+      })
+      await recalcCotizacionTotal()
+      setAddOpen(false)
+    } catch (e: any) {
+      alert("Error al agregar: " + (e?.message || ""))
+    } finally {
+      setSavingItem(false)
+    }
   }
 
   async function handleAprobar() {
@@ -399,9 +510,16 @@ export default function CotizacionVentaDetallePage() {
         <Card className="p-0 overflow-hidden">
           <div className="p-4 border-b flex items-center justify-between">
             <h3 className="font-semibold">Productos</h3>
-            {parcialMode && (
-              <span className="text-xs text-muted-foreground">Desmarcá los ítems que no se aprueban</span>
-            )}
+            <div className="flex items-center gap-3">
+              {parcialMode && (
+                <span className="text-xs text-muted-foreground">Desmarcá los ítems que no se aprueban</span>
+              )}
+              {!parcialMode && cot.estado !== "convertida_pedido" && (
+                <Button size="sm" variant="outline" onClick={openAddProduct}>
+                  <Plus className="h-4 w-4 mr-1" /> Agregar producto
+                </Button>
+              )}
+            </div>
           </div>
           <table className="w-full text-sm">
             <thead className="bg-muted">
@@ -409,32 +527,114 @@ export default function CotizacionVentaDetallePage() {
                 {parcialMode && <th className="px-3 py-2 w-10"></th>}
                 <th className="px-3 py-2">Código</th>
                 <th className="px-3 py-2">Producto</th>
-                <th className="px-3 py-2 text-center">Cant.</th>
-                <th className="px-3 py-2 text-right">P. Unit.</th>
-                <th className="px-3 py-2 text-right">Subtotal</th>
+                <th className="px-3 py-2 text-center w-20">Cant.</th>
+                <th className="px-3 py-2 text-right w-32">P. Unit.</th>
+                <th className="px-3 py-2 text-right w-32">Subtotal</th>
+                {!parcialMode && cot.estado !== "convertida_pedido" && (
+                  <th className="px-3 py-2 text-right w-24">Acciones</th>
+                )}
               </tr>
             </thead>
             <tbody>
-              {items.map((i) => (
-                <tr key={i.id} className={`border-t ${!i.aprobado ? "bg-red-50/40 text-muted-foreground line-through" : ""}`}>
-                  {parcialMode && (
+              {items.map((i) => {
+                const isEditing = editingItemId === i.id
+                return (
+                  <tr key={i.id} className={`border-t ${!i.aprobado && !isEditing ? "bg-red-50/40 text-muted-foreground line-through" : ""}`}>
+                    {parcialMode && (
+                      <td className="px-3 py-2">
+                        <Checkbox
+                          checked={!!i.aprobado}
+                          onCheckedChange={(c) => toggleItem(i.id, c === true)}
+                        />
+                      </td>
+                    )}
+                    <td className="px-3 py-2 font-mono text-xs">{i.producto_codigo || "-"}</td>
                     <td className="px-3 py-2">
-                      <Checkbox
-                        checked={!!i.aprobado}
-                        onCheckedChange={(c) => toggleItem(i.id, c === true)}
-                      />
+                      {isEditing ? (
+                        <input
+                          type="text"
+                          value={editForm.producto_nombre}
+                          onChange={(e) => setEditForm((f) => ({ ...f, producto_nombre: e.target.value }))}
+                          className="w-full p-1 border rounded text-sm"
+                        />
+                      ) : i.producto_nombre}
                     </td>
-                  )}
-                  <td className="px-3 py-2 font-mono text-xs">{i.producto_codigo || "-"}</td>
-                  <td className="px-3 py-2">{i.producto_nombre}</td>
-                  <td className="px-3 py-2 text-center">{i.cantidad}</td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(Number(i.precio_unitario) || 0)}</td>
-                  <td className="px-3 py-2 text-right font-medium">{formatCurrency(Number(i.subtotal) || 0)}</td>
-                </tr>
-              ))}
+                    <td className="px-3 py-2 text-center">
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          min={1}
+                          value={editForm.cantidad}
+                          onChange={(e) => setEditForm((f) => ({ ...f, cantidad: parseFloat(e.target.value) || 0 }))}
+                          className="w-16 p-1 border rounded text-sm text-center"
+                        />
+                      ) : i.cantidad}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          value={editForm.precio_unitario}
+                          onChange={(e) => setEditForm((f) => ({ ...f, precio_unitario: parseFloat(e.target.value) || 0 }))}
+                          className="w-28 p-1 border rounded text-sm text-right"
+                        />
+                      ) : formatCurrency(Number(i.precio_unitario) || 0)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-medium">
+                      {isEditing
+                        ? formatCurrency((Number(editForm.cantidad) || 0) * (Number(editForm.precio_unitario) || 0))
+                        : formatCurrency(Number(i.subtotal) || 0)}
+                    </td>
+                    {!parcialMode && cot.estado !== "convertida_pedido" && (
+                      <td className="px-3 py-2 text-right">
+                        {isEditing ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={saveEditItem}
+                              disabled={savingItem}
+                              className="p-1 hover:bg-gray-100 rounded text-green-600"
+                              title="Guardar"
+                            >
+                              <Save className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => setEditingItemId(null)}
+                              disabled={savingItem}
+                              className="p-1 hover:bg-gray-100 rounded"
+                              title="Cancelar"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => startEditItem(i)}
+                              className="p-1 hover:bg-gray-100 rounded text-blue-600"
+                              title="Editar"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteItem(i.id)}
+                              className="p-1 hover:bg-gray-100 rounded text-red-600"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
               <tr className="border-t bg-muted/50 font-semibold">
                 <td className="px-3 py-2" colSpan={parcialMode ? 5 : 4}>Total aprobado</td>
                 <td className="px-3 py-2 text-right">{formatCurrency(totalAprobado)}</td>
+                {!parcialMode && cot.estado !== "convertida_pedido" && <td />}
               </tr>
               {parcialMode && totalNoAprobado > 0 && (
                 <tr className="bg-muted/30 text-muted-foreground">
@@ -485,6 +685,80 @@ export default function CotizacionVentaDetallePage() {
           </div>
         </Card>
       </div>
+
+      {/* Add product dialog */}
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Agregar producto</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="relative">
+              <label className="text-sm font-medium block mb-1">Buscar producto</label>
+              <input
+                type="text"
+                value={addProduct ? `${addProduct.code} - ${addProduct.name}` : addSearch}
+                onChange={(e) => {
+                  setAddSearch(e.target.value)
+                  setAddProduct(null)
+                }}
+                placeholder="Buscar por código o nombre..."
+                className="w-full p-2 border rounded text-sm"
+              />
+              {!addProduct && filteredAddProducts.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded shadow-lg max-h-48 overflow-auto mt-1">
+                  {filteredAddProducts.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setAddProduct(p)
+                        setAddPrecio(Number(p.price) || 0)
+                      }}
+                      className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm border-b last:border-0"
+                    >
+                      <span className="font-mono text-xs text-gray-500 mr-2">{p.code}</span>
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium block mb-1">Cantidad</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={addCantidad}
+                  onChange={(e) => setAddCantidad(parseFloat(e.target.value) || 1)}
+                  className="w-full p-2 border rounded text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">Precio unitario</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  value={addPrecio}
+                  onChange={(e) => setAddPrecio(parseFloat(e.target.value) || 0)}
+                  className="w-full p-2 border rounded text-sm"
+                />
+              </div>
+            </div>
+            <div className="text-sm text-right text-muted-foreground">
+              Subtotal: <span className="font-semibold text-gray-900">{formatCurrency(addCantidad * addPrecio)}</span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddOpen(false)} disabled={savingItem}>Cancelar</Button>
+            <Button onClick={saveAddProduct} disabled={savingItem || !addProduct}>
+              {savingItem ? "Agregando..." : "Agregar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Resend dialog */}
       <Dialog open={resendOpen} onOpenChange={setResendOpen}>

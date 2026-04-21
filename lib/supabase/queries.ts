@@ -1584,6 +1584,45 @@ export async function updateCotizacionVentaItemAprobado(itemId: string, aprobado
   if (error) throw error
 }
 
+export async function updateCotizacionVentaItem(itemId: string, updates: {
+  producto_nombre?: string
+  producto_codigo?: string | null
+  product_id?: string | null
+  cantidad?: number
+  precio_unitario?: number
+  subtotal?: number
+}): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("cotizacion_venta_items").update(updates).eq("id", itemId)
+  if (error) throw error
+}
+
+export async function createCotizacionVentaItem(item: {
+  cotizacion_id: string
+  product_id?: string | null
+  producto_nombre: string
+  producto_codigo?: string | null
+  cantidad: number
+  precio_unitario: number
+  subtotal: number
+  aprobado?: boolean
+}): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("cotizacion_venta_items")
+    .insert({ ...item, aprobado: item.aprobado ?? true })
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id as string
+}
+
+export async function deleteCotizacionVentaItem(itemId: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("cotizacion_venta_items").delete().eq("id", itemId)
+  if (error) throw error
+}
+
 export async function deleteCotizacionVenta(id: string): Promise<void> {
   const supabase = createSupabaseClient()
   const { error } = await supabase.from("cotizaciones_venta").delete().eq("id", id)
