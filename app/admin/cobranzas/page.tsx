@@ -182,8 +182,8 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
   const [showDropdown, setShowDropdown] = useState(false)
   const [movimientos, setMovimientos] = useState<any[]>([])
   const [loadingMov, setLoadingMov] = useState(false)
-  const [desde, setDesde] = useState("")
-  const [hasta, setHasta] = useState("")
+  const [desde, setDesde] = useState("2000-01-01")
+  const [hasta, setHasta] = useState(new Date().toISOString().slice(0, 10))
   const [todos, setTodos] = useState(false)
   const [page, setPage] = useState(1)
   const filteredClients = useMemo(() => {
@@ -1146,8 +1146,8 @@ function TabRegistrarCobro({
 function TabRetenciones({ retenciones, clients }: { retenciones: any[]; clients: any[] }) {
   const [search, setSearch] = useState("")
   const [filtroTipo, setFiltroTipo] = useState("Todos")
-  const [desde, setDesde] = useState("")
-  const [hasta, setHasta] = useState("")
+  const [desde, setDesde] = useState("2000-01-01")
+  const [hasta, setHasta] = useState(new Date().toISOString().slice(0, 10))
   const [page, setPage] = useState(1)
 
   const clientMap = useMemo(() => {
@@ -1261,8 +1261,8 @@ function TabRetenciones({ retenciones, clients }: { retenciones: any[]; clients:
 // ─── Tab 4: Informe Cobranzas Pendientes ────────────────────────────────────
 
 function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; clients: any[]; empresaFilter: string }) {
-  const [desde, setDesde] = useState("")
-  const [hasta, setHasta] = useState("")
+  const [desde, setDesde] = useState("2000-01-01")
+  const [hasta, setHasta] = useState(new Date().toISOString().slice(0, 10))
   const [clienteFiltro, setClienteFiltro] = useState("todos") // "todos" | clientId
   const [clienteSearch, setClienteSearch] = useState("")
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set())
