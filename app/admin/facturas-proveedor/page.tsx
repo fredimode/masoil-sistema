@@ -554,7 +554,7 @@ export default function FacturasProveedorPage() {
 
       {/* ==================== DIALOG: Cargar Factura ==================== */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-6xl max-h-[95vh] overflow-y-auto">
+        <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Cargar Factura de Proveedor</DialogTitle>
           </DialogHeader>
@@ -851,71 +851,96 @@ export default function FacturasProveedorPage() {
             </div>
 
             {/* Detalle de productos/items */}
-            <div className="border rounded-lg p-3 bg-gray-50">
-              <div className="flex items-center justify-between mb-2">
+            <div className="border rounded-lg p-4 bg-gray-50">
+              <div className="flex items-center justify-between mb-3">
                 <label className="block text-sm font-medium text-gray-700">Detalle de Productos (opcional)</label>
                 <button
                   type="button"
                   onClick={() => setFormItems((prev) => [...prev, { id: Math.random().toString(36).slice(2), nombre: "", codigo: "", cantidad: "1", precio: "" }])}
-                  className="text-xs text-blue-600 hover:text-blue-800"
+                  className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
                 >
                   + Agregar item
                 </button>
               </div>
               {formItems.length > 0 && (
-                <div className="space-y-1">
-                  <div className="grid grid-cols-[90px,1fr,80px,110px,110px,24px] gap-2 text-xs font-medium text-gray-500 px-1">
+                <div className="space-y-2">
+                  <div className="grid grid-cols-[140px,1fr,90px,130px,130px,32px] gap-3 text-xs font-semibold text-gray-600 uppercase tracking-wide px-1 pb-1 border-b">
                     <span>Código</span>
-                    <span>Producto (buscar o texto libre)</span>
-                    <span>Cant.</span>
-                    <span>Precio Unit.</span>
+                    <span>Producto</span>
+                    <span className="text-center">Cant.</span>
+                    <span className="text-right">Precio Unit.</span>
                     <span className="text-right">Subtotal</span>
                     <span></span>
                   </div>
                   {formItems.map((item) => {
                     const subtotal = (parseFloat(item.cantidad) || 0) * (parseFloat(item.precio) || 0)
-                    const matches = activeProductRow === item.id ? productosFiltrados(item.nombre) : []
+                    const nombreMatches = activeProductRow === `${item.id}-n` ? productosFiltrados(item.nombre) : []
+                    const codigoMatches = activeProductRow === `${item.id}-c` ? productosFiltrados(item.codigo) : []
+                    const selectProducto = (p: any) => {
+                      setFormItems((prev) => prev.map((it) => it.id === item.id ? {
+                        ...it,
+                        nombre: p.name,
+                        codigo: p.code ?? "",
+                        precio: it.precio || String(p.price ?? ""),
+                      } : it))
+                      setActiveProductRow(null)
+                    }
                     return (
-                      <div key={item.id} className="relative grid grid-cols-[90px,1fr,80px,110px,110px,24px] gap-2 items-center">
-                        <input
-                          type="text"
-                          value={item.codigo}
-                          onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, codigo: e.target.value } : it))}
-                          className="p-1.5 border rounded text-sm"
-                          placeholder="Código"
-                        />
+                      <div key={item.id} className="relative grid grid-cols-[140px,1fr,90px,130px,130px,32px] gap-3 items-start">
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={item.codigo}
+                            onChange={(e) => {
+                              setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, codigo: e.target.value } : it))
+                              setActiveProductRow(`${item.id}-c`)
+                            }}
+                            onFocus={() => item.codigo && setActiveProductRow(`${item.id}-c`)}
+                            onBlur={() => setTimeout(() => setActiveProductRow((r) => r === `${item.id}-c` ? null : r), 150)}
+                            className="w-full p-2 border rounded text-sm font-mono"
+                            placeholder="Código"
+                          />
+                          {codigoMatches.length > 0 && (
+                            <div className="absolute z-50 top-full left-0 min-w-[280px] bg-white border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                              {codigoMatches.map((p: any) => (
+                                <button
+                                  key={p.id}
+                                  type="button"
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => selectProducto(p)}
+                                  className="w-full text-left px-3 py-1.5 hover:bg-gray-100 text-xs border-b last:border-0"
+                                >
+                                  <span className="font-mono text-gray-700 mr-2">{p.code || "-"}</span>
+                                  <span className="text-gray-600">{p.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                         <div className="relative">
                           <input
                             type="text"
                             value={item.nombre}
                             onChange={(e) => {
                               setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, nombre: e.target.value } : it))
-                              setActiveProductRow(item.id)
+                              setActiveProductRow(`${item.id}-n`)
                             }}
-                            onFocus={() => setActiveProductRow(item.id)}
-                            onBlur={() => setTimeout(() => setActiveProductRow((r) => r === item.id ? null : r), 150)}
-                            className="w-full p-1.5 border rounded text-sm"
+                            onFocus={() => setActiveProductRow(`${item.id}-n`)}
+                            onBlur={() => setTimeout(() => setActiveProductRow((r) => r === `${item.id}-n` ? null : r), 150)}
+                            className="w-full p-2 border rounded text-sm"
                             placeholder="Buscar o escribir nombre..."
                           />
-                          {matches.length > 0 && (
+                          {nombreMatches.length > 0 && (
                             <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
-                              {matches.map((p: any) => (
+                              {nombreMatches.map((p: any) => (
                                 <button
                                   key={p.id}
                                   type="button"
                                   onMouseDown={(e) => e.preventDefault()}
-                                  onClick={() => {
-                                    setFormItems((prev) => prev.map((it) => it.id === item.id ? {
-                                      ...it,
-                                      nombre: p.name,
-                                      codigo: p.code || it.codigo,
-                                      precio: it.precio || String(p.price || ""),
-                                    } : it))
-                                    setActiveProductRow(null)
-                                  }}
+                                  onClick={() => selectProducto(p)}
                                   className="w-full text-left px-3 py-1.5 hover:bg-gray-100 text-xs border-b last:border-0"
                                 >
-                                  <span className="font-mono text-gray-500 mr-2">{p.code}</span>
+                                  <span className="font-mono text-gray-500 mr-2">{p.code || "-"}</span>
                                   <span>{p.name}</span>
                                 </button>
                               ))}
@@ -926,7 +951,7 @@ export default function FacturasProveedorPage() {
                           type="number"
                           value={item.cantidad}
                           onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, cantidad: e.target.value } : it))}
-                          className="p-1.5 border rounded text-sm"
+                          className="p-2 border rounded text-sm text-center"
                           min="1"
                         />
                         <input
@@ -934,16 +959,17 @@ export default function FacturasProveedorPage() {
                           step="0.01"
                           value={item.precio}
                           onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, precio: e.target.value } : it))}
-                          className="p-1.5 border rounded text-sm"
+                          className="p-2 border rounded text-sm text-right"
                           placeholder="0.00"
                         />
-                        <div className="text-right text-sm font-medium text-gray-700">
+                        <div className="text-right text-sm font-medium text-gray-700 py-2">
                           {formatCurrency(subtotal)}
                         </div>
                         <button
                           type="button"
                           onClick={() => setFormItems((prev) => prev.filter((it) => it.id !== item.id))}
-                          className="text-red-500 hover:text-red-700 text-sm"
+                          className="text-red-500 hover:text-red-700 text-lg self-center"
+                          title="Quitar"
                         >
                           ×
                         </button>
@@ -951,8 +977,8 @@ export default function FacturasProveedorPage() {
                     )
                   })}
                   {formItems.some((it) => it.nombre.trim()) && (
-                    <div className="text-right text-xs text-gray-500 pt-1">
-                      Subtotal items: {formatCurrency(formItems.reduce((s, it) => s + (parseFloat(it.cantidad) || 0) * (parseFloat(it.precio) || 0), 0))}
+                    <div className="text-right text-sm text-gray-700 pt-2 border-t mt-2">
+                      Subtotal items: <span className="font-semibold">{formatCurrency(formItems.reduce((s, it) => s + (parseFloat(it.cantidad) || 0) * (parseFloat(it.precio) || 0), 0))}</span>
                     </div>
                   )}
                 </div>
