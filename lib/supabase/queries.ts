@@ -1111,6 +1111,12 @@ export async function updateServicioFijo(id: string, updates: Record<string, any
   if (error) throw error
 }
 
+export async function deleteServicioFijo(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("servicios_fijos").delete().eq("id", id)
+  if (error) throw error
+}
+
 // ---------------------------------------------------------------------------
 // Movimientos Caja Chica
 // ---------------------------------------------------------------------------

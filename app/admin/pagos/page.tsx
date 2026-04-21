@@ -27,6 +27,7 @@ import {
   fetchServiciosFijos,
   createServicioFijo,
   updateServicioFijo,
+  deleteServicioFijo,
 } from "@/lib/supabase/queries"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -1070,24 +1071,43 @@ export default function PagosPage() {
                         <td className="px-3 py-3 text-gray-600 truncate max-w-[200px]" title={s.observaciones || ""}>{s.observaciones || "-"}</td>
                         <td className="px-3 py-3 text-gray-600 truncate max-w-[150px]" title={s.bonificaciones || ""}>{s.bonificaciones || "-"}</td>
                         <td className="px-3 py-3 text-center">
-                          <button
-                            onClick={() => {
-                              setServicioForm({
-                                id: s.id,
-                                servicio: s.servicio || "",
-                                forma_pago: s.forma_pago || "",
-                                nro_fc_pendiente: s.nro_fc_pendiente || "",
-                                importe: s.importe != null ? String(s.importe) : "",
-                                fecha_vencimiento: s.fecha_vencimiento || "",
-                                observaciones: s.observaciones || "",
-                                bonificaciones: s.bonificaciones || "",
-                              })
-                              setServicioDialogOpen(true)
-                            }}
-                            className="p-1 hover:bg-gray-200 rounded"
-                          >
-                            <Pencil className="h-4 w-4 text-blue-600" />
-                          </button>
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => {
+                                setServicioForm({
+                                  id: s.id,
+                                  servicio: s.servicio || "",
+                                  forma_pago: s.forma_pago || "",
+                                  nro_fc_pendiente: s.nro_fc_pendiente || "",
+                                  importe: s.importe != null ? String(s.importe) : "",
+                                  fecha_vencimiento: s.fecha_vencimiento || "",
+                                  observaciones: s.observaciones || "",
+                                  bonificaciones: s.bonificaciones || "",
+                                })
+                                setServicioDialogOpen(true)
+                              }}
+                              className="p-1 hover:bg-gray-200 rounded"
+                              title="Editar"
+                            >
+                              <Pencil className="h-4 w-4 text-blue-600" />
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (!confirm(`¿Eliminar servicio "${s.servicio || "sin nombre"}"?`)) return
+                                try {
+                                  await deleteServicioFijo(s.id)
+                                  const fresh = await fetchServiciosFijos()
+                                  setServiciosList(fresh)
+                                } catch (e: any) {
+                                  alert("Error al eliminar: " + (e?.message || ""))
+                                }
+                              }}
+                              className="p-1 hover:bg-gray-200 rounded"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="h-4 w-4 text-red-600" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
