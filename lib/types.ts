@@ -5,7 +5,7 @@ export type Zona = "Norte" | "Capital" | "Sur" | "Oeste" | "GBA"
 export type OrderStatus =
   | "BORRADOR"
   | "INGRESADO"
-  | "PREPARADO"
+  | "EN_PREPARACION"
   | "FACTURADO"
   | "FACTURADO_PARCIAL"
   | "EN_PROCESO_ENTREGA"

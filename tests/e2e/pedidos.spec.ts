@@ -60,8 +60,8 @@ test.describe("Flujo de pedidos", () => {
     const statusSelect = page.locator('table [role="combobox"]').first()
     if (await statusSelect.isVisible().catch(() => false)) {
       await statusSelect.click()
-      await page.getByRole("option", { name: /PREPARADO/i }).click().catch(() => {})
-      await expect(page.getByText(/PREPARADO/i).first()).toBeVisible({ timeout: 5_000 })
+      await page.getByRole("option", { name: /En preparación/i }).click().catch(() => {})
+      await expect(page.getByText(/En preparación/i).first()).toBeVisible({ timeout: 5_000 })
     }
 
     // Cancelar pedido (best-effort: abrir detalle y clickear Cancelar)

@@ -8,7 +8,7 @@ interface StatusTimelineProps {
 }
 
 // Single linear flow for all orders now
-const mainFlow: OrderStatus[] = ["INGRESADO", "PREPARADO", "FACTURADO", "EN_PROCESO_ENTREGA", "ENTREGADO"]
+const mainFlow: OrderStatus[] = ["INGRESADO", "EN_PREPARACION", "FACTURADO", "EN_PROCESO_ENTREGA", "ENTREGADO"]
 
 export function StatusTimeline({ currentStatus }: StatusTimelineProps) {
   const currentIndex = mainFlow.indexOf(currentStatus)

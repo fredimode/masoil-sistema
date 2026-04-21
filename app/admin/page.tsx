@@ -55,7 +55,7 @@ export default function AdminDashboard() {
   // Orders by status
   const ordersByStatus = [
     { name: "Ingresado", value: orders.filter((o) => o.status === "INGRESADO").length, fill: "#14b8a6" },
-    { name: "Preparado", value: orders.filter((o) => o.status === "PREPARADO").length, fill: "#3b82f6" },
+    { name: "En preparación", value: orders.filter((o) => o.status === "EN_PREPARACION").length, fill: "#3b82f6" },
     { name: "Facturado", value: orders.filter((o) => o.status === "FACTURADO").length, fill: "#a855f7" },
     { name: "Esp. Mercadería", value: orders.filter((o) => o.status === "ESPERANDO_MERCADERIA").length, fill: "#f59e0b" },
     { name: "Entregado", value: orders.filter((o) => o.status === "ENTREGADO").length, fill: "#10b981" },

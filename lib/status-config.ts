@@ -17,13 +17,13 @@ export const statusConfig: Record<OrderStatus, StatusConfig> = {
     label: "Ingresado",
     description: "Pedido recibido del vendedor",
   },
-  PREPARADO: {
-    status: "PREPARADO",
+  EN_PREPARACION: {
+    status: "EN_PREPARACION",
     icon: "📦",
     color: "text-blue-700",
     bgColor: "bg-blue-50 border-blue-200",
-    label: "Preparado",
-    description: "Mercadería lista en depósito",
+    label: "En preparación",
+    description: "Mercadería preparándose en depósito",
   },
   FACTURADO_PARCIAL: {
     status: "FACTURADO_PARCIAL",
@@ -78,12 +78,12 @@ export const statusConfig: Record<OrderStatus, StatusConfig> = {
 // Valid transitions map
 export const validTransitions: Record<OrderStatus, OrderStatus[]> = {
   BORRADOR: ["INGRESADO", "CANCELADO"],
-  INGRESADO: ["PREPARADO", "ESPERANDO_MERCADERIA", "CANCELADO"],
-  PREPARADO: ["FACTURADO", "FACTURADO_PARCIAL", "CANCELADO"],
+  INGRESADO: ["EN_PREPARACION", "ESPERANDO_MERCADERIA", "CANCELADO"],
+  EN_PREPARACION: ["FACTURADO", "FACTURADO_PARCIAL", "CANCELADO"],
   FACTURADO_PARCIAL: ["FACTURADO", "CANCELADO"],
   FACTURADO: ["EN_PROCESO_ENTREGA", "CANCELADO"],
   EN_PROCESO_ENTREGA: ["ENTREGADO", "CANCELADO"],
-  ESPERANDO_MERCADERIA: ["PREPARADO", "CANCELADO"],
+  ESPERANDO_MERCADERIA: ["EN_PREPARACION", "CANCELADO"],
   ENTREGADO: [],
   CANCELADO: [],
 }

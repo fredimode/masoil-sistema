@@ -297,16 +297,16 @@ async function testUpdateOrderStatus() {
 
   const { error: updErr } = await supabase
     .from("orders")
-    .update({ status: "PREPARADO", updated_at: new Date().toISOString() })
+    .update({ status: "EN_PREPARACION", updated_at: new Date().toISOString() })
     .eq("id", orderId)
   if (updErr) throw updErr
 
   const { data: after } = await supabase.from("orders").select("status").eq("id", orderId).single()
-  assert(after?.status === "PREPARADO", "estado no cambió a PREPARADO")
+  assert(after?.status === "EN_PREPARACION", "estado no cambió a PREPARADO")
 
   const { error: histErr } = await supabase.from("order_status_history").insert({
     order_id: orderId,
-    status: "PREPARADO",
+    status: "EN_PREPARACION",
     changed_by: fixtureVendedorId,
   })
   if (histErr) throw histErr

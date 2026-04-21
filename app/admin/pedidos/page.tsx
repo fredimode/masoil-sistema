@@ -161,11 +161,10 @@ export default function AdminPedidosPage() {
             <SelectItem value="urgentes">Urgentes</SelectItem>
             <SelectItem value="BORRADOR">Borrador</SelectItem>
             <SelectItem value="INGRESADO">Ingresado</SelectItem>
-            <SelectItem value="PREPARADO">Preparado</SelectItem>
-            <SelectItem value="FACTURADO_PARCIAL">Facturado Parcial</SelectItem>
+            <SelectItem value="ESPERANDO_MERCADERIA">Esperando Mercadería</SelectItem>
+            <SelectItem value="EN_PREPARACION">En preparación</SelectItem>
             <SelectItem value="FACTURADO">Facturado</SelectItem>
             <SelectItem value="EN_PROCESO_ENTREGA">En Proceso Entrega</SelectItem>
-            <SelectItem value="ESPERANDO_MERCADERIA">Esperando Mercadería</SelectItem>
             <SelectItem value="ENTREGADO">Entregado</SelectItem>
             <SelectItem value="CANCELADO">Cancelado</SelectItem>
           </SelectContent>
