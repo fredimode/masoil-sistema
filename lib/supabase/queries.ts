@@ -444,6 +444,11 @@ export async function updateOrderStatus(
   })
 
   if (histError) throw histError
+
+  // Trigger Logística: al pasar a FACTURADO, asignar al reparto del próximo día hábil
+  if (newStatus === "FACTURADO") {
+    try { await assignOrderToNextReparto(orderId) } catch (e) { console.error("assignOrderToNextReparto:", e) }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1182,6 +1187,126 @@ export async function createMovimientoMercaderia(mov: Record<string, any>): Prom
   }
 
   return data.id
+}
+
+// ---------------------------------------------------------------------------
+// Repartos (Logística)
+// ---------------------------------------------------------------------------
+
+// Devuelve YYYY-MM-DD del próximo día hábil después de la fecha dada (lun-vie).
+export function proximoDiaHabil(fecha: Date = new Date()): Date {
+  const d = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate() + 1)
+  while (d.getDay() === 0 || d.getDay() === 6) {
+    d.setDate(d.getDate() + 1)
+  }
+  return d
+}
+
+export function formatNumeroReparto(fecha: Date): string {
+  const d = String(fecha.getDate()).padStart(2, "0")
+  const m = String(fecha.getMonth() + 1).padStart(2, "0")
+  const y = String(fecha.getFullYear())
+  return `${d}${m}${y}`
+}
+
+export async function fetchRepartos(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("repartos")
+    .select("*")
+    .order("fecha", { ascending: false })
+    .limit(200)
+  if (error) return []
+  return data || []
+}
+
+export async function fetchRepartoByFecha(fechaISO: string): Promise<any | null> {
+  const supabase = createSupabaseClient()
+  const { data } = await supabase.from("repartos").select("*").eq("fecha", fechaISO).maybeSingle()
+  return data
+}
+
+export async function ensureRepartoForFecha(fechaISO: string): Promise<string> {
+  const supabase = createSupabaseClient()
+  const existing = await fetchRepartoByFecha(fechaISO)
+  if (existing) return existing.id
+  const fecha = new Date(fechaISO)
+  const numero = formatNumeroReparto(fecha)
+  const { data, error } = await supabase
+    .from("repartos")
+    .insert({ numero_reparto: numero, fecha: fechaISO, estado: "pendiente" })
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+export async function fetchRepartoItems(repartoId: string): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("reparto_items")
+    .select("*")
+    .eq("reparto_id", repartoId)
+    .order("orden_reparto", { ascending: true, nullsFirst: false })
+  if (error) return []
+  return data || []
+}
+
+export async function createRepartoItem(item: Record<string, any>): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase.from("reparto_items").insert(item).select("id").single()
+  if (error) throw error
+  return data.id
+}
+
+export async function updateRepartoItem(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("reparto_items").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+export async function deleteRepartoItem(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("reparto_items").delete().eq("id", id)
+  if (error) throw error
+}
+
+// Al pasar un pedido a FACTURADO, asignarlo al reparto del próximo día hábil
+export async function assignOrderToNextReparto(orderId: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, client_name, zona, entrega_otra_sucursal, factura_id, reparto_id")
+    .eq("id", orderId)
+    .single()
+  if (!order) return
+  if (order.reparto_id) return // ya asignado
+
+  const fecha = proximoDiaHabil(new Date())
+  const fechaISO = fecha.toISOString().slice(0, 10)
+  const repartoId = await ensureRepartoForFecha(fechaISO)
+
+  let facturaNro: string | null = null
+  if (order.factura_id) {
+    const { data: f } = await supabase.from("facturas").select("numero, punto_venta").eq("id", order.factura_id).single()
+    if (f) facturaNro = f.numero ? `${f.punto_venta || ""}-${f.numero}`.replace(/^-/, "") : null
+  }
+
+  await supabase.from("reparto_items").insert({
+    reparto_id: repartoId,
+    order_id: orderId,
+    factura_numero: facturaNro,
+    client_name: order.client_name,
+    zona: order.zona || null,
+    sucursal_entrega: order.entrega_otra_sucursal || null,
+    estado_entrega: "pendiente",
+    es_destino_extra: false,
+  })
+
+  await supabase.from("orders").update({
+    reparto_id: repartoId,
+    numero_reparto: formatNumeroReparto(fecha),
+  }).eq("id", orderId)
 }
 
 // ---------------------------------------------------------------------------
