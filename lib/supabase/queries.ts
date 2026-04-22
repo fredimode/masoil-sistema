@@ -1113,6 +1113,43 @@ export async function fetchIvaPagar(): Promise<any[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Pagos en Proceso (isla de datos simple)
+// ---------------------------------------------------------------------------
+
+export async function fetchPagosEnProceso(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("pagos_en_proceso")
+    .select("*")
+    .order("created_at", { ascending: false })
+  if (error) return []
+  return data || []
+}
+
+export async function createPagoEnProceso(row: Record<string, any>): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("pagos_en_proceso")
+    .insert(row)
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+export async function updatePagoEnProceso(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("pagos_en_proceso").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+export async function deletePagoEnProceso(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("pagos_en_proceso").delete().eq("id", id)
+  if (error) throw error
+}
+
+// ---------------------------------------------------------------------------
 // Recibos
 // ---------------------------------------------------------------------------
 

@@ -28,6 +28,10 @@ import {
   createServicioFijo,
   updateServicioFijo,
   deleteServicioFijo,
+  fetchPagosEnProceso,
+  createPagoEnProceso,
+  updatePagoEnProceso,
+  deletePagoEnProceso,
 } from "@/lib/supabase/queries"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -985,45 +989,7 @@ export default function PagosPage() {
 
         {/* ============ TAB PAGOS EN PROCESO ============ */}
         <TabsContent value="en-proceso">
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            {pagos.filter((p) => p.estado_pago === "EN_PROCESO" || p.estado_pago === "EN PROCESO").length === 0 ? (
-              <div className="text-center py-12 text-gray-500">
-                <p>No hay pagos en proceso</p>
-                <p className="text-xs mt-1">Los pagos en proceso son aquellos confirmados pero no completados</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-100">
-                    <tr>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Proveedor</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Empresa</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Forma de pago</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Fecha de pago</th>
-                      <th className="px-3 py-3 text-left font-semibold text-gray-700">Observaciones</th>
-                      <th className="px-3 py-3 text-center font-semibold text-gray-700">Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pagos
-                      .filter((p) => p.estado_pago === "EN_PROCESO" || p.estado_pago === "EN PROCESO")
-                      .map((p, idx) => (
-                        <tr key={p.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                          <td className="px-3 py-3 font-medium">{p.proveedor_nombre || "-"}</td>
-                          <td className="px-3 py-3">{p.empresa || "-"}</td>
-                          <td className="px-3 py-3">{p.forma_pago || "-"}</td>
-                          <td className="px-3 py-3">{p.fecha_pago ? formatDateStr(p.fecha_pago) : "-"}</td>
-                          <td className="px-3 py-3 text-gray-600 truncate max-w-[300px]" title={p.observaciones_proceso || ""}>
-                            {p.observaciones_proceso || "-"}
-                          </td>
-                          <td className="px-3 py-3 text-center">{estadoBadge(p.estado_pago || "")}</td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+          <TabPagosEnProcesoIsla />
         </TabsContent>
 
         {/* ============ TAB SERVICIOS ADMINISTRACIÓN ============ */}
@@ -1508,6 +1474,179 @@ export default function PagosPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+// ─── Tab Pagos en Proceso — isla de datos simple ────────────────────────────
+
+const EMPRESAS_PEP = ["Aquiles", "Masoil", "Conancap"]
+const ESTADOS_PEP = ["Pendiente", "En proceso", "Pagado"]
+
+function TabPagosEnProcesoIsla() {
+  const [rows, setRows] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editedId, setEditedId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<any | null>(null)
+
+  async function load() {
+    setLoading(true)
+    try {
+      const data = await fetchPagosEnProceso()
+      setRows(data)
+    } finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [])
+
+  async function handleNuevo() {
+    const id = await createPagoEnProceso({
+      proveedor: "",
+      empresa: "",
+      forma_pago: "",
+      fecha_pago: null,
+      observaciones: "",
+      estado: "Pendiente",
+    })
+    await load()
+    setEditedId(id)
+    setDraft({ proveedor: "", empresa: "", forma_pago: "", fecha_pago: "", observaciones: "", estado: "Pendiente" })
+  }
+
+  function startEdit(r: any) {
+    setEditedId(r.id)
+    setDraft({
+      proveedor: r.proveedor || "",
+      empresa: r.empresa || "",
+      forma_pago: r.forma_pago || "",
+      fecha_pago: r.fecha_pago || "",
+      observaciones: r.observaciones || "",
+      estado: r.estado || "Pendiente",
+    })
+  }
+
+  async function handleGuardar() {
+    if (!editedId || !draft) return
+    await updatePagoEnProceso(editedId, {
+      ...draft,
+      fecha_pago: draft.fecha_pago || null,
+    })
+    setEditedId(null)
+    setDraft(null)
+    await load()
+  }
+
+  async function handleEliminar(id: string) {
+    if (!confirm("¿Eliminar este pago en proceso?")) return
+    await deletePagoEnProceso(id)
+    await load()
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="px-4 py-3 border-b flex items-center justify-between">
+        <p className="text-sm text-gray-600">
+          Isla de datos independiente — no cruza con facturas ni proveedores cargados
+        </p>
+        <button onClick={handleNuevo} className="flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-md text-sm hover:bg-primary/90">
+          <Plus className="h-4 w-4" /> Nuevo pago en proceso
+        </button>
+      </div>
+      {loading ? (
+        <div className="text-center py-8 text-gray-500">Cargando...</div>
+      ) : rows.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">
+          <p>No hay pagos en proceso</p>
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">Proveedor</th>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">Empresa</th>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">Forma de pago</th>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">Fecha de pago</th>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">Observaciones</th>
+                <th className="px-3 py-3 text-left font-semibold text-gray-700">Estado</th>
+                <th className="px-3 py-3 text-center font-semibold text-gray-700 w-28">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r, idx) => {
+                const isEditing = r.id === editedId
+                return (
+                  <tr key={r.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                    {isEditing ? (
+                      <>
+                        <td className="px-2 py-2">
+                          <input value={draft.proveedor} onChange={(e) => setDraft({ ...draft, proveedor: e.target.value })}
+                            className="w-full border rounded px-2 py-1 text-sm" placeholder="Proveedor" />
+                        </td>
+                        <td className="px-2 py-2">
+                          <select value={draft.empresa} onChange={(e) => setDraft({ ...draft, empresa: e.target.value })}
+                            className="w-full border rounded px-2 py-1 text-sm">
+                            <option value="">—</option>
+                            {EMPRESAS_PEP.map((e) => <option key={e} value={e}>{e}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-2 py-2">
+                          <input value={draft.forma_pago} onChange={(e) => setDraft({ ...draft, forma_pago: e.target.value })}
+                            className="w-full border rounded px-2 py-1 text-sm" placeholder="Transferencia, Cheque..." />
+                        </td>
+                        <td className="px-2 py-2">
+                          <input type="date" value={draft.fecha_pago} onChange={(e) => setDraft({ ...draft, fecha_pago: e.target.value })}
+                            className="w-full border rounded px-2 py-1 text-sm" />
+                        </td>
+                        <td className="px-2 py-2">
+                          <input value={draft.observaciones} onChange={(e) => setDraft({ ...draft, observaciones: e.target.value })}
+                            className="w-full border rounded px-2 py-1 text-sm" placeholder="Observaciones" />
+                        </td>
+                        <td className="px-2 py-2">
+                          <select value={draft.estado} onChange={(e) => setDraft({ ...draft, estado: e.target.value })}
+                            className="w-full border rounded px-2 py-1 text-sm">
+                            {ESTADOS_PEP.map((e) => <option key={e} value={e}>{e}</option>)}
+                          </select>
+                        </td>
+                        <td className="px-2 py-2 text-center">
+                          <button onClick={handleGuardar} className="text-green-600 hover:text-green-800 mr-2 text-xs font-medium">Guardar</button>
+                          <button onClick={() => { setEditedId(null); setDraft(null) }} className="text-gray-500 hover:text-gray-700 text-xs">Cancelar</button>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-3 py-3 font-medium">{r.proveedor || "-"}</td>
+                        <td className="px-3 py-3">{r.empresa || "-"}</td>
+                        <td className="px-3 py-3">{r.forma_pago || "-"}</td>
+                        <td className="px-3 py-3">{r.fecha_pago ? formatDateStr(r.fecha_pago) : "-"}</td>
+                        <td className="px-3 py-3 text-gray-600 truncate max-w-[300px]" title={r.observaciones || ""}>
+                          {r.observaciones || "-"}
+                        </td>
+                        <td className="px-3 py-3">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                            r.estado === "Pagado" ? "bg-green-100 text-green-800" :
+                            r.estado === "En proceso" ? "bg-blue-100 text-blue-800" :
+                            "bg-gray-100 text-gray-700"
+                          }`}>
+                            {r.estado || "Pendiente"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-3 text-center">
+                          <button onClick={() => startEdit(r)} className="text-blue-600 hover:text-blue-800 mr-2" title="Editar">
+                            <Pencil className="h-4 w-4 inline" />
+                          </button>
+                          <button onClick={() => handleEliminar(r.id)} className="text-red-600 hover:text-red-800" title="Eliminar">
+                            <Trash2 className="h-4 w-4 inline" />
+                          </button>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
