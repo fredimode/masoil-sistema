@@ -1150,6 +1150,41 @@ export async function deletePagoEnProceso(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Movimientos de Mercadería
+// ---------------------------------------------------------------------------
+
+export async function fetchMovimientosMercaderia(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("movimientos_mercaderia")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(2000)
+  if (error) return []
+  return data || []
+}
+
+export async function createMovimientoMercaderia(mov: Record<string, any>): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("movimientos_mercaderia")
+    .insert(mov)
+    .select("id")
+    .single()
+  if (error) throw error
+
+  // Si el movimiento mueve stock, actualizamos products.stock
+  if (mov.mueve_stock && mov.product_id && mov.cantidad) {
+    const { data: prod } = await supabase.from("products").select("stock").eq("id", mov.product_id).single()
+    if (prod) {
+      await supabase.from("products").update({ stock: (prod.stock || 0) + mov.cantidad }).eq("id", mov.product_id)
+    }
+  }
+
+  return data.id
+}
+
+// ---------------------------------------------------------------------------
 // Recibos
 // ---------------------------------------------------------------------------
 

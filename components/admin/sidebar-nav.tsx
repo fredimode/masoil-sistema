@@ -56,6 +56,8 @@ const navSections: NavSection[] = [
       { href: "/admin/clientes", label: "Clientes", icon: Users },
       { href: "/admin/facturacion", label: "Facturación", icon: FileText },
       { href: "/admin/cobranzas", label: "Cobranzas", icon: Receipt },
+      { href: "/admin/logistica", label: "Logística", icon: Truck },
+      { href: "/admin/movimiento-mercaderia", label: "Movimiento Mercadería", icon: PackageSearch },
     ],
   },
   {
