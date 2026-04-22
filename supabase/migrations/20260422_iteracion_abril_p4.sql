@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS movimientos_mercaderia (
   producto_codigo TEXT,
   cantidad INTEGER NOT NULL,
   mueve_stock BOOLEAN DEFAULT true,
-  order_id TEXT REFERENCES orders(id),
+  order_id TEXT,  -- referencia textual al pedido (no FK; puede ser Nº serial o UUID)
   client_id UUID REFERENCES clients(id),
   cliente_nombre TEXT,
   motivo TEXT,
@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS reparto_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   reparto_id UUID REFERENCES repartos(id) ON DELETE CASCADE,
   orden_reparto INTEGER,
-  order_id TEXT REFERENCES orders(id),
+  order_id UUID REFERENCES orders(id),
   factura_numero TEXT,
   client_name TEXT,
   zona TEXT,
