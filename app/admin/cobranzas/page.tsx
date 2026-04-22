@@ -176,6 +176,23 @@ export default function CobranzasPage() {
 
 // ─── Tab 1: Cuenta Corriente ────────────────────────────────────────────────
 
+const TIPOS_LEYENDA: Array<[string, string]> = [
+  ["NC", "Nota de Crédito"],
+  ["FC", "Factura"],
+  ["ND", "Nota de Débito"],
+  ["RC", "Recibo"],
+  ["RT", "Retención/Percepción"],
+  ["AJ", "Ajuste de Saldo"],
+  ["FG", "Fondo de Garantía"],
+]
+
+function formatNumeroComprobante(m: any): string {
+  if (m.punto_venta && m.numero_comprobante) {
+    return `${String(m.punto_venta).padStart(4, "0")}-${String(m.numero_comprobante).padStart(8, "0")}`
+  }
+  return m.pv_numero || ""
+}
+
 function TabCuentaCorriente({ clients }: { clients: any[] }) {
   const [search, setSearch] = useState("")
   const [selectedClient, setSelectedClient] = useState<any | null>(null)
@@ -186,11 +203,23 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
   const [hasta, setHasta] = useState(new Date().toISOString().slice(0, 10))
   const [todos, setTodos] = useState(false)
   const [page, setPage] = useState(1)
+  const [empresaFilter, setEmpresaFilter] = useState("Todas")
+  const [activosFilter, setActivosFilter] = useState<"activos" | "inactivos" | "todos">("activos")
+  const [ajustarOpen, setAjustarOpen] = useState(false)
+  const [ajusteTipo, setAjusteTipo] = useState<"DEBE" | "HABER">("DEBE")
+  const [ajusteImporte, setAjusteImporte] = useState("")
+  const [ajusteObs, setAjusteObs] = useState("")
+  const [ajusteSaving, setAjusteSaving] = useState(false)
+  const [verCompOpen, setVerCompOpen] = useState<any | null>(null)
   const filteredClients = useMemo(() => {
     if (!search.trim()) return []
     const norm = normalizeSearch(search)
-    return clients.filter((c) => normalizeSearch(c.businessName || "").includes(norm)).slice(0, 10)
-  }, [search, clients])
+    const pool = activosFilter === "todos" ? clients : clients.filter((c) => {
+      const activo = c.activo !== false
+      return activosFilter === "activos" ? activo : !activo
+    })
+    return pool.filter((c) => normalizeSearch(c.businessName || "").includes(norm)).slice(0, 10)
+  }, [search, clients, activosFilter])
 
   async function loadMovimientos(clientId?: string) {
     setLoadingMov(true)
@@ -257,35 +286,58 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
     return rows
   }, [movimientos, desde, hasta])
 
-  // Running saldo + totals
-  const withSaldo = useMemo(() => {
-    const sorted = [...filtered].sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""))
-    let saldo = 0
-    return sorted.map((m) => {
-      saldo += (m.debe || 0) - (m.haber || 0)
-      return { ...m, saldo }
-    }).reverse()
-  }, [filtered])
-
   const totalDebe = useMemo(() => filtered.reduce((s, m) => s + (m.debe || 0), 0), [filtered])
   const totalHaber = useMemo(() => filtered.reduce((s, m) => s + (m.haber || 0), 0), [filtered])
   const saldoTotal = totalDebe - totalHaber
 
-  const pag = usePagination(withSaldo, 50)
+  const sortedFiltered = useMemo(
+    () => [...filtered].sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")),
+    [filtered]
+  )
+
+  const pag = usePagination(sortedFiltered, 50)
   const startIdx = (page - 1) * 50
-  const displayRows = withSaldo.slice(startIdx, startIdx + 50)
+  const displayRows = sortedFiltered.slice(startIdx, startIdx + 50)
+
+  async function handleGuardarAjuste() {
+    if (!selectedClient) return
+    const importe = Number(ajusteImporte)
+    if (!importe || importe <= 0) {
+      alert("Indicá un importe válido")
+      return
+    }
+    setAjusteSaving(true)
+    try {
+      await createMovimientoCuentaCorriente({
+        client_id: selectedClient.id,
+        fecha: new Date().toISOString().slice(0, 10),
+        tipo_comprobante: "AJ",
+        punto_venta: null,
+        numero_comprobante: null,
+        debe: ajusteTipo === "DEBE" ? importe : 0,
+        haber: ajusteTipo === "HABER" ? importe : 0,
+        observaciones: ajusteObs || "Ajuste de saldo manual",
+      })
+      setAjustarOpen(false)
+      setAjusteImporte("")
+      setAjusteObs("")
+      await loadMovimientos(selectedClient.id)
+    } catch (e) {
+      console.error(e)
+      alert("Error guardando ajuste")
+    } finally {
+      setAjusteSaving(false)
+    }
+  }
 
   function exportXLSX() {
     const ws = XLSX.utils.json_to_sheet(
-      withSaldo.map((m) => ({
+      sortedFiltered.map((m) => ({
         Fecha: formatDateStr(m.fecha),
-        "Tipo Comprobante": normalizeTipoComp(m.tipo_comprobante),
-        "Número": m.punto_venta && m.numero_comprobante
-          ? `${String(m.punto_venta).padStart(4, "0")}-${String(m.numero_comprobante).padStart(8, "0")}`
-          : m.pv_numero || "",
+        Tipo: normalizeTipoComp(m.tipo_comprobante),
+        Número: formatNumeroComprobante(m),
         Debe: m.debe || 0,
         Haber: m.haber || 0,
-        Saldo: m.saldo,
       }))
     )
     const wb = XLSX.utils.book_new()
@@ -297,30 +349,61 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
     const w = window.open("", "_blank")
     if (!w) return
     const clientName = selectedClient?.businessName || "Todos los clientes"
-    const rows = withSaldo.map((m) => `
+    const rows = sortedFiltered.map((m) => `
       <tr>
         <td>${formatDateStr(m.fecha)}</td>
         <td>${normalizeTipoComp(m.tipo_comprobante)}</td>
-        <td>${m.punto_venta && m.numero_comprobante ? `${String(m.punto_venta).padStart(4, "0")}-${String(m.numero_comprobante).padStart(8, "0")}` : m.pv_numero || "-"}</td>
+        <td>${formatNumeroComprobante(m) || "-"}</td>
         <td style="text-align:right">${m.debe ? formatCurrency(m.debe) : "-"}</td>
         <td style="text-align:right">${m.haber ? formatCurrency(m.haber) : "-"}</td>
-        <td style="text-align:right;font-weight:bold">${formatCurrency(m.saldo)}</td>
       </tr>`).join("")
     w.document.write(`<html><head><title>Cuenta Corriente - ${clientName}</title>
-      <style>body{font-family:sans-serif;max-width:900px;margin:30px auto}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px 8px;font-size:12px}th{background:#f5f5f5;text-align:left}.totals td{font-weight:bold;background:#f0f0f0}</style></head><body>
+      <style>body{font-family:sans-serif;max-width:900px;margin:30px auto}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px 8px;font-size:12px}th{background:#f5f5f5;text-align:left}.totals td{font-weight:bold;background:#f0f0f0}.total-deudor{margin-top:16px;padding:12px;background:#fef3c7;font-size:18px;font-weight:bold;text-align:right}</style></head><body>
       <h2>Cuenta Corriente</h2><p><strong>Cliente:</strong> ${clientName}</p>
-      ${desde || hasta ? `<p>Período: ${desde || "..."} a ${hasta || "..."}</p>` : ""}
-      <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Número</th><th style="text-align:right">Debe</th><th style="text-align:right">Haber</th><th style="text-align:right">Saldo</th></tr></thead>
+      <p><strong>Empresa:</strong> ${empresaFilter} | <strong>Período:</strong> ${desde || "..."} a ${hasta || "..."}</p>
+      <p><strong>Cantidad de comprobantes:</strong> ${filtered.length}</p>
+      <table><thead><tr><th>Fecha</th><th>Comprob.</th><th>Número</th><th style="text-align:right">Debe</th><th style="text-align:right">Haber</th></tr></thead>
       <tbody>${rows}
-      <tr class="totals"><td colspan="3">TOTALES</td><td style="text-align:right">${formatCurrency(totalDebe)}</td><td style="text-align:right">${formatCurrency(totalHaber)}</td><td style="text-align:right">${formatCurrency(saldoTotal)}</td></tr>
-      </tbody></table><script>window.print()<\/script></body></html>`)
+      <tr class="totals"><td colspan="3">TOTALES</td><td style="text-align:right">${formatCurrency(totalDebe)}</td><td style="text-align:right">${formatCurrency(totalHaber)}</td></tr>
+      </tbody></table>
+      <div class="total-deudor">TOTAL DEUDOR: ${formatCurrency(saldoTotal)}</div>
+      <script>window.print()<\/script></body></html>`)
   }
 
   return (
     <Card className="p-4 space-y-4">
+      {/* Fila superior: Empresa + Activos/Inactivos */}
       <div className="flex flex-wrap gap-3 items-end">
+        <div>
+          <label className="text-sm font-medium mb-1 block">Empresa</label>
+          <Select value={empresaFilter} onValueChange={setEmpresaFilter}>
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="INCLUIR">INCLUIR empresas</SelectItem>
+              <SelectItem value="Aquiles">Aquiles</SelectItem>
+              <SelectItem value="Masoil">Masoil</SelectItem>
+              <SelectItem value="Conancap">Conancap</SelectItem>
+              <SelectItem value="Todas">Todas las Empr.</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <label className="text-sm font-medium mb-1 block">Estado clientes</label>
+          <Select value={activosFilter} onValueChange={(v) => setActivosFilter(v as any)}>
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="activos">Activos</SelectItem>
+              <SelectItem value="inactivos">Inactivos</SelectItem>
+              <SelectItem value="todos">Todos</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <div className="relative flex-1 min-w-[250px]">
-          <label className="text-sm font-medium mb-1 block">Buscar cliente</label>
+          <label className="text-sm font-medium mb-1 block">Buscar CLIENTE</label>
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-400" />
             <input
@@ -359,10 +442,36 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
           <input type="checkbox" checked={todos} onChange={(e) => handleTodosChange(e.target.checked)} />
           Todos los clientes
         </label>
-        <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-2 bg-gray-600 text-white rounded-md text-sm hover:bg-gray-700" disabled={withSaldo.length === 0}>
-          <Printer className="h-4 w-4" /> Imprimir
+      </div>
+
+      {/* Info cliente seleccionado + leyenda */}
+      {selectedClient && (
+        <div className="bg-amber-50 border border-amber-200 rounded-md p-3 space-y-2">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            <span className="font-semibold text-base">{selectedClient.businessName}</span>
+            {selectedClient.cuit && <span className="text-gray-600">CUIT: {selectedClient.cuit}</span>}
+            <span className="text-gray-600">Comprobantes: <strong>{filtered.length}</strong></span>
+          </div>
+          <div className="flex flex-wrap gap-3 text-xs text-gray-600">
+            {TIPOS_LEYENDA.map(([k, v]) => (
+              <span key={k}><strong>{k}</strong>: {v}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Acciones */}
+      <div className="flex flex-wrap gap-2">
+        <button onClick={handlePrint} disabled={sortedFiltered.length === 0}
+          className="flex items-center gap-1.5 px-3 py-2 bg-gray-600 text-white rounded-md text-sm hover:bg-gray-700 disabled:opacity-50">
+          <Printer className="h-4 w-4" /> Imprimir Listado
         </button>
-        <button onClick={exportXLSX} className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700" disabled={withSaldo.length === 0}>
+        <button onClick={() => setAjustarOpen(true)} disabled={!selectedClient}
+          className="flex items-center gap-1.5 px-3 py-2 bg-amber-600 text-white rounded-md text-sm hover:bg-amber-700 disabled:opacity-50">
+          <Plus className="h-4 w-4" /> Ajustar Saldo
+        </button>
+        <button onClick={exportXLSX} disabled={sortedFiltered.length === 0}
+          className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 disabled:opacity-50">
           <Download className="h-4 w-4" /> XLSX
         </button>
       </div>
@@ -378,38 +487,53 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Fecha</TableHead>
-                  <TableHead>Tipo Comprobante</TableHead>
-                  <TableHead>Número</TableHead>
+                  <TableHead>Comprob.</TableHead>
                   <TableHead className="text-right">Debe</TableHead>
                   <TableHead className="text-right">Haber</TableHead>
-                  <TableHead className="text-right">Saldo</TableHead>
+                  <TableHead className="w-24 text-center">Ver</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {displayRows.map((m, i) => (
                   <TableRow key={m.id || i}>
                     <TableCell>{formatDateStr(m.fecha)}</TableCell>
-                    <TableCell>{normalizeTipoComp(m.tipo_comprobante)}</TableCell>
                     <TableCell>
-                      {m.punto_venta && m.numero_comprobante
-                        ? `${String(m.punto_venta).padStart(4, "0")}-${String(m.numero_comprobante).padStart(8, "0")}`
-                        : m.pv_numero || "-"}
+                      <span className="font-medium">{normalizeTipoComp(m.tipo_comprobante)}</span>
+                      {formatNumeroComprobante(m) && (
+                        <span className="ml-2 text-gray-600">{formatNumeroComprobante(m)}</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">{m.debe ? formatCurrency(m.debe) : "-"}</TableCell>
                     <TableCell className="text-right">{m.haber ? formatCurrency(m.haber) : "-"}</TableCell>
-                    <TableCell className="text-right font-medium">{formatCurrency(m.saldo)}</TableCell>
+                    <TableCell className="text-center">
+                      <button onClick={() => setVerCompOpen(m)} className="text-blue-600 hover:text-blue-800" title="Ver comprobante">
+                        <Eye className="h-4 w-4 inline" />
+                      </button>
+                    </TableCell>
                   </TableRow>
                 ))}
-                <TableRow className="bg-gray-50 font-bold">
-                  <TableCell colSpan={3}>TOTALES</TableCell>
-                  <TableCell className="text-right">{formatCurrency(totalDebe)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(totalHaber)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(saldoTotal)}</TableCell>
-                </TableRow>
               </TableBody>
             </Table>
           </div>
           <TablePagination currentPage={page} totalPages={pag.totalPages} totalItems={pag.totalItems} pageSize={pag.pageSize} onPageChange={setPage} />
+
+          {/* Totales GestionPro style */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+            <div className="bg-gray-50 border rounded-md p-3 text-center">
+              <div className="text-xs text-gray-500 uppercase">Total Debe</div>
+              <div className="text-lg font-bold">{formatCurrency(totalDebe)}</div>
+            </div>
+            <div className="bg-gray-50 border rounded-md p-3 text-center">
+              <div className="text-xs text-gray-500 uppercase">Total Haber</div>
+              <div className="text-lg font-bold">{formatCurrency(totalHaber)}</div>
+            </div>
+            <div className={`border rounded-md p-3 text-center ${saldoTotal > 0 ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
+              <div className="text-xs text-gray-600 uppercase font-semibold">TOTAL DEUDOR</div>
+              <div className={`text-2xl font-bold ${saldoTotal > 0 ? "text-red-700" : "text-green-700"}`}>
+                {formatCurrency(saldoTotal)}
+              </div>
+            </div>
+          </div>
         </>
       ) : (
         <p className="text-sm text-gray-500 text-center py-8">
@@ -417,6 +541,64 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
         </p>
       )}
 
+      {/* Dialog Ajustar Saldo */}
+      <Dialog open={ajustarOpen} onOpenChange={setAjustarOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Ajustar Saldo — {selectedClient?.businessName || ""}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Tipo de ajuste</label>
+              <Select value={ajusteTipo} onValueChange={(v) => setAjusteTipo(v as any)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DEBE">Debe (aumenta deuda)</SelectItem>
+                  <SelectItem value="HABER">Haber (reduce deuda)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Importe</label>
+              <input type="number" step="0.01" min="0" value={ajusteImporte}
+                onChange={(e) => setAjusteImporte(e.target.value)}
+                className="w-full border rounded-md px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Observaciones</label>
+              <textarea value={ajusteObs} onChange={(e) => setAjusteObs(e.target.value)}
+                className="w-full border rounded-md px-3 py-2 text-sm" rows={3}
+                placeholder="Motivo del ajuste" />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setAjustarOpen(false)} className="px-3 py-2 border rounded-md text-sm">Cancelar</button>
+              <button onClick={handleGuardarAjuste} disabled={ajusteSaving}
+                className="px-3 py-2 bg-amber-600 text-white rounded-md text-sm hover:bg-amber-700 disabled:opacity-50">
+                {ajusteSaving ? "Guardando..." : "Guardar ajuste"}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Ver Comprobante */}
+      <Dialog open={!!verCompOpen} onOpenChange={(o) => !o && setVerCompOpen(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Detalle de Comprobante</DialogTitle></DialogHeader>
+          {verCompOpen && (
+            <div className="space-y-2 text-sm">
+              <p><strong>Fecha:</strong> {formatDateStr(verCompOpen.fecha)}</p>
+              <p><strong>Tipo:</strong> {normalizeTipoComp(verCompOpen.tipo_comprobante)}</p>
+              <p><strong>Número:</strong> {formatNumeroComprobante(verCompOpen) || "-"}</p>
+              <p><strong>Debe:</strong> {formatCurrency(verCompOpen.debe || 0)}</p>
+              <p><strong>Haber:</strong> {formatCurrency(verCompOpen.haber || 0)}</p>
+              {verCompOpen.observaciones && (
+                <p><strong>Observaciones:</strong> <span className="text-gray-600">{verCompOpen.observaciones}</span></p>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
