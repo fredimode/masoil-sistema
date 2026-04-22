@@ -1098,6 +1098,21 @@ export async function fetchFacturasGestionproCount(): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
+// IVA A PAGAR histórico
+// ---------------------------------------------------------------------------
+
+export async function fetchIvaPagar(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("iva_a_pagar")
+    .select("*")
+    .order("periodo_desde", { ascending: false })
+    .limit(500)
+  if (error) return []
+  return data || []
+}
+
+// ---------------------------------------------------------------------------
 // Recibos
 // ---------------------------------------------------------------------------
 

@@ -26,6 +26,9 @@ import {
   FileInput,
   Landmark,
   Wallet,
+  Calculator,
+  PackageSearch,
+  Truck,
 } from "lucide-react"
 
 type UserRole = "admin" | "usuario"
@@ -95,6 +98,13 @@ const navSections: NavSection[] = [
       { href: "/admin/finanzas/egresos", label: "Egresos", icon: TrendingDown },
       { href: "/admin/finanzas/ingresos", label: "Ingresos", icon: TrendingUp },
       { href: "/admin/finanzas/comisiones", label: "Comisiones", icon: Percent },
+    ],
+  },
+  {
+    label: "Contabilidad",
+    roles: ["admin"],
+    items: [
+      { href: "/admin/contabilidad", label: "Informes Contables", icon: Calculator },
     ],
   },
   {

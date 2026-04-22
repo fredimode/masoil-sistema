@@ -78,3 +78,40 @@ END $$;
 -- 5) Orders: vínculo con reparto
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS reparto_id UUID REFERENCES repartos(id);
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS numero_reparto TEXT;
+
+-- 6) IVA A PAGAR histórico (resumen consolidado por período)
+CREATE TABLE IF NOT EXISTS iva_a_pagar (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  razon_social TEXT,
+  periodo_desde DATE,
+  periodo_hasta DATE,
+  concepto TEXT NOT NULL,
+  debitos NUMERIC(14,2) DEFAULT 0,
+  creditos NUMERIC(14,2) DEFAULT 0,
+  origen TEXT DEFAULT 'GestionPro',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE iva_a_pagar ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'iva_pagar_auth_all') THEN
+    CREATE POLICY "iva_pagar_auth_all" ON iva_a_pagar FOR ALL USING (auth.role() = 'authenticated');
+  END IF;
+END $$;
+
+-- 7) Pagos en Proceso simple (isla de datos)
+CREATE TABLE IF NOT EXISTS pagos_en_proceso (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  proveedor TEXT,
+  empresa TEXT,
+  forma_pago TEXT,
+  fecha_pago DATE,
+  observaciones TEXT,
+  estado TEXT DEFAULT 'Pendiente',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE pagos_en_proceso ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'pagos_en_proceso_auth_all') THEN
+    CREATE POLICY "pagos_en_proceso_auth_all" ON pagos_en_proceso FOR ALL USING (auth.role() = 'authenticated');
+  END IF;
+END $$;
