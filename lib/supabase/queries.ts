@@ -1194,7 +1194,8 @@ export async function createMovimientoMercaderia(mov: Record<string, any>): Prom
 // ---------------------------------------------------------------------------
 
 // Re-exportadas desde el módulo puro (para tests con Vitest)
-export { proximoDiaHabil, formatNumeroReparto } from "@/lib/logistica/reparto"
+import { proximoDiaHabil, formatNumeroReparto } from "@/lib/logistica/reparto"
+export { proximoDiaHabil, formatNumeroReparto }
 
 export async function fetchRepartos(): Promise<any[]> {
   const supabase = createSupabaseClient()
