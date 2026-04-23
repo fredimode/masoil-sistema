@@ -8,20 +8,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   fetchFacturasGestionpro, fetchFacturasProveedor, fetchIvaPagar, fetchFacturas,
 } from "@/lib/supabase/queries"
+import {
+  mesAnoToRange, calcularIvaAPagar,
+  mapFacturaGPToSubdiarioRow, mapFacturaNuevaToSubdiarioRow,
+} from "@/lib/contabilidad/calculos"
 import { formatCurrency, formatDateStr } from "@/lib/utils"
 import { Download } from "lucide-react"
 import * as XLSX from "xlsx"
 
 const RAZONES = ["Aquiles", "Masoil", "Conancap", "Todas"]
-
-function mesAnoToRange(mes: string, ano: string): { desde: string; hasta: string } {
-  const m = parseInt(mes, 10)
-  const y = parseInt(ano, 10)
-  const desde = `${y}-${String(m).padStart(2, "0")}-01`
-  const lastDay = new Date(y, m, 0).getDate()
-  const hasta = `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
-  return { desde, hasta }
-}
 
 function currentMesAno() {
   const d = new Date()
@@ -116,22 +111,10 @@ function TabIvaPagar() {
     return Array.from(map.values())
   }, [historico])
 
-  // Cálculo para el período seleccionado (facturas emitidas del sistema nuevo + compras)
-  const calculado = useMemo(() => {
-    const ventasPeriodo = [...ventas, ...facturasNuevas].filter((f) => {
-      const fecha = String(f.fecha || "")
-      return fecha >= desde && fecha <= hasta
-    })
-    const comprasPeriodo = compras.filter((f) => {
-      const fecha = String(f.fecha || "")
-      return fecha >= desde && fecha <= hasta
-    })
-    // facturas_gestionpro usa `impuestos`; facturas (sistema nuevo) usa `iva_21`
-    const debIVA21 = ventasPeriodo.reduce((s, f) => s + (Number(f.impuestos || f.iva_21 || 0) || 0), 0)
-    const credIVA = comprasPeriodo.reduce((s, f) => s + (Number(f.iva || 0) || 0), 0)
-    const percIVA = comprasPeriodo.reduce((s, f) => s + (Number(f.percepciones_iva || 0) || 0), 0)
-    return { debIVA21, credIVA, percIVA, total: debIVA21 - credIVA - percIVA }
-  }, [ventas, facturasNuevas, compras, desde, hasta])
+  const calculado = useMemo(
+    () => calcularIvaAPagar(ventas, facturasNuevas, compras, desde, hasta),
+    [ventas, facturasNuevas, compras, desde, hasta],
+  )
 
   return (
     <Card className="p-4 space-y-4">
@@ -247,28 +230,8 @@ function TabSubdiarioVentas() {
   const { desde, hasta } = useMemo(() => mesAnoToRange(mes, ano), [mes, ano])
   const rows = useMemo(() => {
     const all = [
-      ...facturas.map((f) => ({
-        fecha: f.fecha,
-        tipo_nro: `${f.tipo_comprobante || "FC"} ${f.sucursal || ""}-${f.nro_comprobante || ""}-${f.letra || ""}`,
-        cliente: f.razon_social,
-        cuit: f.documento,
-        neto: Number(f.neto || 0),
-        exento: 0,
-        iva21: Number(f.impuestos || 0),
-        percep_iibb: 0,
-        total: Number(f.total || 0),
-      })),
-      ...facturasNuevas.map((f) => ({
-        fecha: f.fecha,
-        tipo_nro: `${f.tipo || "FC"} ${f.numero || ""}`,
-        cliente: f.razon_social,
-        cuit: f.cuit_cliente || "",
-        neto: Number(f.base_gravada || 0),
-        exento: 0,
-        iva21: Number(f.iva_21 || 0),
-        percep_iibb: 0,
-        total: Number(f.total || 0),
-      })),
+      ...facturas.map(mapFacturaGPToSubdiarioRow),
+      ...facturasNuevas.map(mapFacturaNuevaToSubdiarioRow),
     ]
     return all.filter((f) => {
       const fecha = String(f.fecha || "")
