@@ -126,7 +126,8 @@ function TabIvaPagar() {
       const fecha = String(f.fecha || "")
       return fecha >= desde && fecha <= hasta
     })
-    const debIVA21 = ventasPeriodo.reduce((s, f) => s + (Number(f.impuestos || f.iva || 0) || 0), 0)
+    // facturas_gestionpro usa `impuestos`; facturas (sistema nuevo) usa `iva_21`
+    const debIVA21 = ventasPeriodo.reduce((s, f) => s + (Number(f.impuestos || f.iva_21 || 0) || 0), 0)
     const credIVA = comprasPeriodo.reduce((s, f) => s + (Number(f.iva || 0) || 0), 0)
     const percIVA = comprasPeriodo.reduce((s, f) => s + (Number(f.percepciones_iva || 0) || 0), 0)
     return { debIVA21, credIVA, percIVA, total: debIVA21 - credIVA - percIVA }
@@ -259,12 +260,12 @@ function TabSubdiarioVentas() {
       })),
       ...facturasNuevas.map((f) => ({
         fecha: f.fecha,
-        tipo_nro: `${f.tipo || "FC"} ${f.punto_venta || ""}-${f.numero || ""}-${f.letra || ""}`,
-        cliente: f.razon_social || f.client_name,
-        cuit: f.cuit || "",
-        neto: Number(f.neto || 0),
+        tipo_nro: `${f.tipo || "FC"} ${f.numero || ""}`,
+        cliente: f.razon_social,
+        cuit: f.cuit_cliente || "",
+        neto: Number(f.base_gravada || 0),
         exento: 0,
-        iva21: Number(f.iva || 0),
+        iva21: Number(f.iva_21 || 0),
         percep_iibb: 0,
         total: Number(f.total || 0),
       })),
@@ -522,14 +523,14 @@ function TabJurisdiccion() {
       })),
       ...facturasNuevas.map((f) => ({
         fecha: f.fecha,
-        tipo_nro: `${f.tipo || "FC"} ${f.punto_venta || ""}-${f.numero || ""}-${f.letra || ""}`,
-        razon_social: f.razon_social || f.client_name,
-        cond_iva: f.cond_iva || "-",
-        cuit: f.cuit || "",
-        neto: Number(f.neto || 0),
-        iva21: Number(f.iva || 0),
+        tipo_nro: `${f.tipo || "FC"} ${f.numero || ""}`,
+        razon_social: f.razon_social,
+        cond_iva: "-",
+        cuit: f.cuit_cliente || "",
+        neto: Number(f.base_gravada || 0),
+        iva21: Number(f.iva_21 || 0),
         total: Number(f.total || 0),
-        provincia: f.provincia || "SIN JURISDICCIÓN",
+        provincia: "SIN JURISDICCIÓN",
       })),
     ].filter((r) => {
       const f = String(r.fecha || "")
