@@ -1193,21 +1193,8 @@ export async function createMovimientoMercaderia(mov: Record<string, any>): Prom
 // Repartos (Logística)
 // ---------------------------------------------------------------------------
 
-// Devuelve YYYY-MM-DD del próximo día hábil después de la fecha dada (lun-vie).
-export function proximoDiaHabil(fecha: Date = new Date()): Date {
-  const d = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate() + 1)
-  while (d.getDay() === 0 || d.getDay() === 6) {
-    d.setDate(d.getDate() + 1)
-  }
-  return d
-}
-
-export function formatNumeroReparto(fecha: Date): string {
-  const d = String(fecha.getDate()).padStart(2, "0")
-  const m = String(fecha.getMonth() + 1).padStart(2, "0")
-  const y = String(fecha.getFullYear())
-  return `${d}${m}${y}`
-}
+// Re-exportadas desde el módulo puro (para tests con Vitest)
+export { proximoDiaHabil, formatNumeroReparto } from "@/lib/logistica/reparto"
 
 export async function fetchRepartos(): Promise<any[]> {
   const supabase = createSupabaseClient()
