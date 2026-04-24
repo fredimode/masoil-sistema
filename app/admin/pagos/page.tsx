@@ -611,6 +611,7 @@ export default function PagosPage() {
       <Tabs defaultValue="proveedores">
         <TabsList>
           <TabsTrigger value="proveedores">Proveedores / Cta Cte</TabsTrigger>
+          <TabsTrigger value="ordenes-pago">Órdenes de Pago</TabsTrigger>
           <TabsTrigger value="lote-pago">Lote de Pago</TabsTrigger>
           <TabsTrigger value="en-proceso">Pagos en Proceso</TabsTrigger>
           <TabsTrigger value="servicios-admin">Servicios Administración</TabsTrigger>
@@ -985,6 +986,11 @@ export default function PagosPage() {
               })
             )}
           </div>
+        </TabsContent>
+
+        {/* ============ TAB ÓRDENES DE PAGO ============ */}
+        <TabsContent value="ordenes-pago">
+          <TabOrdenesDePago pagos={pagos} />
         </TabsContent>
 
         {/* ============ TAB PAGOS EN PROCESO ============ */}
@@ -1647,6 +1653,127 @@ function TabPagosEnProcesoIsla() {
           </table>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Tab: Órdenes de Pago ────────────────────────────────────────────────────
+
+function TabOrdenesDePago({ pagos }: { pagos: any[] }) {
+  const [filtroDesde, setFiltroDesde] = useState("")
+  const [filtroHasta, setFiltroHasta] = useState("")
+  const [filtroEmpresa, setFiltroEmpresa] = useState("Todos")
+  const [filtroProv, setFiltroProv] = useState("")
+  const [page, setPage] = useState(1)
+
+  // Solo pagos con OP generada
+  const ops = useMemo(() => pagos.filter((p) => !!p.orden_pago_numero), [pagos])
+
+  const empresasUnicas = useMemo(() => {
+    const set = new Set<string>()
+    ops.forEach((p) => { if (p.empresa) set.add(p.empresa) })
+    return ["Todos", ...Array.from(set).sort()]
+  }, [ops])
+
+  const filtradas = useMemo(() => {
+    return ops.filter((p) => {
+      const fecha = p.created_at ? new Date(p.created_at).toISOString().slice(0, 10) : ""
+      if (filtroDesde && fecha < filtroDesde) return false
+      if (filtroHasta && fecha > filtroHasta) return false
+      if (filtroEmpresa !== "Todos" && p.empresa !== filtroEmpresa) return false
+      if (filtroProv && !normalizeSearch(p.proveedor_nombre || "").includes(normalizeSearch(filtroProv))) return false
+      return true
+    })
+  }, [ops, filtroDesde, filtroHasta, filtroEmpresa, filtroProv])
+
+  const pag = usePagination(filtradas, 50)
+  const currentPage = Math.min(page, pag.totalPages)
+  const paged = pag.getPage(currentPage)
+
+  async function handleVerOP(pago: any) {
+    if (!pago.orden_pago_url) {
+      alert("No hay PDF disponible para esta OP")
+      return
+    }
+    const supabase = createClient()
+    const { data } = await supabase.storage.from("comprobantes").createSignedUrl(pago.orden_pago_url, 60)
+    if (data?.signedUrl) window.open(data.signedUrl, "_blank")
+    else alert("No se pudo generar el link del PDF")
+  }
+
+  const total = filtradas.reduce((s, p) => s + (Number(p.importe) || 0), 0)
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-lg shadow p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="text-xs text-gray-600 block mb-1">Desde</label>
+            <input type="date" value={filtroDesde} onChange={(e) => { setFiltroDesde(e.target.value); setPage(1) }} className="border rounded-md px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 block mb-1">Hasta</label>
+            <input type="date" value={filtroHasta} onChange={(e) => { setFiltroHasta(e.target.value); setPage(1) }} className="border rounded-md px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 block mb-1">Empresa</label>
+            <select value={filtroEmpresa} onChange={(e) => { setFiltroEmpresa(e.target.value); setPage(1) }} className="border rounded-md px-3 py-2 text-sm">
+              {empresasUnicas.map((e) => (<option key={e} value={e}>{e}</option>))}
+            </select>
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <label className="text-xs text-gray-600 block mb-1">Proveedor</label>
+            <input type="text" value={filtroProv} onChange={(e) => { setFiltroProv(e.target.value); setPage(1) }} placeholder="Buscar por proveedor..." className="w-full border rounded-md px-3 py-2 text-sm" />
+          </div>
+          <div className="ml-auto text-sm">
+            <span className="text-gray-600">Total: </span>
+            <span className="font-bold text-primary">{formatCurrency(total)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        {paged.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">No hay órdenes de pago con los filtros actuales</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="px-3 py-3 text-left font-semibold text-gray-700">Fecha</th>
+                  <th className="px-3 py-3 text-left font-semibold text-gray-700">N° OP</th>
+                  <th className="px-3 py-3 text-left font-semibold text-gray-700">Proveedor</th>
+                  <th className="px-3 py-3 text-left font-semibold text-gray-700">Empresa</th>
+                  <th className="px-3 py-3 text-right font-semibold text-gray-700">Total</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-24">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paged.map((p, idx) => (
+                  <tr key={p.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{p.created_at ? formatDateStr(p.created_at) : "-"}</td>
+                    <td className="px-3 py-2 font-mono text-xs font-semibold">{p.orden_pago_numero}</td>
+                    <td className="px-3 py-2 font-medium">{p.proveedor_nombre || "-"}</td>
+                    <td className="px-3 py-2">{p.empresa || "-"}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{formatCurrency(Number(p.importe) || 0)}</td>
+                    <td className="px-3 py-2 text-center">
+                      <button
+                        onClick={() => handleVerOP(p)}
+                        disabled={!p.orden_pago_url}
+                        className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-40 inline-flex items-center gap-1"
+                        title="Ver PDF de la OP"
+                      >
+                        <Eye className="h-3 w-3" /> Ver
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+      <TablePagination currentPage={currentPage} totalPages={pag.totalPages} totalItems={pag.totalItems} pageSize={pag.pageSize} onPageChange={setPage} />
     </div>
   )
 }
