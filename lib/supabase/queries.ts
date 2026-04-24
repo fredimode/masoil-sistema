@@ -931,13 +931,14 @@ export async function fetchSolicitudesCompra(): Promise<any[]> {
   const supabase = createSupabaseClient()
   const { data, error } = await supabase
     .from("solicitudes_compra")
-    .select("*, orders:order_id(order_number_serial)")
+    .select("*, orders:order_id(order_number_serial, status)")
     .order("created_at", { ascending: false })
     .limit(5000)
   if (error) throw error
   return (data || []).map((s: any) => ({
     ...s,
     pedido_serial: s.orders?.order_number_serial || null,
+    pedido_status: s.orders?.status || null,
   }))
 }
 
@@ -945,6 +946,43 @@ export async function updateSolicitudCompra(id: string, updates: Record<string, 
   const supabase = createSupabaseClient()
   const { error } = await supabase.from("solicitudes_compra").update(updates).eq("id", id)
   if (error) throw error
+}
+
+export async function deleteSolicitudCompra(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("solicitudes_compra").delete().eq("id", id)
+  if (error) throw error
+}
+
+export async function createSolicitudCompra(data: {
+  product_id?: string | null
+  producto_nombre: string
+  producto_codigo?: string | null
+  cantidad_solicitada: number
+  cantidad_stock?: number
+  cantidad_faltante?: number
+  proveedor_sugerido?: string | null
+  observaciones?: string | null
+}): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data: row, error } = await supabase
+    .from("solicitudes_compra")
+    .insert({
+      product_id: data.product_id || null,
+      producto_nombre: data.producto_nombre,
+      producto_codigo: data.producto_codigo || null,
+      cantidad_solicitada: data.cantidad_solicitada,
+      cantidad_stock: data.cantidad_stock ?? 0,
+      cantidad_faltante: data.cantidad_faltante ?? data.cantidad_solicitada,
+      proveedor_sugerido: data.proveedor_sugerido || null,
+      observaciones: data.observaciones || null,
+      order_id: null,
+      estado: "borrador",
+    })
+    .select("id")
+    .single()
+  if (error) throw error
+  return row.id
 }
 
 export async function createOrdenCompra(oc: {

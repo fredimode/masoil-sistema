@@ -16,8 +16,12 @@ import {
   updateOrdenCompra,
   fetchSolicitudesCompra,
   updateSolicitudCompra,
+  deleteSolicitudCompra,
+  createSolicitudCompra,
   fetchProveedores,
+  fetchProducts,
 } from "@/lib/supabase/queries"
+import type { Product } from "@/lib/types"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -59,6 +63,12 @@ export default function ComprasPage() {
   const [solEstadoFilter, setSolEstadoFilter] = useState("")
   const [solBusqueda, setSolBusqueda] = useState("")
   const [proveedores, setProveedores] = useState<any[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+
+  // Nueva solicitud manual
+  const [nuevaSolDialog, setNuevaSolDialog] = useState(false)
+  const [nuevaSolForm, setNuevaSolForm] = useState({ productSearch: "", product: null as Product | null, cantidad: 1, proveedor_sugerido: "", observaciones: "" })
+  const [creandoSol, setCreandoSol] = useState(false)
 
   // Pagination
   const [comprasPage, setComprasPage] = useState(1)
@@ -89,18 +99,20 @@ export default function ComprasPage() {
   async function loadData() {
     setLoading(true)
     try {
-      const [c, o, count, sol, provs] = await Promise.all([
+      const [c, o, count, sol, provs, prods] = await Promise.all([
         fetchCompras(),
         fetchOrdenesCompra(),
         fetchComprasCount(),
         fetchSolicitudesCompra(),
         fetchProveedores(),
+        fetchProducts(),
       ])
       setCompras(c)
       setOrdenes(o)
       setTotalComprasCount(count)
       setSolicitudes(sol)
       setProveedores(provs)
+      setProducts(prods)
     } catch (err) {
       console.error("Error cargando compras:", err)
     } finally {
@@ -206,6 +218,45 @@ export default function ComprasPage() {
       await loadData()
     } catch (err) {
       console.error("Error actualizando orden:", err)
+    }
+  }
+
+  async function handleDeleteSolicitud(id: string) {
+    if (!confirm("¿Eliminar esta solicitud de compra?")) return
+    try {
+      await deleteSolicitudCompra(id)
+      await loadData()
+    } catch (err) {
+      console.error("Error eliminando solicitud:", err)
+      alert("Error al eliminar la solicitud")
+    }
+  }
+
+  async function handleCrearSolicitudManual() {
+    if (!nuevaSolForm.product) {
+      alert("Seleccioná un producto")
+      return
+    }
+    setCreandoSol(true)
+    try {
+      await createSolicitudCompra({
+        product_id: nuevaSolForm.product.id,
+        producto_nombre: nuevaSolForm.product.name,
+        producto_codigo: nuevaSolForm.product.code || null,
+        cantidad_solicitada: nuevaSolForm.cantidad,
+        cantidad_stock: nuevaSolForm.product.stock ?? 0,
+        cantidad_faltante: Math.max(0, nuevaSolForm.cantidad - (nuevaSolForm.product.stock ?? 0)),
+        proveedor_sugerido: nuevaSolForm.proveedor_sugerido || null,
+        observaciones: nuevaSolForm.observaciones || null,
+      })
+      setNuevaSolDialog(false)
+      setNuevaSolForm({ productSearch: "", product: null, cantidad: 1, proveedor_sugerido: "", observaciones: "" })
+      await loadData()
+    } catch (err: any) {
+      console.error("Error creando solicitud:", err)
+      alert("Error al crear la solicitud: " + (err?.message || ""))
+    } finally {
+      setCreandoSol(false)
     }
   }
 
@@ -326,14 +377,25 @@ export default function ComprasPage() {
                 <option value="rechazado">Rechazado</option>
                 <option value="convertido_oc">Convertido a OC</option>
               </select>
+              <button
+                onClick={() => setNuevaSolDialog(true)}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm flex items-center gap-1"
+              >
+                + Nueva Solicitud Manual
+              </button>
             </div>
+            <p className="text-xs text-gray-500 mt-2">
+              Muestra solicitudes manuales y aquellas provenientes de pedidos en estado INGRESADO.
+            </p>
           </div>
           <div className="bg-white rounded-lg shadow overflow-hidden">
             {(() => {
               const filtered = solicitudes.filter((s) => {
                 const matchEstado = !solEstadoFilter || s.estado === solEstadoFilter
                 const matchBusqueda = !solBusqueda || normalizeSearch(s.producto_nombre || "").includes(normalizeSearch(solBusqueda)) || normalizeSearch(s.producto_codigo || "").includes(normalizeSearch(solBusqueda))
-                return matchEstado && matchBusqueda
+                // Solo solicitudes manuales (sin pedido asociado) o de pedidos en estado INGRESADO
+                const matchOrigen = !s.order_id || s.pedido_status === "INGRESADO"
+                return matchEstado && matchBusqueda && matchOrigen
               })
               if (filtered.length === 0) {
                 return (
@@ -423,6 +485,13 @@ export default function ComprasPage() {
                                   Convertir en OC
                                 </button>
                               )}
+                              <button
+                                onClick={() => handleDeleteSolicitud(s.id)}
+                                className="p-1 text-red-600 hover:bg-red-100 rounded"
+                                title="Eliminar solicitud"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -980,6 +1049,88 @@ export default function ComprasPage() {
           <DialogFooter>
             <button onClick={() => setDeletingOrden(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
             <button onClick={handleDeleteOrden} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">Eliminar</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Nueva Solicitud Manual */}
+      <Dialog open={nuevaSolDialog} onOpenChange={(open) => !open && setNuevaSolDialog(false)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Nueva Solicitud Manual</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="relative">
+              <label className="text-sm text-gray-600 block mb-1">Producto *</label>
+              <input
+                type="text"
+                value={nuevaSolForm.product ? `${nuevaSolForm.product.code || ""} ${nuevaSolForm.product.name}`.trim() : nuevaSolForm.productSearch}
+                onChange={(e) => setNuevaSolForm((f) => ({ ...f, productSearch: e.target.value, product: null }))}
+                placeholder="Buscar por código o nombre..."
+                className="w-full p-2 border rounded-lg text-sm"
+              />
+              {nuevaSolForm.productSearch && !nuevaSolForm.product && (
+                <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto mt-1">
+                  {products
+                    .filter((p) =>
+                      normalizeSearch(p.name || "").includes(normalizeSearch(nuevaSolForm.productSearch)) ||
+                      normalizeSearch(p.code || "").includes(normalizeSearch(nuevaSolForm.productSearch))
+                    )
+                    .slice(0, 15)
+                    .map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm border-b last:border-b-0"
+                        onClick={() => setNuevaSolForm((f) => ({ ...f, product: p, productSearch: "" }))}
+                      >
+                        <span className="font-mono text-xs text-gray-500 mr-2">{p.code || "S/C"}</span>
+                        <span className="font-medium">{p.name}</span>
+                        <span className="text-xs text-gray-400 ml-2">stock: {p.stock ?? 0}</span>
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Cantidad *</label>
+              <input
+                type="number"
+                min={1}
+                value={nuevaSolForm.cantidad}
+                onChange={(e) => setNuevaSolForm((f) => ({ ...f, cantidad: parseInt(e.target.value) || 1 }))}
+                className="w-full p-2 border rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Proveedor sugerido (opcional)</label>
+              <input
+                type="text"
+                value={nuevaSolForm.proveedor_sugerido}
+                onChange={(e) => setNuevaSolForm((f) => ({ ...f, proveedor_sugerido: e.target.value }))}
+                placeholder="Nombre del proveedor"
+                className="w-full p-2 border rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Observaciones</label>
+              <textarea
+                value={nuevaSolForm.observaciones}
+                onChange={(e) => setNuevaSolForm((f) => ({ ...f, observaciones: e.target.value }))}
+                className="w-full p-2 border rounded-lg text-sm"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <button onClick={() => setNuevaSolDialog(false)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
+            <button
+              onClick={handleCrearSolicitudManual}
+              disabled={creandoSol || !nuevaSolForm.product}
+              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-gray-400 text-sm"
+            >
+              {creandoSol ? "Creando..." : "Crear Solicitud"}
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
