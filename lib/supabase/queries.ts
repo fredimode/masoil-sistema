@@ -1006,14 +1006,14 @@ export async function createOrdenCompra(oc: {
 }): Promise<string> {
   const supabase = createSupabaseClient()
 
-  // Generate next OC number
+  // Generate next OC number (usa maybeSingle para tolerar ausencia de OCs previas)
   const { data: lastOC } = await supabase
     .from("ordenes_compra")
     .select("nro_oc")
     .not("nro_oc", "is", null)
     .order("created_at", { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
   const lastNum = lastOC?.nro_oc ? parseInt(lastOC.nro_oc.replace("OC-", ""), 10) : 0
   const nroOc = `OC-${String((lastNum || 0) + 1).padStart(4, "0")}`
 
