@@ -445,8 +445,8 @@ export async function updateOrderStatus(
 
   if (histError) throw histError
 
-  // Trigger Logística: al pasar a FACTURADO, asignar al reparto del próximo día hábil
-  if (newStatus === "FACTURADO") {
+  // Trigger Logística: al pasar a FACTURADO o FACTURADO_PARCIAL, asignar al reparto del próximo día hábil
+  if (newStatus === "FACTURADO" || newStatus === "FACTURADO_PARCIAL") {
     try { await assignOrderToNextReparto(orderId) } catch (e) { console.error("assignOrderToNextReparto:", e) }
   }
 }

@@ -385,6 +385,12 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             .eq("product_id", p.productId)
         }
 
+        // Link factura to order so reparto picks it up
+        await supabase
+          .from("orders")
+          .update({ factura_id: data.factura.id })
+          .eq("id", o.id)
+
         // Update order status
         const allInvoiced = selectedProducts.length === itemsPendientesFactura.length
         const newOrderStatus = allInvoiced ? "FACTURADO" : "FACTURADO_PARCIAL"

@@ -67,10 +67,26 @@ export default function CajaChicaPage() {
     return result
   }, [movimientos, filtroTipo, filtroPeriodo])
 
-  const saldoActual = useMemo(() => {
-    const withSaldo = movimientos.filter((m) => m.saldo != null)
-    if (withSaldo.length > 0) return withSaldo[withSaldo.length - 1].saldo ?? 0
-    return 0
+  const saldoActual = useMemo(
+    () => movimientos.reduce((s, m) => s + (Number(m.valor) || 0), 0),
+    [movimientos],
+  )
+
+  // Saldo corriente por fila (de más antiguo a más reciente), mostrado en la tabla
+  const saldosPorId = useMemo(() => {
+    const map: Record<string, number> = {}
+    const asc = [...movimientos].sort((a, b) => {
+      const fa = a.fecha || ""
+      const fb = b.fecha || ""
+      if (fa !== fb) return String(fa).localeCompare(String(fb))
+      return String(a.id).localeCompare(String(b.id))
+    })
+    let acc = 0
+    for (const m of asc) {
+      acc += Number(m.valor) || 0
+      map[m.id] = acc
+    }
+    return map
   }, [movimientos])
 
   const totalIngresos = useMemo(
@@ -108,7 +124,7 @@ export default function CajaChicaPage() {
 
   function descargarExcel() {
     const headers = ["Fecha", "Tipo", "Concepto", "Valor", "Saldo"]
-    const rows = filtrada.map((m) => [m.fecha || "", m.tipo || "", m.concepto || "", m.valor, m.saldo ?? ""])
+    const rows = filtrada.map((m) => [m.fecha || "", m.tipo || "", m.concepto || "", m.valor, saldosPorId[m.id] ?? 0])
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "Caja Chica")
@@ -213,7 +229,7 @@ export default function CajaChicaPage() {
                         {formatMoney(m.valor)}
                       </td>
                       <td className="px-4 py-3 text-right font-medium text-gray-900">
-                        {m.saldo != null ? formatMoney(m.saldo) : "-"}
+                        {formatMoney(saldosPorId[m.id] ?? 0)}
                       </td>
                     </tr>
                   ))}

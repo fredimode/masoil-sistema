@@ -329,32 +329,57 @@ export default function CotizacionVentaDetallePage() {
 
   function handleExportXLSX() {
     if (!cot) return
-    const rows = items.map((i) => ({
-      Código: i.producto_codigo || "",
-      Producto: i.producto_nombre || "",
-      Cantidad: Number(i.cantidad) || 0,
-      "Precio Unit.": Number(i.precio_unitario) || 0,
-      Subtotal: Number(i.subtotal) || 0,
-      Aprobado: i.aprobado ? "Sí" : "No",
-    }))
-    const ws = XLSX.utils.json_to_sheet(rows)
-    // Info sheet con datos generales
-    const infoRows = [
-      ["Número", cot.numero || ""],
-      ["Fecha", cot.fecha || ""],
-      ["Cliente", cot.client_name || ""],
-      ["Razón social", cot.razon_social || ""],
-      ["Vendedor", `${cot.vendedor_nombre || ""}${cot.vendedor_iniciales ? ` (${cot.vendedor_iniciales})` : ""}`],
-      ["Validez", cot.validez_fecha || ""],
-      ["Forma de pago", cot.forma_pago || ""],
-      ["Plazo entrega", cot.plazo_entrega || ""],
-      ["Total", Number(cot.total) || 0],
-      ["Estado", cot.estado || ""],
-    ]
-    const infoWs = XLSX.utils.aoa_to_sheet(infoRows)
+
+    // Hoja única con el mismo contenido que el PDF
+    const neto = items.reduce((s, i) => s + (Number(i.precio_unitario) || 0) * (Number(i.cantidad) || 0), 0)
+    const iva = neto * 0.21
+    const totalConIva = neto + iva
+
+    const aoa: (string | number)[][] = []
+    aoa.push([`Cotización ${cot.numero || ""}`])
+    aoa.push([`Emitida: ${cot.fecha || ""}`])
+    aoa.push([`Razón social: ${cot.razon_social || ""}`])
+    aoa.push([])
+
+    aoa.push(["DATOS DEL CLIENTE"])
+    aoa.push([`Cliente: ${cot.client_name || client?.businessName || ""}`])
+    if (client?.cuit || client?.numeroDocum) aoa.push([`CUIT: ${client?.cuit || client?.numeroDocum}`])
+    if (client?.address || client?.domicilioEntrega) aoa.push([`Domicilio: ${client?.address || client?.domicilioEntrega}`])
+    if (client?.contactName) aoa.push([`Contacto: ${client?.contactName}`])
+    aoa.push([`Vendedor: ${cot.vendedor_nombre || ""}${cot.vendedor_iniciales ? ` (${cot.vendedor_iniciales})` : ""}`])
+    aoa.push([])
+
+    aoa.push(["Cant.", "Producto", "Código", "P. Unit (s/IVA)", "Subtotal"])
+    for (const i of items) {
+      aoa.push([
+        Number(i.cantidad) || 0,
+        i.producto_nombre || "",
+        i.producto_codigo || "",
+        Number(i.precio_unitario) || 0,
+        Number(i.subtotal) || 0,
+      ])
+    }
+    aoa.push([])
+
+    aoa.push(["", "", "", "Subtotal neto:", Number(neto.toFixed(2))])
+    aoa.push(["", "", "", "IVA 21%:", Number(iva.toFixed(2))])
+    aoa.push(["", "", "", "TOTAL:", Number(totalConIva.toFixed(2))])
+    aoa.push([])
+
+    aoa.push(["TÉRMINOS Y CONDICIONES"])
+    aoa.push([`1. La cotización tiene validez hasta el ${cot.validez_fecha || "—"}.`])
+    aoa.push([`2. Forma de pago: ${cot.forma_pago || "a convenir"}.`])
+    aoa.push([`3. Entrega dentro de ${cot.plazo_entrega || "a convenir"}.`])
+    if (cot.observaciones) {
+      aoa.push([])
+      aoa.push(["OBSERVACIONES"])
+      aoa.push([cot.observaciones])
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    ws["!cols"] = [{ wch: 8 }, { wch: 40 }, { wch: 14 }, { wch: 18 }, { wch: 14 }]
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, infoWs, "Datos")
-    XLSX.utils.book_append_sheet(wb, ws, "Productos")
+    XLSX.utils.book_append_sheet(wb, ws, "Cotización")
     XLSX.writeFile(wb, `cotizacion_${cot.numero || cot.id}.xlsx`)
   }
 

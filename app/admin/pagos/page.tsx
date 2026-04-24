@@ -1597,9 +1597,9 @@ function TabPagosEnProcesoIsla() {
                           <input type="date" value={draft.fecha_pago} onChange={(e) => setDraft({ ...draft, fecha_pago: e.target.value })}
                             className="w-full border rounded px-2 py-1 text-sm" />
                         </td>
-                        <td className="px-2 py-2">
-                          <input value={draft.observaciones} onChange={(e) => setDraft({ ...draft, observaciones: e.target.value })}
-                            className="w-full border rounded px-2 py-1 text-sm" placeholder="Observaciones" />
+                        <td className="px-2 py-2 min-w-[320px]">
+                          <textarea value={draft.observaciones} onChange={(e) => setDraft({ ...draft, observaciones: e.target.value })}
+                            className="w-full border rounded px-2 py-1 text-sm resize-y min-h-[60px]" placeholder="Observaciones" rows={3} />
                         </td>
                         <td className="px-2 py-2">
                           <select value={draft.estado} onChange={(e) => setDraft({ ...draft, estado: e.target.value })}
@@ -1618,7 +1618,7 @@ function TabPagosEnProcesoIsla() {
                         <td className="px-3 py-3">{r.empresa || "-"}</td>
                         <td className="px-3 py-3">{r.forma_pago || "-"}</td>
                         <td className="px-3 py-3">{r.fecha_pago ? formatDateStr(r.fecha_pago) : "-"}</td>
-                        <td className="px-3 py-3 text-gray-600 truncate max-w-[300px]" title={r.observaciones || ""}>
+                        <td className="px-3 py-3 text-gray-600 align-top min-w-[320px] max-w-[500px] whitespace-pre-wrap break-words">
                           {r.observaciones || "-"}
                         </td>
                         <td className="px-3 py-3">
