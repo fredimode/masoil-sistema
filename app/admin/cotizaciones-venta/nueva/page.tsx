@@ -320,87 +320,102 @@ export default function NuevaCotizacionVentaPage() {
           </div>
 
           {items.length > 0 ? (
-            <div className="border rounded-lg">
-              <div className="grid grid-cols-[1fr,70px,100px,110px,40px] gap-2 p-3 bg-muted text-xs font-medium">
-                <span>Producto</span>
-                <span className="text-center">Cant.</span>
-                <span className="text-center">Precio</span>
-                <span className="text-right">Subtotal</span>
-                <span />
-              </div>
-              {items.map((item) => (
-                <div key={item.productId || item.productCode || item.productName} className="grid grid-cols-[1fr,70px,100px,110px,40px] gap-2 p-3 border-t items-center">
-                  <div>
-                    <p className="font-medium text-sm">{item.productName}</p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground">{item.productCode}</span>
-                      {item.productId && (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-0.5"
-                                onMouseEnter={() => loadProveedoresProducto(item.productId as string)}
-                              >
-                                <Truck className="h-3 w-3" /> Proveedores
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="bottom" className="max-w-xs">
-                              <p className="font-semibold text-xs mb-1">Proveedores asociados:</p>
-                              {(() => {
-                                const list = provsByProduct[item.productId as string]
-                                if (!list) return <p className="text-xs text-gray-400">Cargando...</p>
-                                if (list.length === 0) return <p className="text-xs text-gray-400">Sin proveedores asociados</p>
-                                return list.map((p, i) => (
-                                  <p key={i} className="text-xs">
-                                    {p.proveedor_nombre}{p.precio_proveedor ? ` - ${formatCurrency(Number(p.precio_proveedor))}` : ""}
-                                  </p>
-                                ))
-                              })()}
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      )}
-                    </div>
-                  </div>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={item.quantity}
-                    onChange={(e) => {
-                      const q = parseInt(e.target.value) || 0
-                      if (q <= 0) setItems(items.filter((i) => i.productId !== item.productId))
-                      else setItems(items.map((i) => (i.productId === item.productId ? { ...i, quantity: q } : i)))
-                    }}
-                    className="w-16 h-8 text-center text-sm mx-auto"
-                  />
-                  <Input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    value={item.price}
-                    onChange={(e) => {
-                      const price = parseFloat(e.target.value) || 0
-                      setItems(items.map((i) => (i.productId === item.productId ? { ...i, price } : i)))
-                    }}
-                    className="w-24 h-8 text-center text-sm mx-auto"
-                  />
-                  <p className="font-semibold text-right text-sm">{formatCurrency(item.price * item.quantity)}</p>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setItems(items.filter((i) => i.productId !== item.productId))}
-                    className="h-8 w-8 text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-              <div className="flex justify-between items-center p-3 border-t bg-muted">
-                <span className="font-semibold">Total</span>
-                <span className="text-xl font-bold">{formatCurrency(subtotal)}</span>
-              </div>
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted text-xs font-medium">
+                  <tr>
+                    <th className="px-2 py-2 text-center w-20">Cant.</th>
+                    <th className="px-2 py-2 text-left">Producto</th>
+                    <th className="px-2 py-2 text-right w-28">Precio Unit.</th>
+                    <th className="px-2 py-2 text-right w-32">Subtotal</th>
+                    <th className="w-10" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.map((item) => (
+                    <tr key={item.productId || item.productCode || item.productName} className="border-t">
+                      <td className="px-2 py-1.5">
+                        <Input
+                          type="number"
+                          min={1}
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const q = parseInt(e.target.value) || 0
+                            if (q <= 0) setItems(items.filter((i) => i.productId !== item.productId))
+                            else setItems(items.map((i) => (i.productId === item.productId ? { ...i, quantity: q } : i)))
+                          }}
+                          className="h-8 text-center text-sm"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono text-xs text-muted-foreground">{item.productCode}</span>
+                          <span className="font-medium">{item.productName}</span>
+                          {item.productId && (
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-0.5"
+                                    onMouseEnter={() => loadProveedoresProducto(item.productId as string)}
+                                  >
+                                    <Truck className="h-3 w-3" /> Prov.
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-xs">
+                                  <p className="font-semibold text-xs mb-1">Proveedores asociados:</p>
+                                  {(() => {
+                                    const list = provsByProduct[item.productId as string]
+                                    if (!list) return <p className="text-xs text-gray-400">Cargando...</p>
+                                    if (list.length === 0) return <p className="text-xs text-gray-400">Sin proveedores asociados</p>
+                                    return list.map((p, i) => (
+                                      <p key={i} className="text-xs">
+                                        {p.proveedor_nombre}{p.precio_proveedor ? ` - ${formatCurrency(Number(p.precio_proveedor))}` : ""}
+                                      </p>
+                                    ))
+                                  })()}
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <Input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          value={item.price}
+                          onChange={(e) => {
+                            const price = parseFloat(e.target.value) || 0
+                            setItems(items.map((i) => (i.productId === item.productId ? { ...i, price } : i)))
+                          }}
+                          className="h-8 text-right text-sm"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5 text-right font-semibold whitespace-nowrap">{formatCurrency(item.price * item.quantity)}</td>
+                      <td className="px-1 py-1.5 text-center">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setItems(items.filter((i) => i.productId !== item.productId))}
+                          className="h-8 w-8 text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="bg-muted border-t">
+                    <td colSpan={3} className="px-2 py-2 text-right font-semibold">Total</td>
+                    <td className="px-2 py-2 text-right text-xl font-bold">{formatCurrency(subtotal)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground border rounded-lg">

@@ -367,7 +367,7 @@ function NuevaCompraForm() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-6 max-w-5xl mx-auto">
       <div className="flex items-center gap-4 mb-6">
         <Link href="/admin/compras" className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">
           &larr; Volver
@@ -497,48 +497,63 @@ function NuevaCompraForm() {
                     )}
                   </div>
 
-                  {/* Selected items */}
+                  {/* Selected items - Layout horizontal tipo factura */}
                   {compraItems.length > 0 && (
-                    <div className="border rounded-lg divide-y">
-                      <div className="grid grid-cols-[1fr,80px,110px,110px,30px] gap-2 px-3 py-2 bg-gray-50 text-xs font-medium text-gray-600">
-                        <span>Producto</span>
-                        <span className="text-center">Cant.</span>
-                        <span className="text-center">Precio Unit.</span>
-                        <span className="text-right">Subtotal</span>
-                        <span />
-                      </div>
-                      {compraItems.map((item, idx) => (
-                        <div key={item.productId || `${item.code}-${idx}`} className="grid grid-cols-[1fr,80px,110px,110px,30px] gap-2 px-3 py-2 items-center">
-                          <div className="min-w-0">
-                            <span className="font-mono text-xs text-gray-400 mr-1">{item.code || "S/C"}</span>
-                            <span className="text-sm font-medium">{item.name}</span>
-                          </div>
-                          <input
-                            type="number"
-                            min={1}
-                            value={item.quantity}
-                            onChange={(e) => setCompraItems((prev) => prev.map((i, j) => (j === idx ? { ...i, quantity: parseInt(e.target.value) || 1 } : i)))}
-                            className="w-full p-1 border rounded text-center text-sm"
-                          />
-                          <input
-                            type="number"
-                            min={0}
-                            step={0.01}
-                            value={item.costoNeto || ""}
-                            onChange={(e) => setCompraItems((prev) => prev.map((i, j) => (j === idx ? { ...i, costoNeto: parseFloat(e.target.value) || 0 } : i)))}
-                            className="w-full p-1 border rounded text-center text-sm"
-                            placeholder="0.00"
-                          />
-                          <p className="text-right text-sm font-semibold">{formatCurrency(item.costoNeto * item.quantity)}</p>
-                          <button type="button" onClick={() => setCompraItems((prev) => prev.filter((_, j) => j !== idx))} className="p-1 hover:bg-red-100 rounded">
-                            <X className="h-4 w-4 text-red-500" />
-                          </button>
-                        </div>
-                      ))}
-                      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 text-sm font-semibold">
-                        <span>Total</span>
-                        <span>{formatCurrency(totalCompra)}</span>
-                      </div>
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 text-xs font-medium text-gray-600">
+                          <tr>
+                            <th className="px-2 py-2 text-center w-20">Cant.</th>
+                            <th className="px-2 py-2 text-left">Producto</th>
+                            <th className="px-2 py-2 text-right w-28">Precio Unit.</th>
+                            <th className="px-2 py-2 text-right w-28">Subtotal</th>
+                            <th className="w-10" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {compraItems.map((item, idx) => (
+                            <tr key={item.productId || `${item.code}-${idx}`} className="border-t">
+                              <td className="px-2 py-1.5">
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={item.quantity}
+                                  onChange={(e) => setCompraItems((prev) => prev.map((i, j) => (j === idx ? { ...i, quantity: parseInt(e.target.value) || 1 } : i)))}
+                                  className="w-full p-1 border rounded text-center text-sm"
+                                />
+                              </td>
+                              <td className="px-2 py-1.5 min-w-0">
+                                <span className="font-mono text-xs text-gray-400 mr-1">{item.code || "S/C"}</span>
+                                <span className="text-sm font-medium">{item.name}</span>
+                              </td>
+                              <td className="px-2 py-1.5">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step={0.01}
+                                  value={item.costoNeto || ""}
+                                  onChange={(e) => setCompraItems((prev) => prev.map((i, j) => (j === idx ? { ...i, costoNeto: parseFloat(e.target.value) || 0 } : i)))}
+                                  className="w-full p-1 border rounded text-right text-sm"
+                                  placeholder="0.00"
+                                />
+                              </td>
+                              <td className="px-2 py-1.5 text-right text-sm font-semibold whitespace-nowrap">{formatCurrency(item.costoNeto * item.quantity)}</td>
+                              <td className="px-1 py-1.5 text-center">
+                                <button type="button" onClick={() => setCompraItems((prev) => prev.filter((_, j) => j !== idx))} className="p-1 hover:bg-red-100 rounded">
+                                  <X className="h-4 w-4 text-red-500" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-gray-50 border-t">
+                            <td colSpan={3} className="px-2 py-2 text-right font-semibold">Total</td>
+                            <td className="px-2 py-2 text-right font-bold">{formatCurrency(totalCompra)}</td>
+                            <td />
+                          </tr>
+                        </tfoot>
+                      </table>
                     </div>
                   )}
                   {compraItems.length === 0 && <p className="text-sm text-gray-400 text-center py-4">Buscá y agregá productos arriba</p>}
