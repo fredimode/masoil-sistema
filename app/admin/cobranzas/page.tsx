@@ -1474,7 +1474,7 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
     return rows
   }, [cobranzas, empresaFilter, desde, hasta, clienteFiltro])
 
-  // Agrupar por cliente
+  // Agrupar por cliente (alfabético)
   const porCliente = useMemo(() => {
     type Grupo = { client_id: string; client_name: string; facturas: any[]; total: number }
     const map = new Map<string, Grupo>()
@@ -1488,8 +1488,23 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
       entry.total += saldo
       map.set(id, entry)
     }
-    return Array.from(map.values()).sort((a, b) => b.total - a.total)
+    return Array.from(map.values()).sort((a, b) => a.client_name.localeCompare(b.client_name, "es"))
   }, [pendientes, clientMap])
+
+  // Agrupar por empresa (razon_social) → clientes (ambos alfabéticos)
+  const porEmpresa = useMemo(() => {
+    type EmpresaGrupo = { empresa: string; clientes: typeof porCliente; total: number }
+    const map = new Map<string, EmpresaGrupo>()
+    for (const grupo of porCliente) {
+      // Una factura puede tener razon_social; agrupamos por primera razon_social encontrada
+      const empresa = grupo.facturas[0]?.razon_social || "Sin empresa"
+      const entry = map.get(empresa) || { empresa, clientes: [] as typeof porCliente, total: 0 }
+      entry.clientes.push(grupo)
+      entry.total += grupo.total
+      map.set(empresa, entry)
+    }
+    return Array.from(map.values()).sort((a, b) => a.empresa.localeCompare(b.empresa, "es"))
+  }, [porCliente])
 
   const totalGeneral = useMemo(() => porCliente.reduce((s, c) => s + c.total, 0), [porCliente])
 
@@ -1522,25 +1537,28 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
 
   function exportXLSX() {
     const rows: any[] = []
-    for (const grupo of porCliente) {
-      let acumulado = 0
-      const ordenadas = [...grupo.facturas].sort((a, b) => {
-        const fa = a.fecha_comprobante || a.fecha || a.created_at || ""
-        const fb = b.fecha_comprobante || b.fecha || b.created_at || ""
-        return String(fa).localeCompare(String(fb))
-      })
-      for (const f of ordenadas) {
-        const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
-        acumulado += saldo
-        rows.push({
-          Cliente: grupo.client_name,
-          Fecha: formatDateStr(f.fecha_comprobante || f.fecha || f.created_at),
-          Comprobante: [f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero]
-            .filter(Boolean).join(" "),
-          Total: Number(f.total) || 0,
-          Saldo: saldo,
-          Acumulado: acumulado,
+    for (const emp of porEmpresa) {
+      for (const grupo of emp.clientes) {
+        let acumulado = 0
+        const ordenadas = [...grupo.facturas].sort((a, b) => {
+          const fa = a.fecha_comprobante || a.fecha || a.created_at || ""
+          const fb = b.fecha_comprobante || b.fecha || b.created_at || ""
+          return String(fa).localeCompare(String(fb))
         })
+        for (const f of ordenadas) {
+          const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
+          acumulado += saldo
+          rows.push({
+            Empresa: emp.empresa,
+            Cliente: grupo.client_name,
+            Fecha: formatDateStr(f.fecha_comprobante || f.fecha || f.created_at),
+            Comprobante: [f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero]
+              .filter(Boolean).join(" "),
+            Total: Number(f.total) || 0,
+            Saldo: saldo,
+            Acumulado: acumulado,
+          })
+        }
       }
     }
     const ws = XLSX.utils.json_to_sheet(rows)
@@ -1555,39 +1573,46 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
     if (!w) return
     const empresaTxt = empresaFilter === "Todas" ? "Todas las empresas" : empresaFilter
     const rangoTxt = desde || hasta ? `Período: ${desde || "..."} a ${hasta || "..."}` : ""
-    const grupos = porCliente.map((g) => {
-      let acumulado = 0
-      const ordenadas = [...g.facturas].sort((a, b) => {
-        const fa = a.fecha_comprobante || a.fecha || a.created_at || ""
-        const fb = b.fecha_comprobante || b.fecha || b.created_at || ""
-        return String(fa).localeCompare(String(fb))
-      })
-      const filas = ordenadas.map((f) => {
-        const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
-        acumulado += saldo
+    const bloques = porEmpresa.map((emp) => {
+      const clientes = emp.clientes.map((g) => {
+        let acumulado = 0
+        const ordenadas = [...g.facturas].sort((a, b) => {
+          const fa = a.fecha_comprobante || a.fecha || a.created_at || ""
+          const fb = b.fecha_comprobante || b.fecha || b.created_at || ""
+          return String(fa).localeCompare(String(fb))
+        })
+        const filas = ordenadas.map((f) => {
+          const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
+          acumulado += saldo
+          return `
+          <tr>
+            <td>${g.client_name}</td>
+            <td>${formatDateStr(f.fecha_comprobante || f.fecha || f.created_at)}</td>
+            <td>${[f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero].filter(Boolean).join(" ") || "-"}</td>
+            <td style="text-align:right">${formatCurrency(Number(f.total) || 0)}</td>
+            <td style="text-align:right;font-weight:bold">${formatCurrency(saldo)}</td>
+            <td style="text-align:right">${formatCurrency(acumulado)}</td>
+          </tr>`
+        }).join("")
         return `
-        <tr>
-          <td>${formatDateStr(f.fecha_comprobante || f.fecha || f.created_at)}</td>
-          <td>${[f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero].filter(Boolean).join(" ") || "-"}</td>
-          <td style="text-align:right">${formatCurrency(Number(f.total) || 0)}</td>
-          <td style="text-align:right;font-weight:bold">${formatCurrency(saldo)}</td>
-          <td style="text-align:right">${formatCurrency(acumulado)}</td>
-        </tr>`
+          <tr class="cliente"><td colspan="6">${g.client_name} — <strong>${formatCurrency(g.total)}</strong></td></tr>
+          <tr class="sub-header"><th>Cliente</th><th>Fecha</th><th>Comprobante</th><th style="text-align:right">Total</th><th style="text-align:right">Saldo</th><th style="text-align:right">Acumulado</th></tr>
+          ${filas}
+        `
       }).join("")
       return `
-        <tr class="cliente"><td colspan="5">${g.client_name} — <strong>${formatCurrency(g.total)}</strong></td></tr>
-        ${filas}
+        <tr class="empresa"><td colspan="6">${emp.empresa} — Total: <strong>${formatCurrency(emp.total)}</strong></td></tr>
+        ${clientes}
       `
     }).join("")
     w.document.write(`<html><head><title>Cobranzas Pendientes - ${empresaTxt}</title>
-      <style>body{font-family:sans-serif;max-width:1000px;margin:30px auto}h2{margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #ddd;padding:6px 8px;font-size:12px}th{background:#f5f5f5;text-align:left}tr.cliente td{background:#eef2ff;font-weight:600}.totals td{font-weight:bold;background:#f0f0f0}</style></head><body>
+      <style>body{font-family:sans-serif;max-width:1100px;margin:30px auto}h2{margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #ddd;padding:6px 8px;font-size:12px}th{background:#f5f5f5;text-align:left}tr.empresa td{background:#cbd5e1;font-weight:700;font-size:13px}tr.cliente td{background:#eef2ff;font-weight:600}tr.sub-header th{background:#f9fafb;font-size:11px}.totals td{font-weight:bold;background:#f0f0f0}</style></head><body>
       <h2>Informe de Cobranzas Pendientes</h2>
       <p><strong>${empresaTxt}</strong>${rangoTxt ? " — " + rangoTxt : ""}</p>
       <table>
-        <thead><tr><th>Fecha</th><th>Comprobante</th><th style="text-align:right">Total</th><th style="text-align:right">Saldo</th><th style="text-align:right">Acumulado</th></tr></thead>
         <tbody>
-          ${grupos}
-          <tr class="totals"><td colspan="3" style="text-align:right">TOTAL GENERAL</td><td style="text-align:right">${formatCurrency(totalGeneral)}</td><td></td></tr>
+          ${bloques}
+          <tr class="totals"><td colspan="4" style="text-align:right">TOTAL GENERAL</td><td style="text-align:right">${formatCurrency(totalGeneral)}</td><td></td></tr>
         </tbody>
       </table>
       <script>window.print()<\/script></body></html>`)
@@ -1652,40 +1677,36 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
         </div>
       </div>
 
-      {/* Tabla agrupada */}
-      <div className="border rounded-md overflow-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-10"></TableHead>
-              <TableHead>Cliente</TableHead>
-              <TableHead className="text-right">Cant. Facturas</TableHead>
-              <TableHead className="text-right">Saldo Total</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {porCliente.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4} className="text-center text-gray-500 py-8">Sin cobranzas pendientes con los filtros actuales</TableCell>
-              </TableRow>
-            ) : (
-              pag.getPage(currentPage).map((g) => (
-                <GrupoCliente
-                  key={g.client_id}
-                  grupo={g}
-                  expanded={expandedClients.has(g.client_id)}
-                  onToggle={() => toggleExpand(g.client_id)}
-                />
-              ))
-            )}
-            {porCliente.length > 0 && (
-              <TableRow className="bg-gray-50 font-bold">
-                <TableCell colSpan={3} className="text-right">TOTAL GENERAL</TableCell>
-                <TableCell className="text-right">{formatCurrency(totalGeneral)}</TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
+      {/* Agrupado por empresa → clientes (ambos alfabéticos) */}
+      <div className="space-y-6">
+        {porEmpresa.length === 0 ? (
+          <p className="text-center text-gray-500 py-8">Sin cobranzas pendientes con los filtros actuales</p>
+        ) : (
+          porEmpresa.map((emp) => (
+            <div key={emp.empresa} className="border rounded-md overflow-hidden">
+              <div className="bg-slate-100 px-4 py-2 flex items-center justify-between">
+                <h3 className="font-semibold text-slate-800">{emp.empresa}</h3>
+                <span className="text-sm font-bold text-red-600">{formatCurrency(emp.total)}</span>
+              </div>
+              <div className="divide-y">
+                {emp.clientes.map((g) => (
+                  <GrupoCliente
+                    key={g.client_id}
+                    grupo={g}
+                    expanded={expandedClients.has(g.client_id)}
+                    onToggle={() => toggleExpand(g.client_id)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))
+        )}
+        {porEmpresa.length > 0 && (
+          <div className="bg-gray-100 rounded-md px-4 py-3 flex items-center justify-between font-bold">
+            <span>TOTAL GENERAL</span>
+            <span className="text-red-600">{formatCurrency(totalGeneral)}</span>
+          </div>
+        )}
       </div>
       <TablePagination currentPage={currentPage} totalPages={pag.totalPages} totalItems={pag.totalItems} pageSize={pag.pageSize} onPageChange={setPage} />
     </Card>
@@ -1699,56 +1720,54 @@ function GrupoCliente({ grupo, expanded, onToggle }: { grupo: { client_id: strin
     return String(fa).localeCompare(String(fb))
   })
   return (
-    <>
-      <TableRow onClick={onToggle} className="cursor-pointer hover:bg-blue-50">
-        <TableCell>
-          <span className="inline-block w-4 text-gray-500">{expanded ? "▼" : "▶"}</span>
-        </TableCell>
-        <TableCell className="font-medium">{grupo.client_name}</TableCell>
-        <TableCell className="text-right">{grupo.facturas.length}</TableCell>
-        <TableCell className="text-right font-semibold text-red-600">{formatCurrency(grupo.total)}</TableCell>
-      </TableRow>
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full px-4 py-2 flex items-center gap-3 hover:bg-blue-50 text-left"
+      >
+        <span className="inline-block w-4 text-gray-500">{expanded ? "▼" : "▶"}</span>
+        <span className="flex-1 font-medium">{grupo.client_name}</span>
+        <span className="text-right text-sm text-gray-600 w-28">{grupo.facturas.length} facturas</span>
+        <span className="text-right font-semibold text-red-600 w-32">{formatCurrency(grupo.total)}</span>
+      </button>
       {expanded && (
-        <TableRow>
-          <TableCell colSpan={4} className="p-0">
-            <div className="bg-gray-50 p-3">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="text-left text-muted-foreground">
-                    <th className="px-2 py-1">Cliente</th>
-                    <th className="px-2 py-1">Fecha</th>
-                    <th className="px-2 py-1">Comprobante</th>
-                    <th className="px-2 py-1 text-right">Total</th>
-                    <th className="px-2 py-1 text-right">Saldo</th>
-                    <th className="px-2 py-1 text-right">Acumulado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    let acum = 0
-                    return ordenadas.map((f, i) => {
-                      const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
-                      acum += saldo
-                      const num = [f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero].filter(Boolean).join(" ")
-                      return (
-                        <tr key={f.id || i} className="border-t border-gray-200">
-                          <td className="px-2 py-1">{grupo.client_name}</td>
-                          <td className="px-2 py-1">{formatDateStr(f.fecha_comprobante || f.fecha || f.created_at)}</td>
-                          <td className="px-2 py-1 font-mono">{num || "-"}</td>
-                          <td className="px-2 py-1 text-right">{formatCurrency(Number(f.total) || 0)}</td>
-                          <td className="px-2 py-1 text-right font-medium">{formatCurrency(saldo)}</td>
-                          <td className="px-2 py-1 text-right">{formatCurrency(acum)}</td>
-                        </tr>
-                      )
-                    })
-                  })()}
-                </tbody>
-              </table>
-            </div>
-          </TableCell>
-        </TableRow>
+        <div className="bg-gray-50 px-4 py-3 border-t">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-muted-foreground border-b">
+                <th className="px-2 py-1">Cliente</th>
+                <th className="px-2 py-1">Fecha</th>
+                <th className="px-2 py-1">Comprobante</th>
+                <th className="px-2 py-1 text-right">Total</th>
+                <th className="px-2 py-1 text-right">Saldo</th>
+                <th className="px-2 py-1 text-right">Acumulado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(() => {
+                let acum = 0
+                return ordenadas.map((f, i) => {
+                  const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
+                  acum += saldo
+                  const num = [f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero].filter(Boolean).join(" ")
+                  return (
+                    <tr key={f.id || i} className="border-t border-gray-200">
+                      <td className="px-2 py-1">{grupo.client_name}</td>
+                      <td className="px-2 py-1">{formatDateStr(f.fecha_comprobante || f.fecha || f.created_at)}</td>
+                      <td className="px-2 py-1 font-mono">{num || "-"}</td>
+                      <td className="px-2 py-1 text-right">{formatCurrency(Number(f.total) || 0)}</td>
+                      <td className="px-2 py-1 text-right font-medium">{formatCurrency(saldo)}</td>
+                      <td className="px-2 py-1 text-right">{formatCurrency(acum)}</td>
+                    </tr>
+                  )
+                })
+              })()}
+            </tbody>
+          </table>
+        </div>
       )}
-    </>
+    </div>
   )
 }
 
