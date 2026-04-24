@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { fetchProveedores, fetchFacturasProveedor, createPagoProveedor, createChequeEmitido, updateFacturaProveedor } from "@/lib/supabase/queries"
+import { fetchProveedores, fetchFacturasProveedor, createPagoProveedor, createChequeEmitido, updateFacturaProveedor, createMovimientoCuentaCorrienteProveedor } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/client"
 import { normalizeSearch, formatCurrency } from "@/lib/utils"
 import { Paperclip, Mail, Upload, Check, Plus, Trash2 } from "lucide-react"
@@ -189,29 +189,37 @@ export default function NuevoPagoPage() {
     doc.text(`Razon Social: ${form.proveedor_nombre}`, 14, 59)
     doc.text(`CUIT: ${form.cuit || "-"}`, 14, 65)
 
-    // Facturas canceladas
+    // Facturas canceladas (o pago a cuenta)
+    const esPagoACuenta = selectedFacturaIds.size === 0
     doc.setFontSize(11)
-    doc.text("Facturas Canceladas", 14, 78)
+    doc.text(esPagoACuenta ? "Pago a Cuenta (anticipo)" : "Facturas Canceladas", 14, 78)
     let y = 85
-    doc.setFontSize(8)
-    doc.text("Tipo", 14, y)
-    doc.text("Comprobante", 40, y)
-    doc.text("Total", 100, y)
-    doc.text("Saldo", 140, y)
-    y += 5
-    doc.line(14, y, 196, y)
-    y += 4
-
-    for (const facturaId of selectedFacturaIds) {
-      const f = facturasPendientes.find((fac) => fac.id === facturaId)
-      if (!f) continue
-      const tipo = f.tipo === "NOTA_CREDITO" ? "NC" : f.tipo === "NOTA_DEBITO" ? "ND" : "FC"
-      doc.text(`${tipo} ${f.letra || ""}`, 14, y)
-      doc.text(`${f.punto_venta || ""}-${f.numero || ""}`, 40, y)
-      doc.text(formatCurrency(Number(f.total) || 0), 100, y)
-      doc.text(formatCurrency(Number(f.saldo_pendiente) || Number(f.total) || 0), 140, y)
+    if (esPagoACuenta) {
+      doc.setFontSize(9)
+      doc.text(`Importe anticipado: ${formatCurrency(importeTotal)}`, 14, y)
+      doc.text("Este pago figurará como DEBE en la cuenta corriente del proveedor.", 14, y + 6)
+      y += 16
+    } else {
+      doc.setFontSize(8)
+      doc.text("Tipo", 14, y)
+      doc.text("Comprobante", 40, y)
+      doc.text("Total", 100, y)
+      doc.text("Saldo", 140, y)
       y += 5
-      if (y > 260) { doc.addPage(); y = 20 }
+      doc.line(14, y, 196, y)
+      y += 4
+
+      for (const facturaId of selectedFacturaIds) {
+        const f = facturasPendientes.find((fac) => fac.id === facturaId)
+        if (!f) continue
+        const tipo = f.tipo === "NOTA_CREDITO" ? "NC" : f.tipo === "NOTA_DEBITO" ? "ND" : "FC"
+        doc.text(`${tipo} ${f.letra || ""}`, 14, y)
+        doc.text(`${f.punto_venta || ""}-${f.numero || ""}`, 40, y)
+        doc.text(formatCurrency(Number(f.total) || 0), 100, y)
+        doc.text(formatCurrency(Number(f.saldo_pendiente) || Number(f.total) || 0), 140, y)
+        y += 5
+        if (y > 260) { doc.addPage(); y = 20 }
+      }
     }
 
     // Formas de pago
@@ -252,17 +260,22 @@ export default function NuevoPagoPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (selectedFacturaIds.size === 0) {
-      alert("Seleccione al menos una factura a pagar")
-      return
-    }
+    const esPagoACuenta = selectedFacturaIds.size === 0
     if (formasPago.every((fp) => !fp.tipo)) {
       alert("Agregue al menos una forma de pago")
       return
     }
-    if (Math.abs(diferencia) > 0.01 && diferencia < -0.01) {
+    if (esPagoACuenta && importeTotal <= 0) {
+      alert("Ingrese un importe válido para el pago a cuenta")
+      return
+    }
+    if (!esPagoACuenta && Math.abs(diferencia) > 0.01 && diferencia < -0.01) {
       alert("El total de formas de pago no cubre las facturas seleccionadas")
       return
+    }
+    if (esPagoACuenta) {
+      const msg = `No seleccionó facturas. Se registrará como Pago a Cuenta por ${formatCurrency(importeTotal)}. ¿Continuar?`
+      if (!confirm(msg)) return
     }
     setGuardando(true)
     try {
@@ -286,6 +299,7 @@ export default function NuevoPagoPage() {
           estado_pago: form.estado_pago,
           banco: formasPago.find((fp) => fp.banco_origen)?.banco_origen || null,
           origen: formasPago.find((fp) => fp.referencia)?.referencia || null,
+          tipo: esPagoACuenta ? "PAGO_A_CUENTA" : "FACTURAS",
         })
         .select("id")
         .single()
@@ -322,16 +336,18 @@ export default function NuevoPagoPage() {
         }
       }
 
-      // Update facturas status
-      for (const facturaId of selectedFacturaIds) {
-        const factura = facturasPendientes.find((f) => f.id === facturaId)
-        if (!factura) continue
-        const saldoActual = Number(factura.saldo_pendiente) || Number(factura.total) || 0
-        const nuevoSaldo = Math.max(0, saldoActual - importeTotal)
-        await updateFacturaProveedor(facturaId, {
-          estado: nuevoSaldo <= 0 ? "pagada" : "pagada_parcial",
-          saldo_pendiente: nuevoSaldo,
-        })
+      // Update facturas status (solo si hay facturas seleccionadas)
+      if (!esPagoACuenta) {
+        for (const facturaId of selectedFacturaIds) {
+          const factura = facturasPendientes.find((f) => f.id === facturaId)
+          if (!factura) continue
+          const saldoActual = Number(factura.saldo_pendiente) || Number(factura.total) || 0
+          const nuevoSaldo = Math.max(0, saldoActual - importeTotal)
+          await updateFacturaProveedor(facturaId, {
+            estado: nuevoSaldo <= 0 ? "pagada" : "pagada_parcial",
+            saldo_pendiente: nuevoSaldo,
+          })
+        }
       }
 
       // Generate Orden de Pago PDF
@@ -339,6 +355,24 @@ export default function NuevoPagoPage() {
         await generateOrdenPagoPDF(pagoId, form.empresa)
       } catch (err) {
         console.error("Error generando orden de pago:", err)
+      }
+
+      // Si es pago a cuenta, registrar movimiento DEBE en cuenta corriente del proveedor
+      if (esPagoACuenta && form.proveedor_id) {
+        try {
+          await createMovimientoCuentaCorrienteProveedor({
+            proveedor_id: form.proveedor_id,
+            fecha: new Date().toISOString().slice(0, 10),
+            tipo_comprobante: "PC",
+            numero_comprobante: null,
+            debe: importeTotal,
+            haber: 0,
+            referencia_id: pagoId,
+            observaciones: `Pago a cuenta - ${form.observaciones || "anticipo"}`,
+          })
+        } catch (err) {
+          console.error("Error registrando pago a cuenta en cta cte:", err)
+        }
       }
 
       // Send email if provided
@@ -493,10 +527,16 @@ export default function NuevoPagoPage() {
                     </tbody>
                   </table>
                 </div>
-                {selectedFacturaIds.size > 0 && (
+                {selectedFacturaIds.size > 0 ? (
                   <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex justify-between items-center">
                     <span className="text-sm text-blue-700">{selectedFacturaIds.size} factura(s) seleccionada(s)</span>
                     <span className="font-bold text-blue-900">Total: {formatCurrency(totalFacturasSeleccionadas)}</span>
+                  </div>
+                ) : (
+                  <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm text-amber-800">
+                      <strong>Sin facturas seleccionadas:</strong> el pago se registrará como <em>Pago a Cuenta</em> (anticipo) y figurará como DEBE en la cuenta corriente del proveedor.
+                    </p>
                   </div>
                 )}
               </>
@@ -767,10 +807,10 @@ export default function NuevoPagoPage() {
             </Link>
             <button
               type="submit"
-              disabled={guardando || !form.proveedor_nombre || formasPago.every((fp) => !fp.tipo) || selectedFacturaIds.size === 0}
+              disabled={guardando || !form.proveedor_nombre || formasPago.every((fp) => !fp.tipo) || importeTotal <= 0}
               className="px-6 py-2.5 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-gray-400 text-sm font-medium"
             >
-              {guardando ? "Guardando..." : "Registrar Pago"}
+              {guardando ? "Guardando..." : selectedFacturaIds.size === 0 ? "Registrar Pago a Cuenta" : "Registrar Pago"}
             </button>
           </div>
         </div>
