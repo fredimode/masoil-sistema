@@ -46,6 +46,14 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [facturarOverrides, setFacturarOverrides] = useState<Record<string, { nombre: string; precio: number }>>({})
   const [facturando, setFacturando] = useState(false)
 
+  // TusFacturas (nuevo flujo)
+  const [tfOpen, setTfOpen] = useState(false)
+  const [tfEmpresa, setTfEmpresa] = useState<"Aquiles" | "Conancap">("Aquiles")
+  const [tfModo, setTfModo] = useState<"testing" | "produccion">("testing")
+  const [tfObservaciones, setTfObservaciones] = useState("")
+  const [tfLoading, setTfLoading] = useState(false)
+  const [tfResult, setTfResult] = useState<{ numero: string; cae: string | null; total: number; pdfUrl: string; emailEnviado: boolean; emailError?: string } | null>(null)
+
   // Agregar productos a pedido existente
   const [agregarOpen, setAgregarOpen] = useState(false)
   const [prodList, setProdList] = useState<Product[]>([])
@@ -72,7 +80,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         const supabaseExtra = createClient()
         const { data: extraData } = await supabaseExtra
           .from("orders")
-          .select("sector, solicita, recibe, entrega_otra_sucursal, hoja_ruta_url, observaciones_entrega")
+          .select("sector, solicita, recibe, entrega_otra_sucursal, hoja_ruta_url, observaciones_entrega, factura_id")
           .eq("id", id)
           .single()
         if (extraData) setOrderExtra(extraData)
@@ -421,6 +429,94 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     }
   }
 
+  function openTusFacturasDialog() {
+    // Default empresa según razonSocial del pedido (si existe)
+    const rs = (o.razonSocial || "").toLowerCase()
+    const defaultEmpresa: "Aquiles" | "Conancap" = rs.includes("conancap") ? "Conancap" : "Aquiles"
+    setTfEmpresa(defaultEmpresa)
+    setTfModo("testing")
+    setTfObservaciones("")
+    setTfResult(null)
+    setTfOpen(true)
+  }
+
+  async function handleFacturarTusFacturas() {
+    if (!o.clientId) {
+      alert("El pedido no tiene cliente asignado.")
+      return
+    }
+    if (o.products.length === 0) {
+      alert("El pedido no tiene items.")
+      return
+    }
+    const itemsConPrecioCero = o.products.filter((p) => !p.price || p.price <= 0)
+    if (itemsConPrecioCero.length > 0) {
+      alert(`Hay items con precio en 0 o inválido: ${itemsConPrecioCero.map((p) => p.productCode).join(", ")}`)
+      return
+    }
+
+    setTfLoading(true)
+    try {
+      // Validación previa: cliente debe tener CUIT
+      const supabase = createClient()
+      const { data: clienteCheck } = await supabase
+        .from("clients")
+        .select("cuit, numero_docum")
+        .eq("id", o.clientId)
+        .single()
+      const cuit = (clienteCheck?.cuit || clienteCheck?.numero_docum || "").replace(/[-\s]/g, "")
+      if (!cuit) {
+        alert("El cliente no tiene CUIT cargado. Editá la ficha del cliente primero.")
+        setTfLoading(false)
+        return
+      }
+
+      // TODO: alícuota hardcoded a 21% — agregar campo products.alicuota_iva
+      // TODO: precio_sin_iva calculado como precio/1.21 — asume todo 21%
+      const items = o.products.map((p) => ({
+        descripcion: `${p.productCode} - ${p.productName}`,
+        cantidad: p.quantity,
+        precioUnitarioSinIva: Math.round((p.price / 1.21) * 100) / 100,
+        alicuota: 21 as const,
+      }))
+
+      const res = await fetch("/api/facturar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          empresa: tfEmpresa,
+          modo: tfModo,
+          orderId: o.id,
+          clientId: o.clientId,
+          items,
+          observaciones: tfObservaciones || undefined,
+        }),
+      })
+      const data = await res.json()
+
+      if (data.success) {
+        setTfResult({
+          numero: data.numero,
+          cae: data.cae,
+          total: data.total,
+          pdfUrl: data.pdfUrl,
+          emailEnviado: data.emailEnviado,
+          emailError: data.emailError,
+        })
+        // Refrescar orderExtra para que el botón desaparezca
+        setOrderExtra((prev: any) => ({ ...prev, factura_id: data.facturaId }))
+      } else {
+        const erroresStr = data.errores?.length ? "\n\nErrores AFIP:\n- " + data.errores.join("\n- ") : ""
+        alert(`Error en paso "${data.paso}":\n${data.error}${erroresStr}`)
+      }
+    } catch (err) {
+      console.error("Error facturando TF:", err)
+      alert("Error de conexión: " + (err instanceof Error ? err.message : "desconocido"))
+    } finally {
+      setTfLoading(false)
+    }
+  }
+
   return (
     <div className="p-8 space-y-6 max-w-6xl">
       {/* Header */}
@@ -467,7 +563,15 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             Imprimir Remito
           </Button>
 
-          {/* Facturar button */}
+          {/* Facturar TusFacturas (nuevo flujo) */}
+          {!orderExtra?.factura_id && !isTerminal && (
+            <Button variant="default" className="bg-emerald-600 hover:bg-emerald-700" onClick={openTusFacturasDialog}>
+              <FileText className="h-4 w-4 mr-2" />
+              Facturar con TusFacturas
+            </Button>
+          )}
+
+          {/* Facturar button (legacy) */}
           {itemsPendientesFactura.length > 0 && !isTerminal && (
             <Button variant="default" className="bg-purple-600 hover:bg-purple-700" onClick={openFacturarDialog}>
               <FileText className="h-4 w-4 mr-2" />
@@ -1047,6 +1151,122 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                   <Link href="/admin/facturacion">Ver Facturas</Link>
                 </Button>
                 <Button variant="outline" className="flex-1" onClick={() => setFacturaDialogOpen(false)}>
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* TusFacturas Dialog */}
+      <Dialog open={tfOpen} onOpenChange={(open) => { setTfOpen(open); if (!open) setTfResult(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Facturar con TusFacturas — Pedido {o.orderNumber}</DialogTitle>
+          </DialogHeader>
+
+          {!tfResult ? (
+            <div className="space-y-4 pt-2">
+              <div className="space-y-2">
+                <Label>Empresa emisora</Label>
+                <Select value={tfEmpresa} onValueChange={(v) => setTfEmpresa(v as "Aquiles" | "Conancap")}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Aquiles">Aquiles Equipamientos SRL</SelectItem>
+                    <SelectItem value="Conancap">Conancap SRL</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Modo</Label>
+                <Select value={tfModo} onValueChange={(v) => setTfModo(v as "testing" | "produccion")}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="testing">Testing (no afecta AFIP)</SelectItem>
+                    <SelectItem value="produccion">Producción (emite CAE real)</SelectItem>
+                  </SelectContent>
+                </Select>
+                {tfModo === "produccion" && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                    ⚠ Se emitirá una factura real ante AFIP. Verificá empresa, cliente e items.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Observaciones (opcional)</Label>
+                <Textarea
+                  rows={3}
+                  value={tfObservaciones}
+                  onChange={(e) => setTfObservaciones(e.target.value)}
+                  placeholder="Texto que aparecerá en la factura..."
+                />
+              </div>
+
+              <div className="text-xs text-muted-foreground bg-muted/40 border rounded p-2 space-y-1">
+                <div><strong>Items:</strong> {o.products.length} (todos al 21% IVA)</div>
+                <div><strong>Total estimado:</strong> {formatCurrency(o.total)}</div>
+                <div className="text-amber-700">⚠ Alícuota hardcoded a 21%. Precio sin IVA = precio/1.21.</div>
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setTfOpen(false)} disabled={tfLoading}>
+                  Cancelar
+                </Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                  onClick={handleFacturarTusFacturas}
+                  disabled={tfLoading}
+                >
+                  {tfLoading ? "Facturando..." : "Confirmar facturación"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 py-2">
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+                <svg className="w-10 h-10 text-green-600 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <p className="font-bold text-green-800">Factura {tfResult.numero} generada</p>
+              </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Número</span>
+                  <span className="font-medium">{tfResult.numero}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">CAE</span>
+                  <span className="font-mono font-medium text-green-700">{tfResult.cae || "(sin CAE)"}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Empresa emisora</span>
+                  <span className="font-medium">{tfEmpresa}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Modo</span>
+                  <span className="font-medium">{tfModo}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-base">
+                  <span className="font-bold">Total</span>
+                  <span className="font-bold text-primary">{formatCurrency(tfResult.total)}</span>
+                </div>
+                <div className="text-xs">
+                  Email: {tfResult.emailEnviado
+                    ? <span className="text-green-700">enviado al cliente</span>
+                    : <span className="text-amber-700">{tfResult.emailError || "no enviado"}</span>}
+                </div>
+              </div>
+              <div className="flex gap-2 pt-2">
+                {tfResult.pdfUrl && (
+                  <Button asChild className="flex-1">
+                    <a href={tfResult.pdfUrl} target="_blank" rel="noopener noreferrer">Ver PDF</a>
+                  </Button>
+                )}
+                <Button variant="outline" className="flex-1" onClick={() => setTfOpen(false)}>
                   Cerrar
                 </Button>
               </div>
