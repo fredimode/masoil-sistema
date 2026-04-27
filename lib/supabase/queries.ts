@@ -575,8 +575,6 @@ export async function createClient(client: {
   businessName: string; contactName: string; whatsapp: string;
   email: string; zona: string; vendedorId?: string; address: string;
   paymentTerms: string; creditLimit: number; notes: string;
-  sucursal?: string;
-  sucursalEntrega?: string;
   domicilioEntrega?: string;
   cuit?: string;
   condicionIva?: string;
@@ -594,8 +592,6 @@ export async function createClient(client: {
     condicion_pago: client.paymentTerms,
     credit_limit: client.creditLimit,
     notes: client.notes,
-    sucursal: client.sucursal || null,
-    sucursal_entrega: client.sucursalEntrega || null,
     domicilio_entrega: client.domicilioEntrega || null,
     cuit: client.cuit || null,
     condicion_iva: client.condicionIva || null,
