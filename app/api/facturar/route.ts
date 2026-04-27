@@ -261,10 +261,11 @@ export async function POST(request: NextRequest) {
 
   await supabase.from("orders").update({ factura_id: factura.id }).eq("id", orderId)
 
-  // ───────────────── PASO 12: Email (solo en producción) ─────────────────
+  // ───────────────── PASO 12: Email (deshabilitado temporalmente para testing) ─────────────────
+  const EMAIL_ENABLED = false // cambiar a true cuando esté listo para producción real
   let emailEnviado = false
   let emailError: string | null = null
-  if (modo === "produccion" && cliente.email && process.env.RESEND_API_KEY) {
+  if (EMAIL_ENABLED && modo === "produccion" && cliente.email && process.env.RESEND_API_KEY) {
     console.log('Step 12: Email →', cliente.email)
     try {
       const resend = new Resend(process.env.RESEND_API_KEY)
@@ -300,7 +301,7 @@ export async function POST(request: NextRequest) {
       console.error("Error enviando email factura:", e)
     }
   } else {
-    console.log('Step 12: Email skipped (modo testing o sin email)')
+    console.log('Step 12: Email skipped (deshabilitado para testing)')
   }
 
   // ───────────────── PASO 13: Respuesta ─────────────────
