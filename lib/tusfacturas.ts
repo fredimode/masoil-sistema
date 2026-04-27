@@ -67,6 +67,36 @@ export function getCredentials(empresa: Empresa, modo: Modo): Credentials {
   return { apikey, apitoken, usertoken, pdv }
 }
 
+const PROVINCIA_CODIGO: Record<string, string> = {
+  'CABA': '0',
+  'CAPITAL FEDERAL': '0',
+  'CIUDAD AUTONOMA DE BUENOS AIRES': '0',
+  'CIUDAD AUT.DE BS.AS.': '0',
+  'BUENOS AIRES': '1',
+  'CATAMARCA': '2',
+  'CORDOBA': '3',
+  'CORRIENTES': '4',
+  'ENTRE RIOS': '5',
+  'JUJUY': '6',
+  'MENDOZA': '7',
+  'LA RIOJA': '8',
+  'SALTA': '9',
+  'SAN JUAN': '10',
+  'SAN LUIS': '11',
+  'SANTA FE': '12',
+  'SANTIAGO DEL ESTERO': '13',
+  'TUCUMAN': '14',
+  'CHACO': '15',
+  'CHUBUT': '16',
+  'FORMOSA': '17',
+  'MISIONES': '18',
+  'NEUQUEN': '19',
+  'LA PAMPA': '20',
+  'RIO NEGRO': '21',
+  'SANTA CRUZ': '22',
+  'TIERRA DEL FUEGO': '23',
+}
+
 const CONDICION_IVA_MAP: Record<string, CondicionIvaCliente> = {
   "RESP. INSCRIPTO": "RI",
   "RESPONSABLE INSCRIPTO": "RI",
@@ -160,7 +190,7 @@ export function buildPayload(params: {
       razon_social: params.cliente.nombre.replace(/['"]/g, ''),
       condicion_iva: condicionIVA,
       domicilio: (params.cliente.domicilio || "Sin domicilio").replace(/['"]/g, ''),
-      provincia: params.cliente.provincia || "BUENOS AIRES",
+      provincia: PROVINCIA_CODIGO[params.cliente.provincia?.toUpperCase().trim() || 'BUENOS AIRES'] || '1',
       envia_por_mail: "N",
     },
     comprobante: {
