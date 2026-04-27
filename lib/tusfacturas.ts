@@ -192,9 +192,11 @@ export function buildPayload(params: {
       documento_tipo: "CUIT",
       documento_nro: limpiarCuit(params.cliente.numero_docum),
       razon_social: params.cliente.nombre.replace(/['"]/g, ''),
+      email: params.cliente.email || "",
       condicion_iva: condicionIVA,
       domicilio: (params.cliente.domicilio || "Sin domicilio").replace(/['"]/g, ''),
       provincia: PROVINCIA_CODIGO[params.cliente.provincia?.toUpperCase().trim() || 'BUENOS AIRES'] || '1',
+      condicion_pago: "210", // Contado
       envia_por_mail: "N",
     },
     comprobante: {
@@ -203,16 +205,22 @@ export function buildPayload(params: {
       punto_venta: creds.pdv,
       moneda: "PES",
       cotizacion: 1,
+      idioma: 1,
       fecha: formatFechaTusFacturas(fechaEmision),
-      fecha_vencimiento_pago: formatFechaTusFacturas(fechaVto),
+      vencimiento: formatFechaTusFacturas(fechaVto),
       detalle: params.items.map((item) => ({
         cantidad: item.cantidad,
+        afecta_stock: "N",
+        leyenda: "",
         producto: {
           descripcion: item.descripcion.replace(/['"]/g, ''),
           alicuota: item.alicuota,
           precio_unitario_sin_iva: round2(item.precioUnitarioSinIva),
           unidad_medida: 7,
-          cantidad_por_bulto: 1,
+          unidad_bulto: 1,
+          lista_precios: "MASOIL",
+          actualiza_precio: "N",
+          rg5329: "N",
         },
       })),
       total: 0, // TusFacturas lo calcula automático
