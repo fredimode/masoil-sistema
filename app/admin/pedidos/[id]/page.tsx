@@ -54,6 +54,13 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [tfLoading, setTfLoading] = useState(false)
   const [tfResult, setTfResult] = useState<{ numero: string; cae: string | null; total: number; pdfUrl: string; emailEnviado: boolean; emailError?: string } | null>(null)
 
+  // Remito (CAI)
+  const [remitoOpen, setRemitoOpen] = useState(false)
+  const [remitoEmpresa, setRemitoEmpresa] = useState<"Aquiles" | "Conancap">("Aquiles")
+  const [remitoObs, setRemitoObs] = useState("")
+  const [remitoLoading, setRemitoLoading] = useState(false)
+  const [remitoResult, setRemitoResult] = useState<{ numero: string; cai: string; pdfUrl: string; caiVencido: boolean; caiVencimiento: string } | null>(null)
+
   // Agregar productos a pedido existente
   const [agregarOpen, setAgregarOpen] = useState(false)
   const [prodList, setProdList] = useState<Product[]>([])
@@ -440,6 +447,48 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     setTfOpen(true)
   }
 
+  function openRemitoDialog() {
+    const rs = (o.razonSocial || "").toLowerCase()
+    const defaultEmpresa: "Aquiles" | "Conancap" = rs.includes("conancap") ? "Conancap" : "Aquiles"
+    setRemitoEmpresa(defaultEmpresa)
+    setRemitoObs("")
+    setRemitoResult(null)
+    setRemitoOpen(true)
+  }
+
+  async function handleGenerarRemito() {
+    setRemitoLoading(true)
+    try {
+      const res = await fetch("/api/remito", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          empresa: remitoEmpresa,
+          orderId: o.id,
+          observaciones: remitoObs || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setRemitoResult({
+          numero: data.numero,
+          cai: data.cai,
+          pdfUrl: data.pdfUrl,
+          caiVencido: data.caiVencido,
+          caiVencimiento: data.caiVencimiento,
+        })
+      } else {
+        const extra = data.rango ? `\nRango talonario: ${data.rango.desde}-${data.rango.hasta}\nÚltimo número usado: ${data.ultimo_numero ?? "(ninguno)"}` : ""
+        alert(`Error en paso "${data.paso}":\n${data.error}${extra}`)
+      }
+    } catch (err) {
+      console.error("Error generando remito:", err)
+      alert("Error de conexión: " + (err instanceof Error ? err.message : "desconocido"))
+    } finally {
+      setRemitoLoading(false)
+    }
+  }
+
   async function handleFacturarTusFacturas() {
     if (!o.clientId) {
       alert("El pedido no tiene cliente asignado.")
@@ -568,6 +617,14 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             <Button variant="default" className="bg-emerald-600 hover:bg-emerald-700" onClick={openTusFacturasDialog}>
               <FileText className="h-4 w-4 mr-2" />
               Facturar con TusFacturas
+            </Button>
+          )}
+
+          {/* Generar Remito (solo post-facturado) */}
+          {["FACTURADO", "FACTURADO_PARCIAL", "EN_PROCESO_ENTREGA", "ENTREGADO"].includes(currentStatus) && (
+            <Button variant="default" className="bg-blue-600 hover:bg-blue-700" onClick={openRemitoDialog}>
+              <FileText className="h-4 w-4 mr-2" />
+              Generar Remito
             </Button>
           )}
 
@@ -1267,6 +1324,103 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                   </Button>
                 )}
                 <Button variant="outline" className="flex-1" onClick={() => setTfOpen(false)}>
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Remito Dialog */}
+      <Dialog open={remitoOpen} onOpenChange={(open) => { setRemitoOpen(open); if (!open) setRemitoResult(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Generar Remito — Pedido {o.orderNumber}</DialogTitle>
+          </DialogHeader>
+
+          {!remitoResult ? (
+            <div className="space-y-4 pt-2">
+              <div className="space-y-2">
+                <Label>Empresa emisora</Label>
+                <Select value={remitoEmpresa} onValueChange={(v) => setRemitoEmpresa(v as "Aquiles" | "Conancap")}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Aquiles">Aquiles Equipamientos SRL</SelectItem>
+                    <SelectItem value="Conancap">Conancap SRL</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {remitoEmpresa === "Conancap" && (
+                <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-2">
+                  ⚠ <strong>CAI Conancap vencido (22/03/2026).</strong> Se generará el remito igual,
+                  pero solicitá nuevo CAI a AFIP.
+                </p>
+              )}
+
+              <div className="space-y-2">
+                <Label>Observaciones (opcional)</Label>
+                <Textarea
+                  rows={2}
+                  value={remitoObs}
+                  onChange={(e) => setRemitoObs(e.target.value)}
+                  placeholder="Texto opcional al pie del remito..."
+                />
+              </div>
+
+              <div className="text-xs text-muted-foreground bg-muted/40 border rounded p-2">
+                <strong>Items:</strong> {o.products.length} (sin precios — el remito documenta entrega física)
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setRemitoOpen(false)} disabled={remitoLoading}>
+                  Cancelar
+                </Button>
+                <Button
+                  className="bg-blue-600 hover:bg-blue-700"
+                  onClick={handleGenerarRemito}
+                  disabled={remitoLoading}
+                >
+                  {remitoLoading ? "Generando..." : "Generar Remito"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 py-2">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+                <svg className="w-10 h-10 text-blue-600 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <p className="font-bold text-blue-800">Remito {remitoResult.numero} generado</p>
+              </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Número</span>
+                  <span className="font-medium">{remitoResult.numero}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">CAI</span>
+                  <span className="font-mono font-medium">{remitoResult.cai}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Vencimiento CAI</span>
+                  <span className={`font-medium ${remitoResult.caiVencido ? "text-red-700" : ""}`}>
+                    {remitoResult.caiVencimiento}{remitoResult.caiVencido ? " (vencido)" : ""}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Empresa emisora</span>
+                  <span className="font-medium">{remitoEmpresa}</span>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-2">
+                {remitoResult.pdfUrl && (
+                  <Button asChild className="flex-1">
+                    <a href={remitoResult.pdfUrl} target="_blank" rel="noopener noreferrer">Ver PDF</a>
+                  </Button>
+                )}
+                <Button variant="outline" className="flex-1" onClick={() => setRemitoOpen(false)}>
                   Cerrar
                 </Button>
               </div>

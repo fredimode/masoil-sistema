@@ -113,6 +113,9 @@ importers:
       autoprefixer:
         specifier: ^10.4.20
         version: 10.4.27(postcss@8.5.8)
+      bwip-js:
+        specifier: ^4.10.1
+        version: 4.10.1
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -1588,6 +1591,10 @@ packages:
   browserslist@4.28.1:
     resolution: {integrity: sha512-ZC5Bd0LgJXgwGqUknZY/vkUQ04r8NXnJZ3yYi4vDmSiZmC/pdSN0NbNRPxZpbtO4uAfDUAFffO8IZoM3Gj8IkA==}
     engines: {node: ^6 || ^7 || ^8 || ^9 || ^10 || ^11 || ^12 || >=13.7}
+    hasBin: true
+
+  bwip-js@4.10.1:
+    resolution: {integrity: sha512-I/cEPiXsu7dRCp78PpVY4gdIXmbH752n8dMC+DStM77XPkrzeathdYrjnZ/i/vZPIxXTUWc+JxgJ/MvbodqPLA==}
     hasBin: true
 
   camelcase@5.3.1:
@@ -3873,6 +3880,8 @@ snapshots:
       electron-to-chromium: 1.5.307
       node-releases: 2.0.36
       update-browserslist-db: 1.2.3(browserslist@4.28.1)
+
+  bwip-js@4.10.1: {}
 
   camelcase@5.3.1: {}
 
