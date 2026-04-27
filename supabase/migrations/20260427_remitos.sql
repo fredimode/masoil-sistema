@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS remitos (
   cai TEXT NOT NULL,
   cai_vencimiento DATE,
   fecha_emision DATE NOT NULL DEFAULT CURRENT_DATE,
-  order_id TEXT REFERENCES orders(id),
+  order_id UUID REFERENCES orders(id),
   client_id UUID REFERENCES clients(id),
   cliente_nombre TEXT,
   cliente_cuit TEXT,
