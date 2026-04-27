@@ -184,6 +184,14 @@ export function buildPayload(params: {
   const fechaVto = new Date(fechaEmision)
   fechaVto.setDate(fechaVto.getDate() + 30)
 
+  const totalCalculado = params.items.reduce((sum, item) => {
+    const subtotal = item.precioUnitarioSinIva * item.cantidad
+    let iva = 0
+    if (item.alicuota === 21) iva = subtotal * 0.21
+    else if (item.alicuota === 10.5) iva = subtotal * 0.105
+    return sum + subtotal + iva
+  }, 0)
+
   return {
     apitoken: creds.apitoken,
     apikey: creds.apikey,
@@ -223,7 +231,7 @@ export function buildPayload(params: {
           rg5329: "N",
         },
       })),
-      total: 0, // TusFacturas lo calcula automático
+      total: round2(totalCalculado),
       tributos: [] as unknown[],
       ...(params.observaciones ? { observaciones: params.observaciones.replace(/['"]/g, '') } : {}),
     },
