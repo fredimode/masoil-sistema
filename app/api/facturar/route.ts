@@ -147,6 +147,7 @@ export async function POST(request: NextRequest) {
   // ───────────────── PASO 8: POST TusFacturas ─────────────────
   let tfData: TusFacturasResponse
   try {
+    console.log('Payload TusFacturas:', JSON.stringify(payload, null, 2));
     const tfResp = await fetch(TUSFACTURAS_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
