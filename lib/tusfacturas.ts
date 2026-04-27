@@ -180,6 +180,10 @@ export function buildPayload(params: {
   const creds = getCredentials(params.empresa, params.modo)
   const condicionIVA = mapCondicionIVA(params.cliente.condicion_iva)
 
+  const fechaEmision = new Date()
+  const fechaVto = new Date(fechaEmision)
+  fechaVto.setDate(fechaVto.getDate() + 30)
+
   return {
     apitoken: creds.apitoken,
     apikey: creds.apikey,
@@ -199,7 +203,8 @@ export function buildPayload(params: {
       punto_venta: creds.pdv,
       moneda: "PES",
       cotizacion: 1,
-      fecha: formatFechaTusFacturas(new Date()),
+      fecha: formatFechaTusFacturas(fechaEmision),
+      fecha_vencimiento_pago: formatFechaTusFacturas(fechaVto),
       detalle: params.items.map((item) => ({
         cantidad: item.cantidad,
         producto: {
@@ -207,6 +212,7 @@ export function buildPayload(params: {
           alicuota: item.alicuota,
           precio_unitario_sin_iva: round2(item.precioUnitarioSinIva),
           unidad_medida: 7,
+          cantidad_por_bulto: 1,
         },
       })),
       total: 0, // TusFacturas lo calcula automático
