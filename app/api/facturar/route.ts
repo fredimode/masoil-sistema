@@ -155,6 +155,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(payload),
     })
     tfData = (await tfResp.json()) as TusFacturasResponse
+    console.log('Step 8: TusFacturas response:', JSON.stringify(tfData, null, 2))
   } catch (e) {
     return fail("tusfacturas", e instanceof Error ? e.message : "Error de red con TusFacturas")
   }
@@ -179,6 +180,7 @@ export async function POST(request: NextRequest) {
   const numero = `${String(pdv).padStart(4, "0")}-${String(comprobanteNro).padStart(8, "0")}`
 
   // ───────────────── PASO 9: PDF ─────────────────
+  console.log('Step 9: Iniciando generación de PDF...')
   let pdfBytes: Uint8Array
   try {
     pdfBytes = await generarFacturaPDF({
@@ -204,6 +206,7 @@ export async function POST(request: NextRequest) {
       vencimientoCae,
       observaciones,
     })
+    console.log('Step 9: PDF generado, bytes:', pdfBytes.length)
   } catch (e) {
     return fail("pdf", e instanceof Error ? e.message : "Error generando PDF", undefined, {
       tusfacturas_response: tfData,
@@ -211,10 +214,12 @@ export async function POST(request: NextRequest) {
   }
 
   // ───────────────── PASO 10: Storage ─────────────────
+  console.log('Step 10: Subiendo a Storage...')
   let pdfUrl: string
   try {
     const fileName = `${tipoFactura.replace(/\s+/g, "-")}-${numero}.pdf`
     pdfUrl = await uploadFacturaToStorage(pdfBytes, fileName, empresa)
+    console.log('Step 10: Storage OK, URL:', pdfUrl)
   } catch (e) {
     return fail("storage", e instanceof Error ? e.message : "Error subiendo PDF", undefined, {
       tusfacturas_response: tfData,
@@ -222,6 +227,7 @@ export async function POST(request: NextRequest) {
   }
 
   // ───────────────── PASO 11: DB (facturas + orders.factura_id) ─────────────────
+  console.log('Step 11: Insertando en DB...')
   const { data: factura, error: insertError } = await supabase
     .from("facturas")
     .insert({
@@ -251,9 +257,12 @@ export async function POST(request: NextRequest) {
     )
   }
 
+  console.log('Step 11: DB OK, factura.id:', factura.id)
+
   await supabase.from("orders").update({ factura_id: factura.id }).eq("id", orderId)
 
   // ───────────────── PASO 12: Email ─────────────────
+  console.log('Step 12: Email →', cliente.email || '(sin email)')
   let emailEnviado = false
   let emailError: string | null = null
   if (cliente.email && process.env.RESEND_API_KEY) {
@@ -281,8 +290,10 @@ export async function POST(request: NextRequest) {
       })
       if (sendError) {
         emailError = sendError.message
+        console.log('Step 12: Email error:', sendError.message)
       } else {
         emailEnviado = true
+        console.log('Step 12: Email enviado OK')
       }
     } catch (e) {
       emailError = e instanceof Error ? e.message : "Error desconocido"
