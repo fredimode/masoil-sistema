@@ -261,11 +261,11 @@ export async function POST(request: NextRequest) {
 
   await supabase.from("orders").update({ factura_id: factura.id }).eq("id", orderId)
 
-  // ───────────────── PASO 12: Email ─────────────────
-  console.log('Step 12: Email →', cliente.email || '(sin email)')
+  // ───────────────── PASO 12: Email (solo en producción) ─────────────────
   let emailEnviado = false
   let emailError: string | null = null
-  if (cliente.email && process.env.RESEND_API_KEY) {
+  if (modo === "produccion" && cliente.email && process.env.RESEND_API_KEY) {
+    console.log('Step 12: Email →', cliente.email)
     try {
       const resend = new Resend(process.env.RESEND_API_KEY)
       const { error: sendError } = await resend.emails.send({
@@ -299,6 +299,8 @@ export async function POST(request: NextRequest) {
       emailError = e instanceof Error ? e.message : "Error desconocido"
       console.error("Error enviando email factura:", e)
     }
+  } else {
+    console.log('Step 12: Email skipped (modo testing o sin email)')
   }
 
   // ───────────────── PASO 13: Respuesta ─────────────────
