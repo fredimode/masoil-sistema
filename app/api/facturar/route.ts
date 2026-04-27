@@ -88,7 +88,7 @@ export async function POST(request: NextRequest) {
   // ───────────────── PASO 2: cliente ─────────────────
   const { data: cliente, error: clienteError } = await supabase
     .from("clients")
-    .select("id, business_name, razon_social, numero_docum, cuit, condicion_iva, domicilio, email")
+    .select("id, business_name, razon_social, numero_docum, cuit, condicion_iva, domicilio, provincia, email")
     .eq("id", clientId)
     .single()
 
@@ -132,6 +132,7 @@ export async function POST(request: NextRequest) {
         nombre: razonSocial,
         condicion_iva: cliente.condicion_iva,
         domicilio: cliente.domicilio,
+        provincia: cliente.provincia,
         email: cliente.email,
       },
       items,

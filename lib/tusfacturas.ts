@@ -16,6 +16,7 @@ export interface ClienteInput {
   nombre: string
   condicion_iva?: string | null
   domicilio?: string | null
+  provincia?: string | null
   email?: string | null
 }
 
@@ -156,9 +157,10 @@ export function buildPayload(params: {
     cliente: {
       documento_tipo: "CUIT",
       documento_nro: limpiarCuit(params.cliente.numero_docum),
-      razon_social: params.cliente.nombre,
+      razon_social: params.cliente.nombre.replace(/['"]/g, ''),
       condicion_iva: condicionIVA,
-      domicilio: params.cliente.domicilio || "Sin domicilio",
+      domicilio: (params.cliente.domicilio || "Sin domicilio").replace(/['"]/g, ''),
+      provincia: params.cliente.provincia || "BUENOS AIRES",
       envia_por_mail: "N",
     },
     comprobante: {
@@ -171,15 +173,15 @@ export function buildPayload(params: {
       detalle: params.items.map((item) => ({
         cantidad: item.cantidad,
         producto: {
-          descripcion: item.descripcion,
+          descripcion: item.descripcion.replace(/['"]/g, ''),
           alicuota: item.alicuota,
           precio_unitario_sin_iva: round2(item.precioUnitarioSinIva),
           unidad_medida: 7,
         },
       })),
-      total: params.total,
+      total: 0, // TusFacturas lo calcula automático
       tributos: [] as unknown[],
-      ...(params.observaciones ? { observaciones: params.observaciones } : {}),
+      ...(params.observaciones ? { observaciones: params.observaciones.replace(/['"]/g, '') } : {}),
     },
   }
 }
