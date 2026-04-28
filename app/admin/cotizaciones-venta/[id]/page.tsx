@@ -279,7 +279,7 @@ export default function CotizacionVentaDetallePage() {
         clientName: cot.client_name || client.businessName,
         vendedorId: cot.vendedor_id || null,
         vendedorName: cot.vendedor_nombre || "",
-        zona: cot.zona || client.zona || "",
+        zona: cot.zona || client.zona || "Capital",
         notes: [cot.observaciones, `Origen: Cotización ${cot.numero}`].filter(Boolean).join(" - "),
         isCustom: false,
         isUrgent: false,
