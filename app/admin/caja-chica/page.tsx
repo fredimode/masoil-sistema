@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { formatMoney, formatDateStr } from "@/lib/utils"
 import * as XLSX from "xlsx"
-import { fetchMovimientosCajaChica, createMovimientoCajaChica } from "@/lib/supabase/queries"
+import { fetchMovimientosCajaChica, createMovimientoCajaChica, updateMovimientoCajaChica } from "@/lib/supabase/queries"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 
 interface MovimientoCajaChica {
@@ -31,6 +31,9 @@ export default function CajaChicaPage() {
   const [filtroTipo, setFiltroTipo] = useState("")
   const [filtroPeriodo, setFiltroPeriodo] = useState("")
   const [page, setPage] = useState(1)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ fecha: "", tipo: "", concepto: "", valor: "" })
+  const [savingEdit, setSavingEdit] = useState(false)
 
   useEffect(() => {
     cargar()
@@ -100,6 +103,40 @@ export default function CajaChicaPage() {
 
   const pagination = usePagination(filtrada, 50)
   const pageData = pagination.getPage(page)
+
+  function iniciarEdicion(m: MovimientoCajaChica) {
+    setEditingId(m.id)
+    setEditForm({
+      fecha: m.fecha || "",
+      tipo: m.tipo || "REP",
+      concepto: m.concepto || "",
+      valor: String(m.valor ?? ""),
+    })
+  }
+
+  function cancelarEdicion() {
+    setEditingId(null)
+    setEditForm({ fecha: "", tipo: "", concepto: "", valor: "" })
+  }
+
+  async function guardarEdicion(id: string) {
+    setSavingEdit(true)
+    try {
+      await updateMovimientoCajaChica(id, {
+        fecha: editForm.fecha || null,
+        tipo: editForm.tipo,
+        concepto: editForm.concepto || null,
+        valor: parseFloat(editForm.valor) || 0,
+      })
+      setEditingId(null)
+      await cargar()
+    } catch (err) {
+      console.error(err)
+      alert("Error guardando cambios")
+    } finally {
+      setSavingEdit(false)
+    }
+  }
 
   async function guardar() {
     setGuardando(true)
@@ -211,28 +248,99 @@ export default function CajaChicaPage() {
                     <th className="px-4 py-3 text-left font-semibold text-gray-700">Concepto</th>
                     <th className="px-4 py-3 text-right font-semibold text-gray-700">Valor</th>
                     <th className="px-4 py-3 text-right font-semibold text-gray-700">Saldo</th>
+                    <th className="px-4 py-3 text-center font-semibold text-gray-700 w-20">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {pageData.map((m, idx) => (
-                    <tr key={m.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                      <td className="px-4 py-3 text-gray-600">{m.fecha ? formatDateStr(m.fecha) : "-"}</td>
-                      <td className="px-4 py-3">
-                        <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
-                          {m.tipo || "-"}
-                        </span>
+                  {pageData.map((m, idx) => {
+                    const isEditing = editingId === m.id
+                    return (
+                    <tr key={m.id} className={isEditing ? "bg-yellow-50" : (idx % 2 === 0 ? "bg-white" : "bg-gray-50")}>
+                      <td className="px-4 py-3 text-gray-600">
+                        {isEditing ? (
+                          <input
+                            type="date"
+                            value={editForm.fecha}
+                            onChange={(e) => setEditForm((p) => ({ ...p, fecha: e.target.value }))}
+                            className="w-full p-1 border rounded text-sm"
+                          />
+                        ) : (m.fecha ? formatDateStr(m.fecha) : "-")}
                       </td>
-                      <td className="px-4 py-3 text-gray-600 max-w-[250px] truncate" title={m.concepto || ""}>
-                        {m.concepto || "-"}
+                      <td className="px-4 py-3">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editForm.tipo}
+                            onChange={(e) => setEditForm((p) => ({ ...p, tipo: e.target.value }))}
+                            className="w-20 p-1 border rounded text-sm"
+                          />
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                            {m.tipo || "-"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 max-w-[250px]">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editForm.concepto}
+                            onChange={(e) => setEditForm((p) => ({ ...p, concepto: e.target.value }))}
+                            className="w-full p-1 border rounded text-sm"
+                          />
+                        ) : (
+                          <span className="truncate block" title={m.concepto || ""}>{m.concepto || "-"}</span>
+                        )}
                       </td>
                       <td className={`px-4 py-3 text-right font-medium ${m.valor > 0 ? "text-green-600" : m.valor < 0 ? "text-red-600" : "text-gray-600"}`}>
-                        {formatMoney(m.valor)}
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={editForm.valor}
+                            onChange={(e) => setEditForm((p) => ({ ...p, valor: e.target.value }))}
+                            className="w-28 p-1 border rounded text-sm text-right"
+                            placeholder="Positivo o negativo"
+                          />
+                        ) : formatMoney(m.valor)}
                       </td>
                       <td className="px-4 py-3 text-right font-medium text-gray-900">
                         {formatMoney(saldosPorId[m.id] ?? 0)}
                       </td>
+                      <td className="px-4 py-3 text-center">
+                        {isEditing ? (
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => guardarEdicion(m.id)}
+                              disabled={savingEdit}
+                              className="px-2 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700 disabled:opacity-50"
+                              title="Guardar"
+                            >
+                              ✓
+                            </button>
+                            <button
+                              onClick={cancelarEdicion}
+                              disabled={savingEdit}
+                              className="px-2 py-1 bg-gray-400 text-white rounded text-xs hover:bg-gray-500 disabled:opacity-50"
+                              title="Cancelar"
+                            >
+                              ✗
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => iniciarEdicion(m)}
+                            disabled={editingId !== null}
+                            className="text-blue-600 hover:text-blue-800 disabled:text-gray-300"
+                            title="Editar"
+                          >
+                            ✏️
+                          </button>
+                        )}
+                      </td>
                     </tr>
-                  ))}
+                  )
+                  })}
                 </tbody>
               </table>
             </div>

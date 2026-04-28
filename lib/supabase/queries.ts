@@ -1400,6 +1400,12 @@ export async function createMovimientoCajaChica(mov: Record<string, any>): Promi
   if (error) throw error
 }
 
+export async function updateMovimientoCajaChica(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("movimientos_caja_chica").update(updates).eq("id", id)
+  if (error) throw error
+}
+
 // ---------------------------------------------------------------------------
 // Facturas Proveedor
 // ---------------------------------------------------------------------------
