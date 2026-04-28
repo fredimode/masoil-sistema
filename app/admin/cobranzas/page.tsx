@@ -517,6 +517,15 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
           </div>
           <TablePagination currentPage={page} totalPages={pag.totalPages} totalItems={pag.totalItems} pageSize={pag.pageSize} onPageChange={setPage} />
 
+          {/* Warning: NC aplicación automática */}
+          <div className="bg-yellow-50 border border-yellow-200 rounded-md px-3 py-2 mt-4 text-xs text-yellow-800 flex items-start gap-2">
+            <span aria-hidden>⚠️</span>
+            <span>
+              Las Notas de Crédito se restan automáticamente del saldo total. Para aplicación manual
+              contra facturas específicas, contactar administración.
+            </span>
+          </div>
+
           {/* Totales GestionPro style */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
             <div className="bg-gray-50 border rounded-md p-3 text-center">
@@ -627,6 +636,16 @@ function TabRegistrarCobro({
   const [retForm, setRetForm] = useState({ tipo: "ARBA", nro_comprobante: "", fecha: new Date().toISOString().slice(0, 10), importe: 0 })
   const [retSaving, setRetSaving] = useState(false)
 
+  // Carga rápida de Nota de Crédito (sin recibo)
+  const [ncOpen, setNcOpen] = useState(false)
+  const [ncForm, setNcForm] = useState({
+    nro_comprobante: "",
+    fecha: new Date().toISOString().slice(0, 10),
+    importe: 0,
+    observaciones: "",
+  })
+  const [ncSaving, setNcSaving] = useState(false)
+
   async function handleGuardarRetencionRapida() {
     if (!selectedClient) return
     if (!retForm.importe || retForm.importe <= 0) {
@@ -661,6 +680,40 @@ function TabRegistrarCobro({
       alert("Error al guardar retención: " + (e?.message || ""))
     } finally {
       setRetSaving(false)
+    }
+  }
+
+  async function handleGuardarNCRapida() {
+    if (!selectedClient) return
+    if (!ncForm.importe || ncForm.importe <= 0) {
+      alert("Indicá un importe válido")
+      return
+    }
+    setNcSaving(true)
+    try {
+      await createMovimientoCuentaCorriente({
+        client_id: selectedClient.id,
+        fecha: ncForm.fecha,
+        tipo_comprobante: "NC",
+        punto_venta: 0,
+        numero_comprobante: ncForm.nro_comprobante || "",
+        haber: ncForm.importe,
+        debe: 0,
+        observaciones: ncForm.observaciones || "Nota de Crédito cargada manualmente",
+      })
+      setNcOpen(false)
+      setNcForm({
+        nro_comprobante: "",
+        fecha: new Date().toISOString().slice(0, 10),
+        importe: 0,
+        observaciones: "",
+      })
+      alert("Nota de Crédito registrada")
+    } catch (e: any) {
+      console.error(e)
+      alert("Error al guardar NC: " + (e?.message || ""))
+    } finally {
+      setNcSaving(false)
     }
   }
 
@@ -916,7 +969,13 @@ function TabRegistrarCobro({
           </div>
         </div>
         {selectedClient && (
-          <div className="flex justify-end mt-3 pt-3 border-t">
+          <div className="flex justify-end gap-2 mt-3 pt-3 border-t">
+            <button
+              onClick={() => setNcOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-purple-600 text-white rounded-md text-sm hover:bg-purple-700"
+            >
+              <Plus className="h-4 w-4" /> Cargar NC
+            </button>
             <button
               onClick={() => setRetOpen(true)}
               className="flex items-center gap-1.5 px-3 py-2 bg-indigo-600 text-white rounded-md text-sm hover:bg-indigo-700"
@@ -1259,6 +1318,67 @@ function TabRegistrarCobro({
           </div>
         </Card>
       </div>
+
+      <Dialog open={ncOpen} onOpenChange={setNcOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cargar Nota de Crédito — {selectedClient?.businessName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium mb-1 block">Nro Comprobante</label>
+                <input
+                  type="text"
+                  value={ncForm.nro_comprobante}
+                  onChange={(e) => setNcForm((f) => ({ ...f, nro_comprobante: e.target.value }))}
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                  placeholder="0001-00000123"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Fecha</label>
+                <input
+                  type="date"
+                  value={ncForm.fecha}
+                  onChange={(e) => setNcForm((f) => ({ ...f, fecha: e.target.value }))}
+                  className="w-full border rounded-md px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Importe</label>
+              <input
+                type="number"
+                step="0.01"
+                value={ncForm.importe || ""}
+                onChange={(e) => setNcForm((f) => ({ ...f, importe: parseFloat(e.target.value) || 0 }))}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Observaciones de aplicación (opcional)</label>
+              <textarea
+                value={ncForm.observaciones}
+                onChange={(e) => setNcForm((f) => ({ ...f, observaciones: e.target.value }))}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+                rows={2}
+                placeholder="Ej: Aplicada a FC-0005-00000123"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <button onClick={() => setNcOpen(false)} className="px-3 py-2 bg-gray-100 rounded-md text-sm hover:bg-gray-200" disabled={ncSaving}>Cancelar</button>
+            <button
+              onClick={handleGuardarNCRapida}
+              className="px-3 py-2 bg-purple-600 text-white rounded-md text-sm hover:bg-purple-700 disabled:opacity-50"
+              disabled={ncSaving || !ncForm.importe}
+            >
+              {ncSaving ? "Guardando..." : "Guardar NC"}
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={retOpen} onOpenChange={setRetOpen}>
         <DialogContent className="sm:max-w-md">
