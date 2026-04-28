@@ -244,6 +244,57 @@ export default function NuevaFacturaPage() {
     setItems((prev) => prev.filter((_, i) => i !== index))
   }
 
+  // NC/ND: precarga items desde la factura original (vía order_items del pedido vinculado).
+  async function cargarItemsDeFacturaReferenciada(facturaId: string) {
+    setFacturaReferenciaId(facturaId)
+    if (!facturaId) return
+
+    if (items.length > 0) {
+      const ok = confirm("Esto reemplazará los items actuales con los de la factura seleccionada. ¿Continuar?")
+      if (!ok) return
+    }
+
+    try {
+      // 1. Tomar order_id de la factura
+      const { data: facturaRef } = await supabase
+        .from("facturas")
+        .select("order_id")
+        .eq("id", facturaId)
+        .single()
+
+      if (!facturaRef?.order_id) {
+        alert("La factura seleccionada no tiene pedido vinculado — los items no se pueden autocargar. Cargalos manualmente.")
+        return
+      }
+
+      // 2. Items del pedido original
+      const { data: orderItems, error } = await supabase
+        .from("order_items")
+        .select("quantity, unit_price, product_id, products(name, code)")
+        .eq("order_id", facturaRef.order_id)
+
+      if (error || !orderItems || orderItems.length === 0) {
+        alert("No se pudieron cargar los items del pedido original. Cargalos manualmente.")
+        return
+      }
+
+      // 3. Mapear a ItemFactura. Para NC el precio se invierte (negativo).
+      const factor = tipoComprobante === "NOTA_CREDITO" ? -1 : 1
+      type OIRow = { quantity: number; unit_price: number; product_id: string | null; products: { name?: string | null; code?: string | null } | null }
+      const nuevosItems: ItemFactura[] = (orderItems as unknown as OIRow[]).map((oi) => ({
+        productId: oi.product_id || `ref-${Math.random().toString(36).slice(2)}`,
+        codigo: oi.products?.code || "",
+        descripcion: oi.products?.name || "Producto",
+        cantidad: Number(oi.quantity) || 1,
+        precioUnitario: factor * (Number(oi.unit_price) || 0),
+      }))
+      setItems(nuevosItems)
+    } catch (e) {
+      console.error("Error cargando items de factura referenciada:", e)
+      alert("Error cargando items de la factura original")
+    }
+  }
+
   // Cálculos
   const baseGravada = items.filter((it) => !it.esRegalo).reduce((sum, it) => sum + it.cantidad * it.precioUnitario, 0)
   const iva21 = Math.round(baseGravada * 0.21 * 100) / 100
@@ -556,18 +607,30 @@ export default function NuevaFacturaPage() {
             Factura de Referencia {tipoComprobante === "NOTA_CREDITO" ? "(Nota de Crédito)" : "(Nota de Débito)"}
           </h3>
           {facturasCliente.length > 0 ? (
-            <select
-              value={facturaReferenciaId}
-              onChange={(e) => setFacturaReferenciaId(e.target.value)}
-              className="w-full p-3 border rounded-lg text-sm"
-            >
-              <option value="">Seleccionar factura original...</option>
-              {facturasCliente.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.tipo} {f.comprobante_nro || f.numero || ""} — {formatMoney(Number(f.total))} ({f.fecha})
-                </option>
-              ))}
-            </select>
+            <>
+              <select
+                value={facturaReferenciaId}
+                onChange={(e) => cargarItemsDeFacturaReferenciada(e.target.value)}
+                className="w-full p-3 border rounded-lg text-sm"
+              >
+                <option value="">Seleccionar factura original...</option>
+                {facturasCliente.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.tipo} {f.comprobante_nro || f.numero || ""} — {formatMoney(Number(f.total))} ({f.fecha})
+                  </option>
+                ))}
+              </select>
+              {facturaReferenciaId && tipoComprobante === "NOTA_CREDITO" && (
+                <p className="text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded px-2 py-1.5 mt-2">
+                  ℹ Items autocargados con precio en negativo. Editá cantidades para NC parcial o eliminá los que no querés acreditar.
+                </p>
+              )}
+              {facturaReferenciaId && tipoComprobante === "NOTA_DEBITO" && (
+                <p className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded px-2 py-1.5 mt-2">
+                  ℹ Items autocargados de la factura original. Editá cantidades/precios o eliminá los que no apliquen.
+                </p>
+              )}
+            </>
           ) : (
             <p className="text-sm text-gray-500">No hay facturas emitidas para este cliente</p>
           )}
