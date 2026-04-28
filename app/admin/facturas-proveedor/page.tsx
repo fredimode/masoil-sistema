@@ -275,6 +275,23 @@ export default function FacturasProveedorPage() {
       setErrorMsg("Debe seleccionar al menos una imputación contable")
       return
     }
+
+    // Validar duplicado: misma combinación (proveedor + nro factura + empresa)
+    if (form.proveedor_id && form.numero && form.empresa) {
+      const supabaseCheck = createClient()
+      const { data: existente } = await supabaseCheck
+        .from("facturas_proveedor")
+        .select("id, numero")
+        .eq("proveedor_id", form.proveedor_id)
+        .eq("numero", form.numero)
+        .eq("empresa", form.empresa)
+        .maybeSingle()
+      if (existente) {
+        setErrorMsg(`Ya existe la factura N° ${form.numero} de este proveedor para ${form.empresa}`)
+        return
+      }
+    }
+
     setGuardando(true)
     try {
       const totalNum = parseFloat(form.total) || 0
