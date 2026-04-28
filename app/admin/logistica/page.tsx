@@ -12,7 +12,7 @@ import {
 } from "@/lib/supabase/queries"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import { formatDateStr } from "@/lib/utils"
-import { Plus, Printer, Download, Trash2 } from "lucide-react"
+import { Plus, Printer, Download, Trash2, CheckCircle2 } from "lucide-react"
 import * as XLSX from "xlsx"
 
 const REPARTIDORES = ["Alejandro", "Agustín"]
@@ -30,6 +30,7 @@ export default function LogisticaPage() {
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [openNuevo, setOpenNuevo] = useState(false)
+  const [mostrarCompletados, setMostrarCompletados] = useState(true)
 
   async function loadRepartos() {
     const r = await fetchRepartos()
@@ -58,19 +59,16 @@ export default function LogisticaPage() {
     const updates: any = { [field]: value }
     const item = items.find((i) => i.id === id)
     if (field === "estado_entrega") {
-      if (value === "entregado" && item?.order_id) {
+      // Tanto "entregado" como "cliente_retira" pasan el pedido a ENTREGADO
+      if ((value === "entregado" || value === "cliente_retira") && item?.order_id) {
         try {
-          await updateOrderStatus(item.order_id, "ENTREGADO" as any, vendedor?.id || "", vendedor?.name || "Admin", "Entregado desde Logística")
+          const note = value === "cliente_retira" ? "Cliente lo pasó a buscar" : "Entregado desde Logística"
+          await updateOrderStatus(item.order_id, "ENTREGADO" as any, vendedor?.id || "", vendedor?.name || "Admin", note)
         } catch (e) { console.error(e) }
       }
     }
     await updateRepartoItem(id, updates)
-    // Si se marcó como entregado o cliente_retira → lo sacamos de la lista activa
-    if (value === "entregado" || value === "cliente_retira") {
-      setItems((prev) => prev.filter((i) => i.id !== id))
-    } else {
-      setItems((prev) => prev.map((i) => i.id === id ? { ...i, ...updates } : i))
-    }
+    setItems((prev) => prev.map((i) => i.id === id ? { ...i, ...updates } : i))
   }
 
   async function handleReorden(id: string, nuevoOrden: number) {
@@ -87,7 +85,14 @@ export default function LogisticaPage() {
 
   async function handleAgregarDestinoExtra() { setOpenNuevo(true) }
 
-  const visibles = useMemo(() => items.filter((i) => i.estado_entrega !== "entregado" && i.estado_entrega !== "cliente_retira"), [items])
+  function isCompletado(estado: string | null | undefined): boolean {
+    return estado === "entregado" || estado === "cliente_retira"
+  }
+  const visibles = useMemo(
+    () => mostrarCompletados ? items : items.filter((i) => !isCompletado(i.estado_entrega)),
+    [items, mostrarCompletados]
+  )
+  const completadosCount = useMemo(() => items.filter((i) => isCompletado(i.estado_entrega)).length, [items])
   const numeroActual = currentRepartoId ? repartos.find((r) => r.id === currentRepartoId)?.numero_reparto : formatNumeroReparto(new Date(selectedFecha))
 
   function handlePrint() {
@@ -154,6 +159,12 @@ export default function LogisticaPage() {
             className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 disabled:opacity-50">
             <Download className="h-4 w-4" /> Exportar
           </button>
+          <label className="flex items-center gap-2 text-sm select-none cursor-pointer">
+            <input type="checkbox" checked={mostrarCompletados}
+              onChange={(e) => setMostrarCompletados(e.target.checked)}
+              className="h-4 w-4" />
+            Mostrar completados {completadosCount > 0 && <span className="text-xs text-muted-foreground">({completadosCount})</span>}
+          </label>
         </div>
 
         {loading ? (
@@ -179,14 +190,25 @@ export default function LogisticaPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {visibles.map((i) => (
-                  <TableRow key={i.id}>
+                {visibles.map((i) => {
+                  const completado = isCompletado(i.estado_entrega)
+                  return (
+                  <TableRow key={i.id} className={completado ? "bg-green-50/50" : ""}>
                     <TableCell>
                       <input type="number" value={i.orden_reparto || ""}
                         onChange={(e) => handleReorden(i.id, parseInt(e.target.value, 10) || 0)}
                         className="w-16 border rounded px-2 py-1 text-sm" />
                     </TableCell>
-                    <TableCell className="text-xs font-mono">{i.order_id || (i.es_destino_extra ? "(extra)" : "-")}</TableCell>
+                    <TableCell className="text-xs font-mono">
+                      <div className="flex items-center gap-1.5">
+                        {completado && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-green-100 text-green-700 border border-green-200 rounded px-1.5 py-0.5">
+                            <CheckCircle2 className="h-3 w-3" /> Completado
+                          </span>
+                        )}
+                        <span>{i.order_id || (i.es_destino_extra ? "(extra)" : "-")}</span>
+                      </div>
+                    </TableCell>
                     <TableCell className="text-xs">{i.factura_numero || "-"}</TableCell>
                     <TableCell>{i.client_name || i.descripcion_extra || "-"}</TableCell>
                     <TableCell className="text-xs">{i.zona || "-"}</TableCell>
@@ -217,7 +239,8 @@ export default function LogisticaPage() {
                       </button>
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </Table>
           </div>
