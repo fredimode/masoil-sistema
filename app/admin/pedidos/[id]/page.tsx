@@ -49,6 +49,9 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [facturarModo, setFacturarModo] = useState<"testing" | "produccion">("testing")
   const [facturarObs, setFacturarObs] = useState("")
 
+  // OC (PDF del cliente)
+  const [ocUploading, setOcUploading] = useState(false)
+
   // Remito (CAI)
   const [remitoOpen, setRemitoOpen] = useState(false)
   const [remitoEmpresa, setRemitoEmpresa] = useState<"Aquiles" | "Conancap">("Aquiles")
@@ -82,7 +85,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         const supabaseExtra = createClient()
         const { data: extraData } = await supabaseExtra
           .from("orders")
-          .select("sector, solicita, recibe, entrega_otra_sucursal, hoja_ruta_url, observaciones_entrega, factura_id")
+          .select("sector, solicita, recibe, entrega_otra_sucursal, hoja_ruta_url, observaciones_entrega, factura_id, orden_compra_url")
           .eq("id", id)
           .single()
         if (extraData) setOrderExtra(extraData)
@@ -477,6 +480,40 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     }
   }
 
+  async function handleUploadOC(file: File) {
+    if (file.type !== "application/pdf") {
+      alert("Solo se aceptan archivos PDF.")
+      return
+    }
+    setOcUploading(true)
+    try {
+      const supabase = createClient()
+      const path = `ordenes-compra/${o.id}.pdf`
+      const { error: uploadError } = await supabase.storage
+        .from("ordenes-compra")
+        .upload(path, file, { contentType: "application/pdf", upsert: true })
+      if (uploadError) {
+        alert("Error subiendo OC: " + uploadError.message)
+        return
+      }
+      const { data: signedData, error: signedError } = await supabase.storage
+        .from("ordenes-compra")
+        .createSignedUrl(path, 60 * 60 * 24 * 365)
+      if (signedError || !signedData?.signedUrl) {
+        alert("Error generando URL: " + (signedError?.message || "sin URL"))
+        return
+      }
+      const url = signedData.signedUrl
+      await supabase.from("orders").update({ orden_compra_url: url }).eq("id", o.id)
+      setOrderExtra((prev: any) => ({ ...prev, orden_compra_url: url }))
+    } catch (e) {
+      console.error("Error subiendo OC:", e)
+      alert("Error subiendo OC: " + (e instanceof Error ? e.message : "desconocido"))
+    } finally {
+      setOcUploading(false)
+    }
+  }
+
   function openRemitoDialog() {
     const rs = (o.razonSocial || "").toLowerCase()
     const defaultEmpresa: "Aquiles" | "Conancap" = rs.includes("conancap") ? "Conancap" : "Aquiles"
@@ -846,6 +883,53 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                 {o.zona}
               </Badge>
             </div>
+          </Card>
+
+          {/* Orden de Compra (PDF del cliente) */}
+          <Card className="p-6">
+            <h3 className="font-semibold mb-4">Orden de Compra</h3>
+            {orderExtra?.orden_compra_url ? (
+              <div className="space-y-3">
+                <Button asChild variant="outline" className="w-full">
+                  <a href={orderExtra.orden_compra_url} target="_blank" rel="noopener noreferrer">
+                    Ver OC del cliente
+                  </a>
+                </Button>
+                <label className="block">
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="hidden"
+                    disabled={ocUploading}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) handleUploadOC(f)
+                      e.target.value = ""
+                    }}
+                  />
+                  <span className={`block text-center text-xs px-3 py-2 border border-dashed rounded cursor-pointer hover:bg-muted/50 ${ocUploading ? "opacity-50" : ""}`}>
+                    {ocUploading ? "Subiendo..." : "Reemplazar PDF"}
+                  </span>
+                </label>
+              </div>
+            ) : (
+              <label className="block">
+                <input
+                  type="file"
+                  accept="application/pdf,.pdf"
+                  className="hidden"
+                  disabled={ocUploading}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) handleUploadOC(f)
+                    e.target.value = ""
+                  }}
+                />
+                <span className={`block text-center text-sm px-3 py-4 border-2 border-dashed border-muted rounded cursor-pointer hover:bg-muted/50 ${ocUploading ? "opacity-50" : ""}`}>
+                  {ocUploading ? "Subiendo..." : "📎 Adjuntar OC del cliente (PDF)"}
+                </span>
+              </label>
+            )}
           </Card>
 
           {/* Delivery Info */}
