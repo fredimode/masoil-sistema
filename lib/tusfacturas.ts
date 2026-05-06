@@ -252,7 +252,7 @@ export function buildPayload(params: {
       email: params.cliente.email || "",
       condicion_iva: condicionIVA,
       domicilio: (params.cliente.domicilio || "Sin domicilio").replace(/['"]/g, ''),
-      provincia: mapProvinciaToCode(params.cliente.provincia),
+      provincia: (params.cliente.provincia || "CIUDAD AUTONOMA BUENOS AIRES").replace(/['"]/g, '').trim(),
       condicion_pago: "210", // Contado
       envia_por_mail: "N",
     },
