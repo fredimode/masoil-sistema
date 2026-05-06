@@ -91,6 +91,10 @@ export function getCredentials(empresa: Empresa, modo: Modo): Credentials {
   return { apikey, apitoken, usertoken, pdv }
 }
 
+// Mapeo alfabético compatible con TusFacturas (AFIP CITI / RG 4291).
+// Históricamente este orden generó CAEs reales (commit 721439b en endpoint legacy).
+// NO usar la tabla cronológica T05 — TusFacturas la rechaza con
+// "Debes seleccionar una provincia válida".
 const PROVINCIA_CODIGO: Record<string, string> = {
   'CABA': '0',
   'CAPITAL FEDERAL': '0',
@@ -99,27 +103,32 @@ const PROVINCIA_CODIGO: Record<string, string> = {
   'CIUDAD AUT.DE BS.AS.': '0',
   'BUENOS AIRES': '1',
   'CATAMARCA': '2',
-  'CORDOBA': '3',
-  'CORRIENTES': '4',
-  'ENTRE RIOS': '5',
-  'JUJUY': '6',
-  'MENDOZA': '7',
-  'LA RIOJA': '8',
-  'SALTA': '9',
-  'SAN JUAN': '10',
-  'SAN LUIS': '11',
-  'SANTA FE': '12',
-  'SANTIAGO DEL ESTERO': '13',
-  'TUCUMAN': '14',
-  'CHACO': '15',
-  'CHUBUT': '16',
-  'FORMOSA': '17',
-  'MISIONES': '18',
-  'NEUQUEN': '19',
-  'LA PAMPA': '20',
-  'RIO NEGRO': '21',
-  'SANTA CRUZ': '22',
-  'TIERRA DEL FUEGO': '23',
+  'CHACO': '3',
+  'CHUBUT': '4',
+  'CORDOBA': '5',
+  'CÓRDOBA': '5',
+  'CORRIENTES': '6',
+  'ENTRE RIOS': '7',
+  'ENTRE RÍOS': '7',
+  'FORMOSA': '8',
+  'JUJUY': '9',
+  'LA PAMPA': '10',
+  'LA RIOJA': '11',
+  'MENDOZA': '12',
+  'MISIONES': '13',
+  'NEUQUEN': '14',
+  'NEUQUÉN': '14',
+  'RIO NEGRO': '15',
+  'RÍO NEGRO': '15',
+  'SALTA': '16',
+  'SAN JUAN': '17',
+  'SAN LUIS': '18',
+  'SANTA CRUZ': '19',
+  'SANTA FE': '20',
+  'SANTIAGO DEL ESTERO': '21',
+  'TIERRA DEL FUEGO': '22',
+  'TUCUMAN': '23',
+  'TUCUMÁN': '23',
 }
 
 export function mapProvinciaToCode(provincia?: string | null): string {
