@@ -91,44 +91,45 @@ export function getCredentials(empresa: Empresa, modo: Modo): Credentials {
   return { apikey, apitoken, usertoken, pdv }
 }
 
-// Mapeo alfabético compatible con TusFacturas (AFIP CITI / RG 4291).
-// Históricamente este orden generó CAEs reales (commit 721439b en endpoint legacy).
-// NO usar la tabla cronológica T05 — TusFacturas la rechaza con
-// "Debes seleccionar una provincia válida".
+// Tabla oficial TusFacturas — 1-indexed, CABA=1, resto alfabético 2-24.
+// Fuente: https://developers.tusfacturas.app/parametros/tablas-de-referencia#provincias
 const PROVINCIA_CODIGO: Record<string, string> = {
-  'CABA': '0',
-  'CAPITAL FEDERAL': '0',
-  'CIUDAD AUTONOMA DE BUENOS AIRES': '0',
-  'CIUDAD AUTONOMA BUENOS AIRES': '0',
-  'CIUDAD AUT.DE BS.AS.': '0',
-  'BUENOS AIRES': '1',
-  'CATAMARCA': '2',
-  'CHACO': '3',
-  'CHUBUT': '4',
-  'CORDOBA': '5',
-  'CÓRDOBA': '5',
-  'CORRIENTES': '6',
-  'ENTRE RIOS': '7',
-  'ENTRE RÍOS': '7',
-  'FORMOSA': '8',
-  'JUJUY': '9',
-  'LA PAMPA': '10',
-  'LA RIOJA': '11',
-  'MENDOZA': '12',
-  'MISIONES': '13',
-  'NEUQUEN': '14',
-  'NEUQUÉN': '14',
-  'RIO NEGRO': '15',
-  'RÍO NEGRO': '15',
-  'SALTA': '16',
-  'SAN JUAN': '17',
-  'SAN LUIS': '18',
-  'SANTA CRUZ': '19',
-  'SANTA FE': '20',
-  'SANTIAGO DEL ESTERO': '21',
-  'TIERRA DEL FUEGO': '22',
-  'TUCUMAN': '23',
-  'TUCUMÁN': '23',
+  // 1 - CABA (sinónimos)
+  'CABA': '1',
+  'CAPITAL FEDERAL': '1',
+  'CIUDAD AUTONOMA DE BUENOS AIRES': '1',
+  'CIUDAD AUTÓNOMA DE BUENOS AIRES': '1',
+  'CIUDAD AUTONOMA BUENOS AIRES': '1',
+  'CIUDAD AUT.DE BS.AS.': '1',
+  // 2-24 alfabético (con/sin tilde)
+  'BUENOS AIRES': '2',
+  'CATAMARCA': '3',
+  'CHACO': '4',
+  'CHUBUT': '5',
+  'CORDOBA': '6',
+  'CÓRDOBA': '6',
+  'CORRIENTES': '7',
+  'ENTRE RIOS': '8',
+  'ENTRE RÍOS': '8',
+  'FORMOSA': '9',
+  'JUJUY': '10',
+  'LA PAMPA': '11',
+  'LA RIOJA': '12',
+  'MENDOZA': '13',
+  'MISIONES': '14',
+  'NEUQUEN': '15',
+  'NEUQUÉN': '15',
+  'RIO NEGRO': '16',
+  'RÍO NEGRO': '16',
+  'SALTA': '17',
+  'SAN JUAN': '18',
+  'SAN LUIS': '19',
+  'SANTA CRUZ': '20',
+  'SANTA FE': '21',
+  'SANTIAGO DEL ESTERO': '22',
+  'TIERRA DEL FUEGO': '23',
+  'TUCUMAN': '24',
+  'TUCUMÁN': '24',
 }
 
 export function mapProvinciaToCode(provincia?: string | null): string {
@@ -252,7 +253,7 @@ export function buildPayload(params: {
       email: params.cliente.email || "",
       condicion_iva: condicionIVA,
       domicilio: (params.cliente.domicilio || "Sin domicilio").replace(/['"]/g, ''),
-      provincia: (params.cliente.provincia || "CIUDAD AUTONOMA BUENOS AIRES").replace(/['"]/g, '').trim(),
+      provincia: mapProvinciaToCode(params.cliente.provincia),
       condicion_pago: "210", // Contado
       envia_por_mail: "N",
     },
