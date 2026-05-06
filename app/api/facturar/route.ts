@@ -97,10 +97,14 @@ export async function POST(request: NextRequest) {
   }
 
   const cuitCliente = limpiarCuit(cliente.cuit || cliente.numero_docum || "")
-  if (!cuitCliente) {
-    return fail("cliente", "Cliente sin CUIT", undefined, undefined, 400)
+  if (!cuitCliente || cuitCliente.length < 11) {
+    return fail("cliente", "Cliente sin CUIT válido", undefined, undefined, 400)
+  }
+  if (!cliente.provincia) {
+    cliente.provincia = "CIUDAD AUTONOMA BUENOS AIRES"
   }
   const razonSocial = cliente.razon_social || cliente.business_name || ""
+  console.log('Step 2: Cliente OK →', razonSocial, '| provincia:', cliente.provincia)
 
   // ───────────────── PASO 3: pedido ─────────────────
   const { data: order, error: orderError } = await supabase

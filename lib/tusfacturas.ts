@@ -71,6 +71,7 @@ const PROVINCIA_CODIGO: Record<string, string> = {
   'CABA': '0',
   'CAPITAL FEDERAL': '0',
   'CIUDAD AUTONOMA DE BUENOS AIRES': '0',
+  'CIUDAD AUTONOMA BUENOS AIRES': '0',
   'CIUDAD AUT.DE BS.AS.': '0',
   'BUENOS AIRES': '1',
   'CATAMARCA': '2',
@@ -95,6 +96,20 @@ const PROVINCIA_CODIGO: Record<string, string> = {
   'RIO NEGRO': '21',
   'SANTA CRUZ': '22',
   'TIERRA DEL FUEGO': '23',
+}
+
+export function mapProvinciaToCode(provincia?: string | null): string {
+  const key = provincia?.toUpperCase().trim()
+  if (!key) {
+    console.warn(`[mapProvinciaToCode] provincia vacía, usando fallback CIUDAD AUTONOMA BUENOS AIRES`)
+    return PROVINCIA_CODIGO['CIUDAD AUTONOMA BUENOS AIRES']
+  }
+  const code = PROVINCIA_CODIGO[key]
+  if (code === undefined) {
+    console.warn(`[mapProvinciaToCode] provincia "${provincia}" no reconocida, usando fallback CIUDAD AUTONOMA BUENOS AIRES`)
+    return PROVINCIA_CODIGO['CIUDAD AUTONOMA BUENOS AIRES']
+  }
+  return code
 }
 
 const CONDICION_IVA_MAP: Record<string, CondicionIvaCliente> = {
@@ -203,7 +218,7 @@ export function buildPayload(params: {
       email: params.cliente.email || "",
       condicion_iva: condicionIVA,
       domicilio: (params.cliente.domicilio || "Sin domicilio").replace(/['"]/g, ''),
-      provincia: PROVINCIA_CODIGO[params.cliente.provincia?.toUpperCase().trim() || 'BUENOS AIRES'] || '1',
+      provincia: mapProvinciaToCode(params.cliente.provincia),
       condicion_pago: "210", // Contado
       envia_por_mail: "N",
     },
