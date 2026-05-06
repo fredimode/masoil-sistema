@@ -229,12 +229,19 @@ export async function POST(request: NextRequest) {
   const vencimientoCae = vencimientoCaeRaw
     ? vencimientoCaeRaw.split("/").reverse().join("-")
     : null
-  const comprobanteNroRaw = tfData.comprobante_nro ?? 0
-  const comprobanteNro =
-    typeof comprobanteNroRaw === "number"
-      ? comprobanteNroRaw
-      : parseInt(String(comprobanteNroRaw), 10) || 0
-  const numero = `${String(pdv).padStart(4, "0")}-${String(comprobanteNro).padStart(8, "0")}`
+  // TusFacturas devuelve comprobante_nro en formato "PPPPP-NNNNNNNN" (ej: "00009-00000004").
+  // Guardamos ese string verbatim y derivamos comprobanteNro como entero para el PDF.
+  // Fallback: si por algún motivo viene solo el entero, lo formateamos con el pdv local.
+  const tfNumeroRaw = String(tfData.comprobante_nro ?? "").trim()
+  let numero: string
+  let comprobanteNro: number
+  if (tfNumeroRaw.includes("-")) {
+    numero = tfNumeroRaw
+    comprobanteNro = parseInt(tfNumeroRaw.split("-")[1] || "0", 10) || 0
+  } else {
+    comprobanteNro = parseInt(tfNumeroRaw, 10) || 0
+    numero = `${String(pdv).padStart(4, "0")}-${String(comprobanteNro).padStart(8, "0")}`
+  }
 
   // ───────────────── PASO 9: PDF ─────────────────
   console.log('Step 9: Iniciando generación de PDF...')
