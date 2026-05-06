@@ -288,14 +288,14 @@ export function buildPayload(params: {
         ? {
             comprobantes_asociados: [
               {
-                tipo_comprobante_asociado: params.comprobanteAsociado.tipo,
-                punto_venta_asociado: String(params.comprobanteAsociado.puntoVenta),
-                numero_comprobante_asociado: String(params.comprobanteAsociado.numero),
+                tipo_comprobante: params.comprobanteAsociado.tipo,
+                punto_venta: String(params.comprobanteAsociado.puntoVenta),
+                numero: Number(params.comprobanteAsociado.numero),
                 ...(params.comprobanteAsociado.fecha
-                  ? { fecha_comprobante_asociado: params.comprobanteAsociado.fecha }
+                  ? { comprobante_fecha: params.comprobanteAsociado.fecha }
                   : {}),
                 ...(params.comprobanteAsociado.cuit
-                  ? { cuit_asociado: limpiarCuit(params.comprobanteAsociado.cuit) }
+                  ? { cuit: Number(limpiarCuit(params.comprobanteAsociado.cuit)) }
                   : {}),
               },
             ],
