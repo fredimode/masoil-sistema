@@ -72,6 +72,16 @@ export async function POST(request: NextRequest) {
 
   const { empresa, modo, orderId, clientId, items, observaciones, tipoComprobante, comprobanteAsociado } = body
 
+  console.log('Body recibido:', {
+    empresa,
+    modo,
+    orderId: orderId || null,
+    clientId,
+    tipoComprobante: tipoComprobante || '(no enviado → se infiere FC desde condicion_iva)',
+    comprobanteAsociado: comprobanteAsociado || null,
+    itemsCount: Array.isArray(items) ? items.length : 0,
+  })
+
   if (!empresa || !["Aquiles", "Conancap"].includes(empresa)) {
     return fail("parse", "empresa requerida (Aquiles | Conancap)", undefined, undefined, 400)
   }

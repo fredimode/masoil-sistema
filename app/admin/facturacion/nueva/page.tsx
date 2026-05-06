@@ -347,6 +347,35 @@ export default function NuevaFacturaPage() {
 
       const obsFinal = [observaciones, obsExtra].filter(Boolean).join(" | ")
 
+      // NC/ND requieren tipoComprobante explícito + comprobanteAsociado.
+      let comprobanteAsociado: { tipo: string; puntoVenta: number; numero: number; fecha?: string } | undefined
+      if (tipoComprobante !== "FACTURA") {
+        if (!facturaReferenciaId) {
+          setGenerando(false)
+          setResultado({ success: false, error: "Seleccioná la factura de referencia para la NC/ND" })
+          return
+        }
+        const original = facturasCliente.find((f) => String(f.id) === String(facturaReferenciaId))
+        if (!original) {
+          setGenerando(false)
+          setResultado({ success: false, error: "No se encontró la factura de referencia seleccionada" })
+          return
+        }
+        const numeroStr = String(original.numero || "")
+        const [pvStr, nroStr] = numeroStr.split("-")
+        let fechaTF: string | undefined
+        if (original.fecha) {
+          const [y, m, d] = String(original.fecha).split("-")
+          if (y && m && d) fechaTF = `${d}/${m}/${y}`
+        }
+        comprobanteAsociado = {
+          tipo: original.tipo,
+          puntoVenta: parseInt(pvStr || "0", 10) || 0,
+          numero: parseInt(nroStr || "0", 10) || 0,
+          ...(fechaTF ? { fecha: fechaTF } : {}),
+        }
+      }
+
       const payload = {
         empresa: empresaFactura,
         modo: modoFact,
@@ -354,9 +383,11 @@ export default function NuevaFacturaPage() {
         clientId: clienteSeleccionado.id,
         items: itemsPayload,
         observaciones: obsFinal || undefined,
+        tipoComprobante: tipoFactura,
+        ...(comprobanteAsociado ? { comprobanteAsociado } : {}),
       }
 
-      console.log("Cliente enviado:", clienteSeleccionado.id, "| provincia local:", clienteSeleccionado.provincia)
+      console.log("Cliente enviado:", clienteSeleccionado.id, "| tipoComprobante:", tipoFactura, "| comprobanteAsociado:", comprobanteAsociado)
 
       const res = await fetch("/api/facturar", {
         method: "POST",
