@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { formatMoney } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { EMPRESAS_DATA } from "@/lib/pdf/factura-masoil"
 import Link from "next/link"
 
 interface ClienteDB {
@@ -348,7 +349,10 @@ export default function NuevaFacturaPage() {
       const obsFinal = [observaciones, obsExtra].filter(Boolean).join(" | ")
 
       // NC/ND requieren tipoComprobante explícito + comprobanteAsociado.
-      let comprobanteAsociado: { tipo: string; puntoVenta: number; numero: number; fecha?: string } | undefined
+      // El cuit asociado debe ser el del EMISOR (la empresa que emitió la factura
+      // original y emite la NC/ND), no el del cliente. Doc TusFacturas:
+      // "debe coincidir con el CUIT desde donde estas emitiendo la NC".
+      let comprobanteAsociado: { tipo: string; puntoVenta: number; numero: number; fecha?: string; cuit?: string } | undefined
       if (tipoComprobante !== "FACTURA") {
         if (!facturaReferenciaId) {
           setGenerando(false)
@@ -372,6 +376,7 @@ export default function NuevaFacturaPage() {
           tipo: original.tipo,
           puntoVenta: parseInt(pvStr || "0", 10) || 0,
           numero: parseInt(nroStr || "0", 10) || 0,
+          cuit: EMPRESAS_DATA[empresaFactura].cuit,
           ...(fechaTF ? { fecha: fechaTF } : {}),
         }
       }
