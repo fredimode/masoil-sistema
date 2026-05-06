@@ -6,23 +6,38 @@ import { generarFacturaPDF } from "@/lib/pdf/factura-masoil"
 import {
   buildPayload,
   calcularBasesYTotales,
+  esNotaCredito,
+  esNotaDebito,
   inferTipoFactura,
   limpiarCuit,
   mapCondicionIVA,
   TUSFACTURAS_URL,
+  type ComprobanteAsociado,
   type Empresa,
   type ItemInput,
   type Modo,
+  type TipoFactura,
   type TusFacturasResponse,
 } from "@/lib/tusfacturas"
+
+const TIPOS_VALIDOS: TipoFactura[] = [
+  "FACTURA A",
+  "FACTURA B",
+  "NOTA DE CREDITO A",
+  "NOTA DE CREDITO B",
+  "NOTA DE DEBITO A",
+  "NOTA DE DEBITO B",
+]
 
 interface BodyInput {
   empresa: Empresa
   modo: Modo
-  orderId: string
+  orderId?: string
   clientId: string
   items: ItemInput[]
   observaciones?: string
+  tipoComprobante?: TipoFactura
+  comprobanteAsociado?: ComprobanteAsociado
 }
 
 type Paso = "parse" | "cliente" | "tusfacturas" | "pdf" | "storage" | "db" | "email"
@@ -55,7 +70,7 @@ export async function POST(request: NextRequest) {
     return fail("parse", "JSON inválido", undefined, undefined, 400)
   }
 
-  const { empresa, modo, orderId, clientId, items, observaciones } = body
+  const { empresa, modo, orderId, clientId, items, observaciones, tipoComprobante, comprobanteAsociado } = body
 
   if (!empresa || !["Aquiles", "Conancap"].includes(empresa)) {
     return fail("parse", "empresa requerida (Aquiles | Conancap)", undefined, undefined, 400)
@@ -63,16 +78,18 @@ export async function POST(request: NextRequest) {
   if (!modo || !["testing", "produccion"].includes(modo)) {
     return fail("parse", "modo requerido (testing | produccion)", undefined, undefined, 400)
   }
-  if (!orderId) return fail("parse", "orderId requerido", undefined, undefined, 400)
   if (!clientId) return fail("parse", "clientId requerido", undefined, undefined, 400)
   if (!Array.isArray(items) || items.length === 0) {
     return fail("parse", "items requerido y no vacío", undefined, undefined, 400)
+  }
+  if (tipoComprobante && !TIPOS_VALIDOS.includes(tipoComprobante)) {
+    return fail("parse", `tipoComprobante inválido. Valores: ${TIPOS_VALIDOS.join(", ")}`, undefined, undefined, 400)
   }
   for (const [i, it] of items.entries()) {
     if (typeof it.cantidad !== "number" || it.cantidad <= 0) {
       return fail("parse", `items[${i}].cantidad inválida`, undefined, undefined, 400)
     }
-    if (typeof it.precioUnitarioSinIva !== "number" || it.precioUnitarioSinIva < 0) {
+    if (typeof it.precioUnitarioSinIva !== "number" || !Number.isFinite(it.precioUnitarioSinIva)) {
       return fail("parse", `items[${i}].precioUnitarioSinIva inválido`, undefined, undefined, 400)
     }
     if (![21, 10.5, -1, -2].includes(it.alicuota)) {
@@ -106,20 +123,42 @@ export async function POST(request: NextRequest) {
   const razonSocial = cliente.razon_social || cliente.business_name || ""
   console.log('Step 2: Cliente OK →', razonSocial, '| provincia:', cliente.provincia)
 
-  // ───────────────── PASO 3: pedido ─────────────────
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .select("id")
-    .eq("id", orderId)
-    .single()
+  // ───────────────── PASO 3: pedido (opcional) ─────────────────
+  if (orderId) {
+    const { data: order, error: orderError } = await supabase
+      .from("orders")
+      .select("id")
+      .eq("id", orderId)
+      .single()
 
-  if (orderError || !order) {
-    return fail("cliente", `Pedido ${orderId} no encontrado`, undefined, undefined, 404)
+    if (orderError || !order) {
+      return fail("cliente", `Pedido ${orderId} no encontrado`, undefined, undefined, 404)
+    }
+  } else {
+    console.log('Step 3: Sin orderId — facturación manual')
   }
 
   // ───────────────── PASO 4: tipo factura ─────────────────
   const condicionIVA = mapCondicionIVA(cliente.condicion_iva)
-  const tipoFactura = inferTipoFactura(condicionIVA)
+  const tipoFactura: TipoFactura = tipoComprobante || inferTipoFactura(condicionIVA)
+  const esNC = esNotaCredito(tipoFactura)
+  const esND = esNotaDebito(tipoFactura)
+
+  if ((esNC || esND) && !comprobanteAsociado) {
+    return fail(
+      "parse",
+      `${tipoFactura} requiere comprobanteAsociado { tipo, puntoVenta, numero }`,
+      undefined,
+      undefined,
+      400
+    )
+  }
+  if (comprobanteAsociado) {
+    if (!comprobanteAsociado.tipo || comprobanteAsociado.puntoVenta == null || comprobanteAsociado.numero == null) {
+      return fail("parse", "comprobanteAsociado debe incluir tipo, puntoVenta y numero", undefined, undefined, 400)
+    }
+  }
+  console.log(`Step 4: tipoFactura → ${tipoFactura}`)
 
   // ───────────────── PASO 5: bases + totales ─────────────────
   const { bases, totalNeto, totalIVA, total } = calcularBasesYTotales(items)
@@ -142,6 +181,7 @@ export async function POST(request: NextRequest) {
       items,
       total,
       observaciones,
+      comprobanteAsociado,
     })
   } catch (e) {
     return fail("parse", e instanceof Error ? e.message : "Error armando payload", undefined, undefined, 500)
@@ -235,7 +275,8 @@ export async function POST(request: NextRequest) {
   const { data: factura, error: insertError } = await supabase
     .from("facturas")
     .insert({
-      order_id: orderId,
+      order_id: orderId || null,
+      client_id: clientId,
       empresa,
       numero,
       tipo: tipoFactura,
@@ -263,7 +304,9 @@ export async function POST(request: NextRequest) {
 
   console.log('Step 11: DB OK, factura.id:', factura.id)
 
-  await supabase.from("orders").update({ factura_id: factura.id }).eq("id", orderId)
+  if (orderId) {
+    await supabase.from("orders").update({ factura_id: factura.id }).eq("id", orderId)
+  }
 
   // ───────────────── PASO 12: Email (deshabilitado temporalmente para testing) ─────────────────
   const EMAIL_ENABLED = false // cambiar a true cuando esté listo para producción real

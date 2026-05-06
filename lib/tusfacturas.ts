@@ -1,8 +1,24 @@
 export type Empresa = "Aquiles" | "Conancap"
 export type Modo = "testing" | "produccion"
 export type CondicionIvaCliente = "RI" | "M" | "CF" | "EX"
-export type TipoFactura = "FACTURA A" | "FACTURA B"
+export type TipoFactura =
+  | "FACTURA A"
+  | "FACTURA B"
+  | "NOTA DE CREDITO A"
+  | "NOTA DE CREDITO B"
+  | "NOTA DE DEBITO A"
+  | "NOTA DE DEBITO B"
 export type Alicuota = 21 | 10.5 | -1 | -2
+
+export const TIPOS_NC: TipoFactura[] = ["NOTA DE CREDITO A", "NOTA DE CREDITO B"]
+export const TIPOS_ND: TipoFactura[] = ["NOTA DE DEBITO A", "NOTA DE DEBITO B"]
+
+export function esNotaCredito(tipo: TipoFactura): boolean {
+  return TIPOS_NC.includes(tipo)
+}
+export function esNotaDebito(tipo: TipoFactura): boolean {
+  return TIPOS_ND.includes(tipo)
+}
 
 export interface ItemInput {
   descripcion: string
@@ -18,6 +34,14 @@ export interface ClienteInput {
   domicilio?: string | null
   provincia?: string | null
   email?: string | null
+}
+
+export interface ComprobanteAsociado {
+  tipo: TipoFactura | string
+  puntoVenta: string | number
+  numero: string | number
+  fecha?: string
+  cuit?: string
 }
 
 export interface BasePorAlicuota {
@@ -191,6 +215,7 @@ export function buildPayload(params: {
   items: ItemInput[]
   total: number
   observaciones?: string
+  comprobanteAsociado?: ComprobanteAsociado
 }) {
   const creds = getCredentials(params.empresa, params.modo)
   const condicionIVA = mapCondicionIVA(params.cliente.condicion_iva)
@@ -249,6 +274,23 @@ export function buildPayload(params: {
       total: round2(totalCalculado),
       tributos: [] as unknown[],
       ...(params.observaciones ? { observaciones: params.observaciones.replace(/['"]/g, '') } : {}),
+      ...(params.comprobanteAsociado
+        ? {
+            comprobantes_asociados: [
+              {
+                tipo_comprobante_asociado: params.comprobanteAsociado.tipo,
+                punto_venta_asociado: String(params.comprobanteAsociado.puntoVenta),
+                numero_comprobante_asociado: String(params.comprobanteAsociado.numero),
+                ...(params.comprobanteAsociado.fecha
+                  ? { fecha_comprobante_asociado: params.comprobanteAsociado.fecha }
+                  : {}),
+                ...(params.comprobanteAsociado.cuit
+                  ? { cuit_asociado: limpiarCuit(params.comprobanteAsociado.cuit) }
+                  : {}),
+              },
+            ],
+          }
+        : {}),
     },
   }
 }

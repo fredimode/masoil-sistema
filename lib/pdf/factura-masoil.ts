@@ -72,6 +72,10 @@ function letraDe(tipo: TipoFactura): "A" | "B" {
 function tipoCodAFIP(tipo: TipoFactura): number {
   if (tipo === "FACTURA A") return 1
   if (tipo === "FACTURA B") return 6
+  if (tipo === "NOTA DE DEBITO A") return 2
+  if (tipo === "NOTA DE DEBITO B") return 7
+  if (tipo === "NOTA DE CREDITO A") return 3
+  if (tipo === "NOTA DE CREDITO B") return 8
   return 6
 }
 
