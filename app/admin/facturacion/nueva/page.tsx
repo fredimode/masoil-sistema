@@ -41,14 +41,13 @@ interface ItemFactura {
 }
 
 interface FacturaResultado {
-  id: number
+  facturaId?: string
   numero: string
-  tipo: string
-  cae: string
-  vencimiento_cae: string
-  comprobante_nro: string
+  cae: string | null
   total: number
-  razon_social: string
+  pdfUrl?: string
+  tipo?: string
+  razon_social?: string
 }
 
 export default function NuevaFacturaPage() {
@@ -58,7 +57,7 @@ export default function NuevaFacturaPage() {
   // Estado general
   const [paso, setPaso] = useState<1 | 2 | 3>(1)
   const [generando, setGenerando] = useState(false)
-  const [resultado, setResultado] = useState<{ success: boolean; factura?: FacturaResultado; error?: string; errores?: string[]; tusfacturas_response?: Record<string, unknown> } | null>(null)
+  const [resultado, setResultado] = useState<{ success: boolean; factura?: FacturaResultado; error?: string; errores?: string[]; tusfacturas_response?: Record<string, unknown>; paso?: string } | null>(null)
 
   // Paso 1: Seleccionar cliente
   const [clienteSearch, setClienteSearch] = useState("")
@@ -80,8 +79,14 @@ export default function NuevaFacturaPage() {
   const [modo, setModo] = useState<"pedido" | "manual">("manual")
   const [orderId, setOrderId] = useState<string | null>(null)
 
-  // Empresa emisora
-  const [empresaFactura, setEmpresaFactura] = useState<"Masoil" | "Aquiles" | "Conancap" | "">("")
+  // Empresa emisora (endpoint solo soporta Aquiles/Conancap)
+  const [empresaFactura, setEmpresaFactura] = useState<"Aquiles" | "Conancap" | "">("")
+
+  // Modo TusFacturas
+  const [modoFact, setModoFact] = useState<"testing" | "produccion">("testing")
+
+  // Observaciones para la factura
+  const [observaciones, setObservaciones] = useState("")
 
   // Tipo de comprobante: FACTURA, NOTA_CREDITO, NOTA_DEBITO
   const [tipoComprobante, setTipoComprobante] = useState<"FACTURA" | "NOTA_CREDITO" | "NOTA_DEBITO">("FACTURA")
@@ -312,56 +317,83 @@ export default function NuevaFacturaPage() {
 
   async function generarFactura() {
     if (!clienteSeleccionado || items.length === 0) return
+    if (!empresaFactura) {
+      setResultado({ success: false, error: "Seleccioná una empresa antes de generar la factura" })
+      return
+    }
     setGenerando(true)
     setResultado(null)
 
     try {
-      const payload: Record<string, unknown> = {
-        clientId: clienteSeleccionado.id,
-        empresa: empresaFactura || undefined,
-        tipoComprobante,
-        items: items.map((it) => ({
-          productId: it.productId,
-          producto_nombre: it.descripcion,
-          producto_codigo: it.codigo,
+      // El endpoint nuevo /api/facturar espera { descripcion, cantidad, precioUnitarioSinIva, alicuota }.
+      // En esta página precioUnitario ya está sin IVA (la base gravada se suma directo).
+      const itemsPayload = items
+        .filter((it) => !it.esRegalo)
+        .map((it) => ({
+          descripcion: it.codigo ? `${it.codigo} - ${it.descripcion}` : it.descripcion,
           cantidad: it.cantidad,
-          precioUnitario: it.precioUnitario,
-        })),
+          precioUnitarioSinIva: Math.round(it.precioUnitario * 100) / 100,
+          alicuota: 21 as const,
+        }))
+
+      const obsExtra = [
+        sectorFactura && `Sector: ${sectorFactura}`,
+        solicitaFactura && `Solicita: ${solicitaFactura}`,
+        recibeFactura && `Recibe: ${recibeFactura}`,
+        sucursalEntrega && `Sucursal: ${sucursalEntrega}`,
+      ]
+        .filter(Boolean)
+        .join(" | ")
+
+      const obsFinal = [observaciones, obsExtra].filter(Boolean).join(" | ")
+
+      const payload = {
+        empresa: empresaFactura,
+        modo: modoFact,
+        orderId: orderId || "",
+        clientId: clienteSeleccionado.id,
+        items: itemsPayload,
+        observaciones: obsFinal || undefined,
       }
 
-      if (orderId) {
-        payload.orderId = orderId
-      }
-      if (facturaReferenciaId) {
-        payload.facturaReferenciaId = facturaReferenciaId
-      }
-
-      const res = await fetch("/api/facturacion/generar", {
+      const res = await fetch("/api/facturar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
 
       const data = await res.json()
-      setResultado(data)
 
       if (data.success) {
+        setResultado({
+          success: true,
+          factura: {
+            facturaId: data.facturaId,
+            numero: data.numero,
+            cae: data.cae ?? null,
+            total: Number(data.total) || total,
+            pdfUrl: data.pdfUrl,
+            tipo: tipoFactura,
+            razon_social: clienteSeleccionado.razon_social || clienteSeleccionado.business_name,
+          },
+        })
+
         // Register in cuenta corriente
         try {
-          const facturaTotal = Number(data.factura?.total) || total
+          const facturaTotal = Number(data.total) || total
           const isNC = tipoComprobante === "NOTA_CREDITO"
-          const isND = tipoComprobante === "NOTA_DEBITO"
+          const [pv, nro] = String(data.numero || "").split("-")
 
           await supabase.from("cuenta_corriente_cliente").insert({
             client_id: clienteSeleccionado.id,
             fecha: new Date().toISOString().slice(0, 10),
             tipo_comprobante: tipoComprobante === "NOTA_CREDITO" ? "NC" : tipoComprobante === "NOTA_DEBITO" ? "ND" : "FC",
-            punto_venta: data.factura?.comprobante_nro?.split("-")?.[0] || "",
-            numero_comprobante: data.factura?.comprobante_nro || data.factura?.numero || "",
+            punto_venta: pv || "",
+            numero_comprobante: nro || data.numero || "",
             debe: isNC ? 0 : facturaTotal,
             haber: isNC ? facturaTotal : 0,
             saldo: isNC ? -facturaTotal : facturaTotal,
-            referencia_id: String(data.factura?.id || ""),
+            referencia_id: String(data.facturaId || ""),
             observaciones: `${tipoFactura} generada desde el sistema`,
           })
         } catch (ccErr) {
@@ -369,6 +401,14 @@ export default function NuevaFacturaPage() {
         }
 
         setPaso(3)
+      } else {
+        setResultado({
+          success: false,
+          paso: data.paso,
+          error: data.error || "Error desconocido al generar la factura",
+          errores: data.errores,
+          tusfacturas_response: data.tusfacturas_response,
+        })
       }
     } catch (error) {
       setResultado({ success: false, error: "Error de conexión: " + (error instanceof Error ? error.message : "desconocido") })
@@ -397,18 +437,12 @@ export default function NuevaFacturaPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">Número de Comprobante</span>
-              <span className="font-bold text-gray-900">{resultado.factura?.comprobante_nro || resultado.factura?.numero}</span>
+              <span className="font-bold text-gray-900">{resultado.factura?.numero}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">CAE</span>
               <span className="font-mono font-bold text-green-700">{resultado.factura?.cae || "Testing - sin CAE real"}</span>
             </div>
-            {resultado.factura?.vencimiento_cae && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Vencimiento CAE</span>
-                <span className="font-medium text-gray-900">{resultado.factura.vencimiento_cae}</span>
-              </div>
-            )}
             <div className="flex justify-between">
               <span className="text-gray-600">Cliente</span>
               <span className="font-medium text-gray-900">{resultado.factura?.razon_social}</span>
@@ -417,13 +451,27 @@ export default function NuevaFacturaPage() {
               <span className="text-gray-900 font-bold">Total</span>
               <span className="text-xl font-bold text-primary">{formatMoney(resultado.factura?.total || 0)}</span>
             </div>
+            {resultado.factura?.pdfUrl && (
+              <div className="border-t pt-3">
+                <a
+                  href={resultado.factura.pdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-primary font-medium hover:underline"
+                >
+                  📄 Ver PDF de la factura
+                </a>
+              </div>
+            )}
           </div>
 
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
-            <p className="text-sm text-amber-800">
-              <strong>Modo Testing:</strong> Esta factura fue generada con el PDV de desarrollo. No genera CAE real en AFIP.
-            </p>
-          </div>
+          {modoFact === "testing" && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
+              <p className="text-sm text-amber-800">
+                <strong>Modo Testing:</strong> Esta factura fue generada con el PDV de desarrollo. No genera CAE real en AFIP.
+              </p>
+            </div>
+          )}
 
           <div className="flex justify-center gap-3">
             <button
@@ -434,6 +482,7 @@ export default function NuevaFacturaPage() {
                 setClienteSearch("")
                 setItems([])
                 setOrderId(null)
+                setObservaciones("")
               }}
               className="px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
             >
@@ -460,7 +509,7 @@ export default function NuevaFacturaPage() {
           </Link>
         </div>
         <h2 className="text-2xl font-bold text-gray-900">Nueva Factura Electrónica</h2>
-        <p className="text-gray-500">Genera una factura a través de TusFacturas (modo testing)</p>
+        <p className="text-gray-500">Genera una factura a través de TusFacturas</p>
       </div>
 
       {/* Tipo de comprobante */}
@@ -484,28 +533,47 @@ export default function NuevaFacturaPage() {
         })}
       </div>
 
-      {/* Indicador de modo */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6">
-        <p className="text-sm text-amber-800">
-          <strong>TESTING</strong> — Punto de venta de desarrollo. Las facturas no se envían a AFIP.
-        </p>
+      {/* Empresa + Modo - primeros campos */}
+      <div className="bg-white rounded-lg shadow p-6 mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="font-bold text-gray-900 block mb-2">Empresa *</label>
+          <select
+            value={empresaFactura}
+            onChange={(e) => setEmpresaFactura(e.target.value as "Aquiles" | "Conancap" | "")}
+            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+            required
+          >
+            <option value="">Seleccionar empresa...</option>
+            <option value="Aquiles">Aquiles</option>
+            <option value="Conancap">Conancap</option>
+          </select>
+        </div>
+        <div>
+          <label className="font-bold text-gray-900 block mb-2">Modo *</label>
+          <select
+            value={modoFact}
+            onChange={(e) => setModoFact(e.target.value as "testing" | "produccion")}
+            className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+          >
+            <option value="testing">Testing (no impacta AFIP)</option>
+            <option value="produccion">Producción (CAE real en AFIP)</option>
+          </select>
+        </div>
       </div>
 
-      {/* Empresa - primer campo */}
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
-        <label className="font-bold text-gray-900 block mb-2">Empresa *</label>
-        <select
-          value={empresaFactura}
-          onChange={(e) => setEmpresaFactura(e.target.value as any)}
-          className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
-          required
-        >
-          <option value="">Seleccionar empresa...</option>
-          <option value="Masoil">Masoil</option>
-          <option value="Aquiles">Aquiles</option>
-          <option value="Conancap">Conancap</option>
-        </select>
-      </div>
+      {modoFact === "produccion" ? (
+        <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-6">
+          <p className="text-sm text-amber-900">
+            <strong>⚠ Modo PRODUCCIÓN</strong> — La factura se enviará a AFIP y generará CAE real. Verificá los datos antes de generar.
+          </p>
+        </div>
+      ) : (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-6">
+          <p className="text-sm text-gray-700">
+            <strong>Modo Testing</strong> — Punto de venta de desarrollo. Las facturas no se envían a AFIP.
+          </p>
+        </div>
+      )}
 
       {/* Paso 1: Seleccionar cliente */}
       <div className="bg-white rounded-lg shadow p-6 mb-6">
@@ -812,6 +880,16 @@ export default function NuevaFacturaPage() {
               <label className="text-xs text-gray-500 block mb-1">Sucursal de entrega</label>
               <input type="text" value={sucursalEntrega} onChange={(e) => setSucursalEntrega(e.target.value)} className="w-full p-2 border rounded-lg text-sm" placeholder="Dirección sucursal" />
             </div>
+            <div className="md:col-span-2">
+              <label className="text-xs text-gray-500 block mb-1">Observaciones</label>
+              <textarea
+                value={observaciones}
+                onChange={(e) => setObservaciones(e.target.value)}
+                rows={2}
+                className="w-full p-2 border rounded-lg text-sm"
+                placeholder="Observaciones que aparecerán en la factura"
+              />
+            </div>
           </div>
         </div>
       )}
@@ -872,7 +950,7 @@ export default function NuevaFacturaPage() {
           </Link>
           <button
             onClick={generarFactura}
-            disabled={generando || !clienteSeleccionado || items.length === 0}
+            disabled={generando || !clienteSeleccionado || items.length === 0 || !empresaFactura}
             className="px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:bg-gray-400 font-medium"
           >
             {generando ? (
@@ -881,7 +959,7 @@ export default function NuevaFacturaPage() {
                 Generando...
               </span>
             ) : (
-              "Generar Factura (Testing)"
+              `Generar Factura (${modoFact === "produccion" ? "Producción" : "Testing"})`
             )}
           </button>
         </div>
