@@ -356,6 +356,8 @@ export default function NuevaFacturaPage() {
         observaciones: obsFinal || undefined,
       }
 
+      console.log("Cliente enviado:", clienteSeleccionado.id, "| provincia local:", clienteSeleccionado.provincia)
+
       const res = await fetch("/api/facturar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

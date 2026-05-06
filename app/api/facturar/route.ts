@@ -113,15 +113,18 @@ export async function POST(request: NextRequest) {
     return fail("cliente", "Cliente no encontrado", undefined, undefined, 404)
   }
 
+  console.log("Cliente encontrado:", cliente.id, "| provincia DB:", JSON.stringify(cliente.provincia))
+
   const cuitCliente = limpiarCuit(cliente.cuit || cliente.numero_docum || "")
   if (!cuitCliente || cuitCliente.length < 11) {
     return fail("cliente", "Cliente sin CUIT válido", undefined, undefined, 400)
   }
-  if (!cliente.provincia) {
+  if (!cliente.provincia || !cliente.provincia.trim()) {
     cliente.provincia = "CIUDAD AUTONOMA BUENOS AIRES"
+    console.log("Cliente sin provincia → fallback CABA")
   }
   const razonSocial = cliente.razon_social || cliente.business_name || ""
-  console.log('Step 2: Cliente OK →', razonSocial, '| provincia:', cliente.provincia)
+  console.log('Step 2: Cliente OK →', razonSocial, '| provincia final:', cliente.provincia)
 
   // ───────────────── PASO 3: pedido (opcional) ─────────────────
   if (orderId) {
