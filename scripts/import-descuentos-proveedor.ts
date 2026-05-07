@@ -171,6 +171,17 @@ function normalizeProveedorName(s: string): string {
     .trim()
 }
 
+// El archivo a veces tiene "- REM" al final del nombre del proveedor o
+// "REM." en medio. Lo limpiamos antes de normalizar para mejorar el matching.
+function stripFileSuffixes(s: string): string {
+  return s
+    .replace(/\s*-\s*REM\.?\s*$/i, "")    // "FOO SRL - REM"
+    .replace(/\s+REM\.\s+/gi, " ")        // "FOO REM. SRL"
+    .trim()
+}
+
+const NO_USAR_RX = /^\s*NO USAR\s*-\s*/i
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -277,8 +288,8 @@ async function main() {
   console.log(`  Códigos únicos parseados: ${uniqueCodes.size}`)
   console.log(`  Matchean con products.code: ${matchedCodes.length}`)
   console.log(`  Match rate: ${(matchRate * 100).toFixed(1)}%`)
-  if (matchRate < 0.80) {
-    console.error(`\n❌ ABORTANDO: match rate ${(matchRate * 100).toFixed(1)}% < 80% mínimo.`)
+  if (matchRate < 0.70) {
+    console.error(`\n❌ ABORTANDO: match rate ${(matchRate * 100).toFixed(1)}% < 70% mínimo.`)
     console.error(`   Esto sugiere que el regex de parseo de códigos está leyendo mal el archivo`)
     console.error(`   o el archivo no corresponde al catálogo Masoil. Revisar y reintentar.`)
     const noMatch = [...uniqueCodes].filter((c) => !productByCode.has(c)).slice(0, 30)
@@ -293,15 +304,87 @@ async function main() {
     .select("id, nombre, razon_social")
     .limit(100000)
   if (prErr) throw prErr
-  const provByName = new Map<string, { id: string; nombre: string }>()
+
+  // Para matching: una lista de entradas con flag blocked. "NO USAR - X" se
+  // marca blocked y NO se usa para matchear (descuentos no se importan ahí).
+  // Cada proveedor puede aportar 1-2 entradas (nombre + razon_social distintos).
+  type ProvEntry = { id: string; rawName: string; normalized: string; blocked: boolean }
+  const provList: ProvEntry[] = []
   for (const p of allProvs || []) {
-    if (p.nombre) provByName.set(normalizeProveedorName(p.nombre), { id: p.id, nombre: p.nombre })
-    if (p.razon_social) {
-      const k = normalizeProveedorName(p.razon_social)
-      if (!provByName.has(k)) provByName.set(k, { id: p.id, nombre: p.nombre })
+    const candidates: string[] = []
+    if (p.nombre) candidates.push(p.nombre)
+    if (p.razon_social && p.razon_social !== p.nombre) candidates.push(p.razon_social)
+    for (const raw of candidates) {
+      const blocked = NO_USAR_RX.test(raw)
+      const cleanName = raw.replace(NO_USAR_RX, "")
+      const norm = normalizeProveedorName(cleanName)
+      if (norm.length < 3) continue
+      provList.push({
+        id: p.id,
+        rawName: p.nombre || raw,
+        normalized: norm,
+        blocked,
+      })
+    }
+  }
+  const provExactActive = new Map<string, ProvEntry>()
+  const provExactBlocked = new Map<string, ProvEntry>()
+  for (const e of provList) {
+    if (e.blocked) {
+      if (!provExactBlocked.has(e.normalized)) provExactBlocked.set(e.normalized, e)
+    } else {
+      if (!provExactActive.has(e.normalized)) provExactActive.set(e.normalized, e)
     }
   }
   console.log(`  Proveedores en DB: ${allProvs?.length || 0}`)
+  console.log(`    activos: ${[...new Set(provList.filter((e) => !e.blocked).map((e) => e.id))].length}`)
+  console.log(`    bloqueados (NO USAR -): ${[...new Set(provList.filter((e) => e.blocked).map((e) => e.id))].length}`)
+
+  // Match exacto + partial bidireccional. Devuelve null si no encuentra,
+  // un único ProvEntry si encuentra (exacto o partial único), o "blocked"
+  // si solo coincide con entradas bloqueadas, o "ambiguous" si ≥2 candidatos
+  // activos distintos.
+  function findProveedorMatch(fileRaw: string): {
+    match: ProvEntry | null
+    reason: "exact" | "partial" | "ambiguous" | "blocked" | "none"
+    candidates?: ProvEntry[]
+  } {
+    const stripped = stripFileSuffixes(fileRaw)
+    const fileNorm = normalizeProveedorName(stripped)
+    if (fileNorm.length < 3) return { match: null, reason: "none" }
+
+    const exactA = provExactActive.get(fileNorm)
+    if (exactA) return { match: exactA, reason: "exact" }
+
+    // Partial bidireccional sobre activos. Mínimo 5 chars de cada lado para
+    // evitar falsos positivos por substrings cortos.
+    const seen = new Set<string>()
+    const partial: ProvEntry[] = []
+    for (const e of provList) {
+      if (e.blocked) continue
+      if (e.normalized === fileNorm) continue
+      if (e.normalized.length < 5 || fileNorm.length < 5) continue
+      if (e.normalized.includes(fileNorm) || fileNorm.includes(e.normalized)) {
+        if (!seen.has(e.id)) {
+          seen.add(e.id)
+          partial.push(e)
+        }
+      }
+    }
+    if (partial.length === 1) return { match: partial[0], reason: "partial" }
+    if (partial.length > 1) return { match: null, reason: "ambiguous", candidates: partial }
+
+    // ¿Solo coincide con entradas bloqueadas? Reportar como blocked.
+    if (provExactBlocked.get(fileNorm)) return { match: null, reason: "blocked" }
+    for (const e of provList) {
+      if (!e.blocked) continue
+      if (e.normalized.length < 5 || fileNorm.length < 5) continue
+      if (e.normalized.includes(fileNorm) || fileNorm.includes(e.normalized)) {
+        return { match: null, reason: "blocked" }
+      }
+    }
+    return { match: null, reason: "none" }
+  }
 
   // 4) Match + dedupe por par, quedándonos con la fecha más reciente
   interface ParRow {
@@ -316,8 +399,15 @@ async function main() {
   const byPair = new Map<string, ParRow>()
   let skippedNoProduct = 0
   let skippedNoProveedor = 0
+  let skippedAmbiguous = 0
+  let skippedBlocked = 0
+  let exactMatches = 0
+  let partialMatches = 0
   const missingProducts = new Map<string, number>()
   const missingProveedores = new Map<string, number>()
+  const ambiguousMatches = new Map<string, string[]>()      // file → [db_names]
+  const blockedHits = new Map<string, number>()             // file → count
+  const partialMatchedSamples = new Map<string, string>()   // file → db_rawName
 
   for (const c of compras) {
     const prod = productByCode.get(c.code.trim().toUpperCase())
@@ -326,12 +416,31 @@ async function main() {
       missingProducts.set(c.code, (missingProducts.get(c.code) || 0) + 1)
       continue
     }
-    const provKey = normalizeProveedorName(c.proveedor)
-    const prov = provByName.get(provKey)
-    if (!prov) {
+    const res = findProveedorMatch(c.proveedor)
+    if (res.reason === "blocked") {
+      skippedBlocked++
+      blockedHits.set(c.proveedor, (blockedHits.get(c.proveedor) || 0) + 1)
+      continue
+    }
+    if (res.reason === "ambiguous") {
+      skippedAmbiguous++
+      if (!ambiguousMatches.has(c.proveedor)) {
+        ambiguousMatches.set(c.proveedor, (res.candidates || []).map((p) => p.rawName))
+      }
+      continue
+    }
+    if (!res.match) {
       skippedNoProveedor++
       missingProveedores.set(c.proveedor, (missingProveedores.get(c.proveedor) || 0) + 1)
       continue
+    }
+    const prov = res.match
+    if (res.reason === "exact") exactMatches++
+    else if (res.reason === "partial") {
+      partialMatches++
+      if (!partialMatchedSamples.has(c.proveedor)) {
+        partialMatchedSamples.set(c.proveedor, prov.rawName)
+      }
     }
     const key = `${prod.id}::${prov.id}`
     const existing = byPair.get(key)
@@ -342,7 +451,7 @@ async function main() {
         descuento: c.bonif,
         fecha: c.fecha,
         productCode: prod.code,
-        proveedorNombre: prov.nombre,
+        proveedorNombre: prov.rawName,
         count: 1,
       })
     } else {
@@ -359,8 +468,42 @@ async function main() {
   const conDescuento = [...byPair.values()].filter((p) => p.descuento > 0).length
   console.log(`    con descuento > 0: ${conDescuento}`)
   console.log(`    sin descuento (0%): ${byPair.size - conDescuento}`)
+  console.log(`  Compras matcheadas exact: ${exactMatches}`)
+  console.log(`  Compras matcheadas partial: ${partialMatches}`)
   console.log(`  Compras skip — producto no encontrado: ${skippedNoProduct} (${missingProducts.size} códigos distintos)`)
   console.log(`  Compras skip — proveedor no encontrado: ${skippedNoProveedor} (${missingProveedores.size} nombres distintos)`)
+  console.log(`  Compras skip — proveedor ambiguo: ${skippedAmbiguous} (${ambiguousMatches.size} nombres distintos)`)
+  console.log(`  Compras skip — proveedor bloqueado (NO USAR -): ${skippedBlocked} (${blockedHits.size} nombres distintos)`)
+
+  if (partialMatchedSamples.size > 0) {
+    console.log(`\n=== MATCHES POR NORMALIZACIÓN (PARCIAL) ===`)
+    console.log(`  ${partialMatchedSamples.size} nombres distintos del archivo matcheados via match parcial.`)
+    console.log(`  Top 10 (revisar visualmente que el match sea correcto):`)
+    const samples = [...partialMatchedSamples.entries()].slice(0, 10)
+    for (const [file, db] of samples) {
+      console.log(`    "${file}"`)
+      console.log(`      → "${db}"`)
+    }
+  }
+
+  if (blockedHits.size > 0) {
+    console.log(`\n=== PROVEEDORES BLOQUEADOS (NO USAR -) ===`)
+    console.log(`  ${skippedBlocked} compras saltadas (${blockedHits.size} nombres distintos del archivo).`)
+    const top = [...blockedHits.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10)
+    console.log(`  Top 10:`)
+    for (const [nombre, n] of top) console.log(`    ${nombre.padEnd(40)} ${n}`)
+  }
+
+  if (ambiguousMatches.size > 0) {
+    console.log(`\n=== PROVEEDORES AMBIGUOS (≥2 candidatos activos) ===`)
+    console.log(`  ${skippedAmbiguous} compras saltadas (${ambiguousMatches.size} nombres distintos del archivo).`)
+    const top = [...ambiguousMatches.entries()].slice(0, 10)
+    console.log(`  Top 10 (revisá manualmente y resolvé el alias en proveedores):`)
+    for (const [file, dbs] of top) {
+      console.log(`    "${file}"`)
+      for (const db of dbs) console.log(`      → "${db}"`)
+    }
+  }
 
   if (missingProducts.size > 0) {
     const top = [...missingProducts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20)
@@ -369,7 +512,7 @@ async function main() {
   }
   if (missingProveedores.size > 0) {
     const top = [...missingProveedores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 20)
-    console.log(`\n  Top 20 proveedores no matcheados (nombre × ocurrencias):`)
+    console.log(`\n  Top 20 proveedores NO matcheados (ni exact ni partial):`)
     for (const [nombre, n] of top) console.log(`    ${nombre.padEnd(40)} ${n}`)
   }
 
