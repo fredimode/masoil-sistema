@@ -1865,7 +1865,6 @@ function GrupoCliente({ grupo, expanded, onToggle }: { grupo: { client_id: strin
           <table className="w-full text-xs">
             <thead>
               <tr className="text-left text-muted-foreground border-b">
-                <th className="px-2 py-1">Cliente</th>
                 <th className="px-2 py-1">Fecha</th>
                 <th className="px-2 py-1">Comprobante</th>
                 <th className="px-2 py-1 text-right">Total</th>
@@ -1882,7 +1881,6 @@ function GrupoCliente({ grupo, expanded, onToggle }: { grupo: { client_id: strin
                   const num = [f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero].filter(Boolean).join(" ")
                   return (
                     <tr key={f.id || i} className="border-t border-gray-200">
-                      <td className="px-2 py-1">{grupo.client_name}</td>
                       <td className="px-2 py-1">{formatDateStr(f.fecha_comprobante || f.fecha || f.created_at)}</td>
                       <td className="px-2 py-1 font-mono">{num || "-"}</td>
                       <td className="px-2 py-1 text-right">{formatCurrency(Number(f.total) || 0)}</td>
