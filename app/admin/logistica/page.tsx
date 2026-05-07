@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { createClient } from "@/lib/supabase/client"
 import {
   fetchRepartos, fetchRepartoItems, ensureRepartoForFecha, createRepartoItem,
   updateRepartoItem, deleteRepartoItem, formatNumeroReparto, proximoDiaHabil,
@@ -237,7 +238,17 @@ export default function LogisticaPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-xs">{i.factura_numero || "-"}</TableCell>
-                    <TableCell>{i.client_name || i.descripcion_extra || "-"}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1.5">
+                        <span>{i.client_name || i.descripcion_extra || "-"}</span>
+                        {i.es_destino_extra && i.cliente_id && (
+                          <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5">CLIENTE</span>
+                        )}
+                        {i.es_destino_extra && i.proveedor_id && (
+                          <span className="text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-200 rounded px-1.5 py-0.5">PROV</span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-xs">{i.zona || "-"}</TableCell>
                     <TableCell>
                       <Select value={i.repartidor || ""} onValueChange={(v) => handleUpdateItem(i.id, "repartidor", v)}>
@@ -287,6 +298,8 @@ export default function LogisticaPage() {
 
 // ─── Dialog Nuevo Destino Extra ─────────────────────────────────────────────
 
+type AsocResult = { id: string; nombre: string }
+
 function DialogNuevoDestino({ open, onClose, selectedFecha, onSaved }: {
   open: boolean
   onClose: () => void
@@ -296,24 +309,81 @@ function DialogNuevoDestino({ open, onClose, selectedFecha, onSaved }: {
   const [descripcion, setDescripcion] = useState("")
   const [sucursal, setSucursal] = useState("")
   const [repartidor, setRepartidor] = useState("")
+  const [tipoAsoc, setTipoAsoc] = useState<"ninguno" | "cliente" | "proveedor">("ninguno")
+  const [searchAsoc, setSearchAsoc] = useState("")
+  const [results, setResults] = useState<AsocResult[]>([])
+  const [selectedAsoc, setSelectedAsoc] = useState<AsocResult | null>(null)
+  const [searching, setSearching] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // Reset al abrir/cerrar
+  useEffect(() => {
+    if (!open) {
+      setDescripcion(""); setSucursal(""); setRepartidor("")
+      setTipoAsoc("ninguno"); setSearchAsoc(""); setResults([]); setSelectedAsoc(null)
+    }
+  }, [open])
+
+  // Resetear selección si cambia el tipo
+  useEffect(() => {
+    setSearchAsoc(""); setResults([]); setSelectedAsoc(null)
+  }, [tipoAsoc])
+
+  // Búsqueda con debounce
+  useEffect(() => {
+    if (tipoAsoc === "ninguno" || searchAsoc.trim().length < 2 || selectedAsoc) {
+      setResults([])
+      return
+    }
+    const t = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const supabase = createClient()
+        if (tipoAsoc === "cliente") {
+          const { data } = await supabase
+            .from("clients")
+            .select("id, business_name, razon_social")
+            .or(`business_name.ilike.%${searchAsoc}%,razon_social.ilike.%${searchAsoc}%`)
+            .limit(10)
+          setResults((data || []).map((c: any) => ({ id: c.id, nombre: c.razon_social || c.business_name })))
+        } else {
+          const { data } = await supabase
+            .from("proveedores")
+            .select("id, nombre")
+            .ilike("nombre", `%${searchAsoc}%`)
+            .limit(10)
+          setResults((data || []).map((p: any) => ({ id: p.id, nombre: p.nombre })))
+        }
+      } finally { setSearching(false) }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [searchAsoc, tipoAsoc, selectedAsoc])
+
   async function handleGuardar() {
-    if (!descripcion.trim()) { alert("Ingresá una descripción"); return }
+    if (!descripcion.trim() && !selectedAsoc) {
+      alert("Ingresá una descripción o seleccioná un cliente/proveedor")
+      return
+    }
+    if (tipoAsoc !== "ninguno" && !selectedAsoc) {
+      alert(`Seleccioná un ${tipoAsoc} de la lista o cambiá el tipo a 'sin asociar'`)
+      return
+    }
     setSaving(true)
     try {
       const repartoId = await ensureRepartoForFecha(selectedFecha)
+      const nombreFinal = selectedAsoc?.nombre || descripcion
       await createRepartoItem({
         reparto_id: repartoId,
         orden_reparto: null,
         es_destino_extra: true,
-        descripcion_extra: descripcion,
-        client_name: descripcion,
+        descripcion_extra: descripcion || nombreFinal,
+        client_name: nombreFinal,
         sucursal_entrega: sucursal || null,
         repartidor: repartidor || null,
         estado_entrega: "pendiente",
+        cliente_id: tipoAsoc === "cliente" ? selectedAsoc?.id || null : null,
+        proveedor_id: tipoAsoc === "proveedor" ? selectedAsoc?.id || null : null,
       })
-      setDescripcion(""); setSucursal(""); setRepartidor("")
       await onSaved()
     } catch (e: any) {
       alert("Error: " + (e.message || e))
@@ -329,10 +399,66 @@ function DialogNuevoDestino({ open, onClose, selectedFecha, onSaved }: {
         </p>
         <div className="space-y-3">
           <div>
-            <label className="text-sm font-medium mb-1 block">Descripción *</label>
+            <label className="text-sm font-medium mb-1 block">Asociar a</label>
+            <Select value={tipoAsoc} onValueChange={(v) => setTipoAsoc(v as typeof tipoAsoc)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ninguno">Sin asociar (texto libre)</SelectItem>
+                <SelectItem value="cliente">Cliente</SelectItem>
+                <SelectItem value="proveedor">Proveedor</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {tipoAsoc !== "ninguno" && (
+            <div>
+              <label className="text-sm font-medium mb-1 block">
+                Buscar {tipoAsoc} *
+              </label>
+              {selectedAsoc ? (
+                <div className="flex items-center justify-between border rounded-md px-3 py-2 bg-gray-50">
+                  <span className="text-sm font-medium">{selectedAsoc.nombre}</span>
+                  <button
+                    type="button"
+                    onClick={() => { setSelectedAsoc(null); setSearchAsoc("") }}
+                    className="text-xs text-red-600 hover:underline"
+                  >
+                    Cambiar
+                  </button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <input
+                    value={searchAsoc}
+                    onChange={(e) => setSearchAsoc(e.target.value)}
+                    placeholder={`Mín. 2 caracteres del nombre del ${tipoAsoc}...`}
+                    className="w-full border rounded-md px-3 py-2 text-sm"
+                  />
+                  {searching && <div className="absolute right-3 top-2.5 animate-spin h-4 w-4 border-b-2 border-primary rounded-full" />}
+                  {results.length > 0 && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                      {results.map((r) => (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => { setSelectedAsoc(r); setResults([]) }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 border-b last:border-b-0"
+                        >
+                          {r.nombre}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          <div>
+            <label className="text-sm font-medium mb-1 block">
+              Descripción {tipoAsoc === "ninguno" ? "*" : "(opcional)"}
+            </label>
             <input value={descripcion} onChange={(e) => setDescripcion(e.target.value)}
               className="w-full border rounded-md px-3 py-2 text-sm"
-              placeholder="Ej: Retiro cheque Banco Galicia" />
+              placeholder={tipoAsoc === "ninguno" ? "Ej: Retiro cheque Banco Galicia" : "Detalles adicionales del destino"} />
           </div>
           <div>
             <label className="text-sm font-medium mb-1 block">Sucursal / Dirección</label>
