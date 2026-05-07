@@ -301,17 +301,17 @@ export default function FacturacionPage() {
                     <tbody>
                       {emPageData.map((f: any, idx: number) => {
                         const deuda = deudaMap[f.id] ?? (Number(f.total) || 0)
-                        // Format tipo + numero as "A-00005-00001234"
-                        const tipoLetra = (f.tipo || "").replace(/^(FACTURA|NOTA DE CREDITO|NOTA DE DEBITO)\s*/i, "").trim() || ""
-                        let tipoNumero: string
+                        // Format tipo completo + numero (ej: "NOTA DE CREDITO B 00005-00001234")
+                        const tipoCompleto = (f.tipo || "").trim()
+                        let nroFmt: string
                         if (f.punto_venta != null && (f.numero_comprobante || f.numero)) {
                           const pv = String(f.punto_venta).padStart(5, "0")
                           const nro = String(f.numero_comprobante || f.numero).padStart(8, "0")
-                          tipoNumero = tipoLetra ? `${tipoLetra}-${pv}-${nro}` : `${pv}-${nro}`
+                          nroFmt = `${pv}-${nro}`
                         } else {
-                          const nroDisplay = f.comprobante_nro || f.numero || "-"
-                          tipoNumero = tipoLetra ? `${tipoLetra}-${nroDisplay}` : nroDisplay
+                          nroFmt = f.comprobante_nro || f.numero || "-"
                         }
+                        const tipoNumero = tipoCompleto ? `${tipoCompleto} ${nroFmt}` : nroFmt
                         return (
                           <tr key={f.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                             <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
