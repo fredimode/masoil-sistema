@@ -152,18 +152,23 @@ export default function FacturacionPage() {
   }, [gpSearch, gpTipo, gpVendedor])
 
   // --- Stats ---
+  // Las NC restan al total facturado (devoluciones/descuentos). FC y ND suman.
+  // El count por tipo NO se afecta — cada documento sigue siendo 1 fila.
   const gpStats = useMemo(() => {
-    const totalMonto = gpData.reduce((s, f) => s + (f.total || 0), 0)
+    let totalMonto = 0
     const byTipo: Record<string, number> = {}
-    gpData.forEach((f) => {
+    const byVendedorMap: Record<string, number> = {}
+    for (const f of gpData) {
+      const tipoUp = String(f.tipo_comprobante || "").toUpperCase().trim()
+      const esNC = tipoUp.startsWith("NOTA DE CREDITO") || tipoUp.startsWith("NOTA DE CRÉDITO")
+      const signo = esNC ? -1 : 1
+      const monto = (f.total || 0) * signo
+      totalMonto += monto
       const t = f.tipo_comprobante || "Otro"
       byTipo[t] = (byTipo[t] || 0) + 1
-    })
-    const byVendedorMap: Record<string, number> = {}
-    gpData.forEach((f) => {
       const v = f.vendedor || "Sin vendedor"
-      byVendedorMap[v] = (byVendedorMap[v] || 0) + (f.total || 0)
-    })
+      byVendedorMap[v] = (byVendedorMap[v] || 0) + monto
+    }
     const topVendedores = Object.entries(byVendedorMap)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
