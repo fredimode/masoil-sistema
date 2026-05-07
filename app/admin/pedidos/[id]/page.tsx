@@ -11,13 +11,17 @@ import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { StatusTimeline } from "@/components/vendedor/status-timeline"
 import { CountdownWidget } from "@/components/vendedor/countdown-widget"
-import { fetchOrderById, fetchClientById, updateOrderStatus, addItemsToOrder, fetchProducts } from "@/lib/supabase/queries"
+import {
+  fetchOrderById, fetchClientById, updateOrderStatus, addItemsToOrder, fetchProducts,
+  fetchOrdenCompraArchivos, createOrdenCompraArchivo, deleteOrdenCompraArchivo,
+  type OrdenCompraArchivo,
+} from "@/lib/supabase/queries"
 import { getStatusConfig, getNextStatuses } from "@/lib/status-config"
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils"
 import type { Order, Client, OrderStatus, Product } from "@/lib/types"
 import { normalizeSearch } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ArrowLeft, Printer, MessageCircle, Phone, XCircle, FileText } from "lucide-react"
+import { ArrowLeft, Printer, MessageCircle, Phone, XCircle, FileText, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -49,8 +53,9 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [facturarModo, setFacturarModo] = useState<"testing" | "produccion">("testing")
   const [facturarObs, setFacturarObs] = useState("")
 
-  // OC (PDF del cliente)
+  // OC (archivos del cliente — múltiples)
   const [ocUploading, setOcUploading] = useState(false)
+  const [ocArchivos, setOcArchivos] = useState<OrdenCompraArchivo[]>([])
 
   // Remito (CAI)
   const [remitoOpen, setRemitoOpen] = useState(false)
@@ -85,10 +90,17 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         const supabaseExtra = createClient()
         const { data: extraData } = await supabaseExtra
           .from("orders")
-          .select("sector, solicita, recibe, entrega_otra_sucursal, hoja_ruta_url, observaciones_entrega, factura_id, orden_compra_url")
+          .select("sector, solicita, recibe, entrega_otra_sucursal, hoja_ruta_url, observaciones_entrega, factura_id")
           .eq("id", id)
           .single()
         if (extraData) setOrderExtra(extraData)
+
+        try {
+          const archivos = await fetchOrdenCompraArchivos(id)
+          setOcArchivos(archivos)
+        } catch (e) {
+          console.error("Error cargando archivos OC:", e)
+        }
 
         if (orderData.clientId) {
           const clientData = await fetchClientById(orderData.clientId)
@@ -492,37 +504,74 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     }
   }
 
-  async function handleUploadOC(file: File) {
-    if (file.type !== "application/pdf") {
-      alert("Solo se aceptan archivos PDF.")
+  async function handleUploadOC(files: File[]) {
+    if (files.length === 0) return
+    const invalidos = files.filter((f) => f.type !== "application/pdf")
+    if (invalidos.length > 0) {
+      alert(`Solo se aceptan PDFs. Archivos rechazados: ${invalidos.map((f) => f.name).join(", ")}`)
       return
     }
     setOcUploading(true)
     try {
       const supabase = createClient()
-      const path = `ordenes-compra/${o.id}.pdf`
-      const { error: uploadError } = await supabase.storage
-        .from("ordenes-compra")
-        .upload(path, file, { contentType: "application/pdf", upsert: true })
-      if (uploadError) {
-        alert("Error subiendo OC: " + uploadError.message)
-        return
+      const nuevos: OrdenCompraArchivo[] = []
+      for (const file of files) {
+        const ts = Date.now() + Math.random().toString(36).slice(2, 8)
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_")
+        const path = `ordenes-compra/${o.id}/${ts}_${safeName}`
+        const { error: uploadError } = await supabase.storage
+          .from("ordenes-compra")
+          .upload(path, file, { contentType: "application/pdf", upsert: false })
+        if (uploadError) {
+          alert(`Error subiendo "${file.name}": ${uploadError.message}`)
+          continue
+        }
+        const { data: signedData, error: signedError } = await supabase.storage
+          .from("ordenes-compra")
+          .createSignedUrl(path, 60 * 60 * 24 * 365)
+        if (signedError || !signedData?.signedUrl) {
+          alert(`Error generando URL de "${file.name}": ${signedError?.message || "sin URL"}`)
+          continue
+        }
+        const id = await createOrdenCompraArchivo({
+          order_id: o.id,
+          url: signedData.signedUrl,
+          storage_path: path,
+          filename: file.name,
+          content_type: file.type,
+        })
+        nuevos.push({
+          id,
+          order_id: o.id,
+          url: signedData.signedUrl,
+          storage_path: path,
+          filename: file.name,
+          content_type: file.type,
+          uploaded_at: new Date().toISOString(),
+        })
       }
-      const { data: signedData, error: signedError } = await supabase.storage
-        .from("ordenes-compra")
-        .createSignedUrl(path, 60 * 60 * 24 * 365)
-      if (signedError || !signedData?.signedUrl) {
-        alert("Error generando URL: " + (signedError?.message || "sin URL"))
-        return
-      }
-      const url = signedData.signedUrl
-      await supabase.from("orders").update({ orden_compra_url: url }).eq("id", o.id)
-      setOrderExtra((prev: any) => ({ ...prev, orden_compra_url: url }))
+      setOcArchivos((prev) => [...prev, ...nuevos])
     } catch (e) {
       console.error("Error subiendo OC:", e)
       alert("Error subiendo OC: " + (e instanceof Error ? e.message : "desconocido"))
     } finally {
       setOcUploading(false)
+    }
+  }
+
+  async function handleDeleteArchivoOC(archivo: OrdenCompraArchivo) {
+    if (!confirm(`¿Eliminar el archivo "${archivo.filename || "sin nombre"}"?`)) return
+    try {
+      const supabase = createClient()
+      // Borrar del storage si conocemos el path (los registros legacy migrados pueden no tenerlo)
+      if (archivo.storage_path) {
+        await supabase.storage.from("ordenes-compra").remove([archivo.storage_path])
+      }
+      await deleteOrdenCompraArchivo(archivo.id)
+      setOcArchivos((prev) => prev.filter((a) => a.id !== archivo.id))
+    } catch (e) {
+      console.error("Error eliminando archivo OC:", e)
+      alert("Error eliminando archivo: " + (e instanceof Error ? e.message : "desconocido"))
     }
   }
 
@@ -897,51 +946,55 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             </div>
           </Card>
 
-          {/* Orden de Compra (PDF del cliente) */}
+          {/* Orden de Compra (archivos del cliente — múltiples) */}
           <Card className="p-6">
             <h3 className="font-semibold mb-4">Orden de Compra</h3>
-            {orderExtra?.orden_compra_url ? (
-              <div className="space-y-3">
-                <Button asChild variant="outline" className="w-full">
-                  <a href={orderExtra.orden_compra_url} target="_blank" rel="noopener noreferrer">
-                    Ver OC del cliente
-                  </a>
-                </Button>
-                <label className="block">
-                  <input
-                    type="file"
-                    accept="application/pdf,.pdf"
-                    className="hidden"
-                    disabled={ocUploading}
-                    onChange={(e) => {
-                      const f = e.target.files?.[0]
-                      if (f) handleUploadOC(f)
-                      e.target.value = ""
-                    }}
-                  />
-                  <span className={`block text-center text-xs px-3 py-2 border border-dashed rounded cursor-pointer hover:bg-muted/50 ${ocUploading ? "opacity-50" : ""}`}>
-                    {ocUploading ? "Subiendo..." : "Reemplazar PDF"}
-                  </span>
-                </label>
-              </div>
-            ) : (
+            <div className="space-y-3">
+              {ocArchivos.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sin archivos adjuntos</p>
+              ) : (
+                <ul className="space-y-2">
+                  {ocArchivos.map((a) => (
+                    <li key={a.id} className="flex items-center justify-between gap-2 border rounded px-3 py-2 text-sm">
+                      <a
+                        href={a.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 min-w-0 truncate text-primary hover:underline"
+                        title={a.filename || ""}
+                      >
+                        📎 {a.filename || "archivo.pdf"}
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteArchivoOC(a)}
+                        className="text-red-500 hover:text-red-700 p-1"
+                        title="Eliminar archivo"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
               <label className="block">
                 <input
                   type="file"
                   accept="application/pdf,.pdf"
+                  multiple
                   className="hidden"
                   disabled={ocUploading}
                   onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    if (f) handleUploadOC(f)
+                    const files = Array.from(e.target.files || [])
+                    if (files.length > 0) handleUploadOC(files)
                     e.target.value = ""
                   }}
                 />
-                <span className={`block text-center text-sm px-3 py-4 border-2 border-dashed border-muted rounded cursor-pointer hover:bg-muted/50 ${ocUploading ? "opacity-50" : ""}`}>
-                  {ocUploading ? "Subiendo..." : "📎 Adjuntar OC del cliente (PDF)"}
+                <span className={`block text-center text-sm px-3 py-3 border-2 border-dashed border-muted rounded cursor-pointer hover:bg-muted/50 ${ocUploading ? "opacity-50" : ""}`}>
+                  {ocUploading ? "Subiendo..." : ocArchivos.length === 0 ? "📎 Adjuntar OC del cliente (PDF)" : "+ Agregar más archivos"}
                 </span>
               </label>
-            )}
+            </div>
           </Card>
 
           {/* Delivery Info */}
