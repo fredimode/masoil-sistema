@@ -231,20 +231,50 @@ function NuevaCompraForm() {
     setShowProvDropdown(false)
   }
 
-  function addProduct(product: Product) {
+  async function addProduct(product: Product) {
     const existing = compraItems.find((i) => i.productId === product.id)
     if (existing) {
       setCompraItems((prev) => prev.map((i) => i.productId === product.id ? { ...i, quantity: i.quantity + 1 } : i))
-    } else {
-      setCompraItems((prev) => [...prev, {
-        productId: product.id,
-        code: product.code || "",
-        name: product.name,
-        costoNeto: product.costoNeto ?? product.price ?? 0,
-        quantity: 1,
-        descuento: 0,
-      }])
+      setProdSearch("")
+      setShowProdDropdown(false)
+      return
     }
+    // Si hay proveedor seleccionado, intentar usar el precio (y descuento si
+    // existe) del par (producto, proveedor) en producto_proveedor.
+    let costoNeto = product.costoNeto ?? product.price ?? 0
+    let descuento = 0
+    if (form.proveedor_id) {
+      try {
+        const supabase = createClient()
+        // select("*") tolera columnas opcionales (descuento_porcentaje todavía
+        // no existe en algunos entornos hasta aplicar Fix 5.3).
+        const { data } = await supabase
+          .from("producto_proveedor")
+          .select("*")
+          .eq("product_id", product.id)
+          .eq("proveedor_id", form.proveedor_id)
+          .maybeSingle()
+        const row = data as Record<string, any> | null
+        if (row?.precio_proveedor != null) {
+          const px = Number(row.precio_proveedor)
+          if (Number.isFinite(px) && px > 0) costoNeto = px
+        }
+        if (row?.descuento_porcentaje != null) {
+          const d = Number(row.descuento_porcentaje)
+          if (Number.isFinite(d) && d >= 0) descuento = d
+        }
+      } catch (e) {
+        console.error("Error obteniendo precio proveedor:", e)
+      }
+    }
+    setCompraItems((prev) => [...prev, {
+      productId: product.id,
+      code: product.code || "",
+      name: product.name,
+      costoNeto,
+      quantity: 1,
+      descuento,
+    }])
     setProdSearch("")
     setShowProdDropdown(false)
   }
