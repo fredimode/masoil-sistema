@@ -295,6 +295,18 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
     [filtered]
   )
 
+  // Running balance acumulado a lo largo de todos los movimientos ordenados
+  // cronológicamente. Se mantiene entre páginas (no se resetea al paginar).
+  const saldoMap = useMemo(() => {
+    const map = new Map<string, number>()
+    let acum = 0
+    for (const m of sortedFiltered) {
+      acum += (Number(m.debe) || 0) - (Number(m.haber) || 0)
+      map.set(m.id, acum)
+    }
+    return map
+  }, [sortedFiltered])
+
   const pag = usePagination(sortedFiltered, 50)
   const startIdx = (page - 1) * 50
   const displayRows = sortedFiltered.slice(startIdx, startIdx + 50)
@@ -337,11 +349,12 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
       Número: formatNumeroComprobante(m),
       Debe: m.debe || 0,
       Haber: m.haber || 0,
+      Saldo: saldoMap.get(m.id) ?? 0,
     }))
     // Fila vacía + totales al final, mismo formato que el PDF.
-    rows.push({ Fecha: "", Tipo: "", Número: "", Debe: "", Haber: "" })
-    rows.push({ Fecha: "", Tipo: "", Número: "TOTALES", Debe: totalDebe, Haber: totalHaber })
-    rows.push({ Fecha: "", Tipo: "", Número: "TOTAL DEUDOR", Debe: saldoTotal, Haber: "" })
+    rows.push({ Fecha: "", Tipo: "", Número: "", Debe: "", Haber: "", Saldo: "" })
+    rows.push({ Fecha: "", Tipo: "", Número: "TOTALES", Debe: totalDebe, Haber: totalHaber, Saldo: "" })
+    rows.push({ Fecha: "", Tipo: "", Número: "TOTAL DEUDOR", Debe: saldoTotal, Haber: "", Saldo: "" })
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "Cuenta Corriente")
@@ -352,22 +365,26 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
     const w = window.open("", "_blank")
     if (!w) return
     const clientName = selectedClient?.businessName || "Todos los clientes"
-    const rows = sortedFiltered.map((m) => `
+    const rows = sortedFiltered.map((m) => {
+      const sld = saldoMap.get(m.id) ?? 0
+      return `
       <tr>
         <td>${formatDateStr(m.fecha)}</td>
         <td>${normalizeTipoComp(m.tipo_comprobante)}</td>
         <td>${formatNumeroComprobante(m) || "-"}</td>
         <td style="text-align:right">${m.debe ? formatCurrency(m.debe) : "-"}</td>
         <td style="text-align:right">${m.haber ? formatCurrency(m.haber) : "-"}</td>
-      </tr>`).join("")
+        <td style="text-align:right">${formatCurrency(sld)}</td>
+      </tr>`
+    }).join("")
     w.document.write(`<html><head><title>Cuenta Corriente - ${clientName}</title>
       <style>body{font-family:sans-serif;max-width:900px;margin:30px auto}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px 8px;font-size:12px}th{background:#f5f5f5;text-align:left}.totals td{font-weight:bold;background:#f0f0f0}.total-deudor{margin-top:16px;padding:12px;background:#fef3c7;font-size:18px;font-weight:bold;text-align:right}</style></head><body>
       <h2>Cuenta Corriente</h2><p><strong>Cliente:</strong> ${clientName}</p>
       <p><strong>Empresa:</strong> ${empresaFilter} | <strong>Período:</strong> ${desde || "..."} a ${hasta || "..."}</p>
       <p><strong>Cantidad de comprobantes:</strong> ${filtered.length}</p>
-      <table><thead><tr><th>Fecha</th><th>Comprob.</th><th>Número</th><th style="text-align:right">Debe</th><th style="text-align:right">Haber</th></tr></thead>
+      <table><thead><tr><th>Fecha</th><th>Comprob.</th><th>Número</th><th style="text-align:right">Debe</th><th style="text-align:right">Haber</th><th style="text-align:right">Saldo</th></tr></thead>
       <tbody>${rows}
-      <tr class="totals"><td colspan="3">TOTALES</td><td style="text-align:right">${formatCurrency(totalDebe)}</td><td style="text-align:right">${formatCurrency(totalHaber)}</td></tr>
+      <tr class="totals"><td colspan="3">TOTALES</td><td style="text-align:right">${formatCurrency(totalDebe)}</td><td style="text-align:right">${formatCurrency(totalHaber)}</td><td></td></tr>
       </tbody></table>
       <div class="total-deudor">TOTAL DEUDOR: ${formatCurrency(saldoTotal)}</div>
       <script>window.print()<\/script></body></html>`)
@@ -493,11 +510,14 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
                   <TableHead>Comprob.</TableHead>
                   <TableHead className="text-right">Debe</TableHead>
                   <TableHead className="text-right">Haber</TableHead>
+                  <TableHead className="text-right">Saldo</TableHead>
                   <TableHead className="w-24 text-center">Ver</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {displayRows.map((m, i) => (
+                {displayRows.map((m, i) => {
+                  const saldoRow = saldoMap.get(m.id) ?? 0
+                  return (
                   <TableRow key={m.id || i}>
                     <TableCell>{formatDateStr(m.fecha)}</TableCell>
                     <TableCell>
@@ -508,13 +528,17 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
                     </TableCell>
                     <TableCell className="text-right">{m.debe ? formatCurrency(m.debe) : "-"}</TableCell>
                     <TableCell className="text-right">{m.haber ? formatCurrency(m.haber) : "-"}</TableCell>
+                    <TableCell className={`text-right font-medium ${saldoRow > 0 ? "text-red-600" : saldoRow < 0 ? "text-green-600" : ""}`}>
+                      {formatCurrency(saldoRow)}
+                    </TableCell>
                     <TableCell className="text-center">
                       <button onClick={() => setVerCompOpen(m)} className="text-blue-600 hover:text-blue-800" title="Ver comprobante">
                         <Eye className="h-4 w-4 inline" />
                       </button>
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
               </TableBody>
             </Table>
           </div>
