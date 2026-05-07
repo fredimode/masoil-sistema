@@ -116,18 +116,53 @@ export default function LogisticaPage() {
   function handlePrint() {
     const w = window.open("", "_blank")
     if (!w) return
-    const rowsHtml = visibles.map((i) => `
+    const escapeHtml = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+    const truncate = (s: string, n = 60) => s.length > n ? s.slice(0, n - 1) + "…" : s
+    const rowsHtml = visibles.map((i) => {
+      // Nº Pedido: para pedidos toma order_number_serial; para manuales queda "-"
+      const nroPedido = i.order_id
+        ? (i.orders?.order_number_serial || i.orders?.order_number || i.order_id.slice(0, 8))
+        : "-"
+      // Observaciones: para pedidos toma orders.notes; para manuales toma reparto_items.observaciones
+      const obsRaw = i.order_id ? (i.orders?.notes || "") : (i.observaciones || "")
+      const obs = obsRaw ? escapeHtml(truncate(String(obsRaw))) : "-"
+      return `
       <tr>
         <td>${i.orden_reparto || "-"}</td>
-        <td>${i.client_name || i.descripcion_extra || "-"}</td>
-        <td>${i.sucursal_entrega || "-"}</td>
-      </tr>`).join("")
+        <td class="mono">${escapeHtml(String(nroPedido))}</td>
+        <td>${escapeHtml(i.client_name || i.descripcion_extra || "-")}</td>
+        <td>${escapeHtml(i.sucursal_entrega || "-")}</td>
+        <td class="obs">${obs}</td>
+      </tr>`
+    }).join("")
     w.document.write(`<html><head><title>Reparto ${numeroActual}</title>
-      <style>body{font-family:sans-serif;max-width:900px;margin:30px auto}h2{margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #ccc;padding:8px;font-size:13px}th{background:#f5f5f5;text-align:left}</style></head><body>
+      <style>
+        body{font-family:sans-serif;max-width:1100px;margin:30px auto}
+        h2{margin-bottom:4px}
+        table{width:100%;border-collapse:collapse;margin-top:12px;table-layout:fixed}
+        th,td{border:1px solid #ccc;padding:6px 8px;font-size:12px;vertical-align:top;word-wrap:break-word}
+        th{background:#f5f5f5;text-align:left;font-size:11px}
+        .col-orden{width:50px}
+        .col-pedido{width:110px}
+        .col-cliente{width:auto}
+        .col-sucursal{width:200px}
+        .col-obs{width:240px}
+        td.mono{font-family:monospace;font-size:11px}
+        td.obs{font-size:11px;color:#444}
+      </style></head><body>
       <h2>Reparto N° ${numeroActual || "-"}</h2>
       <p>Fecha: ${formatDateStr(selectedFecha)} — Destinos: ${visibles.length}</p>
-      <table><thead><tr><th>Orden</th><th>Cliente</th><th>Sucursal Entrega</th></tr></thead>
-      <tbody>${rowsHtml}</tbody></table>
+      <table>
+        <colgroup>
+          <col class="col-orden"/><col class="col-pedido"/><col class="col-cliente"/>
+          <col class="col-sucursal"/><col class="col-obs"/>
+        </colgroup>
+        <thead><tr>
+          <th>Orden</th><th>Nº Pedido</th><th>Cliente</th><th>Sucursal Entrega</th><th>Observaciones</th>
+        </tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
       <script>window.print()<\/script></body></html>`)
   }
 
@@ -309,6 +344,7 @@ function DialogNuevoDestino({ open, onClose, selectedFecha, onSaved }: {
   const [descripcion, setDescripcion] = useState("")
   const [sucursal, setSucursal] = useState("")
   const [repartidor, setRepartidor] = useState("")
+  const [observaciones, setObservaciones] = useState("")
   const [tipoAsoc, setTipoAsoc] = useState<"ninguno" | "cliente" | "proveedor">("ninguno")
   const [searchAsoc, setSearchAsoc] = useState("")
   const [results, setResults] = useState<AsocResult[]>([])
@@ -319,7 +355,7 @@ function DialogNuevoDestino({ open, onClose, selectedFecha, onSaved }: {
   // Reset al abrir/cerrar
   useEffect(() => {
     if (!open) {
-      setDescripcion(""); setSucursal(""); setRepartidor("")
+      setDescripcion(""); setSucursal(""); setRepartidor(""); setObservaciones("")
       setTipoAsoc("ninguno"); setSearchAsoc(""); setResults([]); setSelectedAsoc(null)
     }
   }, [open])
@@ -383,6 +419,7 @@ function DialogNuevoDestino({ open, onClose, selectedFecha, onSaved }: {
         estado_entrega: "pendiente",
         cliente_id: tipoAsoc === "cliente" ? selectedAsoc?.id || null : null,
         proveedor_id: tipoAsoc === "proveedor" ? selectedAsoc?.id || null : null,
+        observaciones: observaciones.trim() || null,
       })
       await onSaved()
     } catch (e: any) {
@@ -473,6 +510,13 @@ function DialogNuevoDestino({ open, onClose, selectedFecha, onSaved }: {
                 {REPARTIDORES.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1 block">Observaciones</label>
+            <textarea value={observaciones} onChange={(e) => setObservaciones(e.target.value)}
+              rows={2}
+              className="w-full border rounded-md px-3 py-2 text-sm"
+              placeholder="Notas para el repartidor (opcional)" />
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <button onClick={onClose} className="px-3 py-2 border rounded-md text-sm">Cancelar</button>
