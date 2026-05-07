@@ -9,8 +9,9 @@ import { createClient } from "@/lib/supabase/client"
 import {
   fetchRepartos, fetchRepartoItems, ensureRepartoForFecha, createRepartoItem,
   updateRepartoItem, deleteRepartoItem, formatNumeroReparto, proximoDiaHabil,
-  updateOrderStatus, iniciarReparto,
+  updateOrderStatus, iniciarReparto, fetchProveedorSucursales,
 } from "@/lib/supabase/queries"
+import Link from "next/link"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import { formatDateStr } from "@/lib/utils"
 import { Plus, Printer, Download, Trash2, CheckCircle2, PlayCircle } from "lucide-react"
@@ -127,12 +128,20 @@ export default function LogisticaPage() {
       // Observaciones: para pedidos toma orders.notes; para manuales toma reparto_items.observaciones
       const obsRaw = i.order_id ? (i.orders?.notes || "") : (i.observaciones || "")
       const obs = obsRaw ? escapeHtml(truncate(String(obsRaw))) : "-"
+      // Sucursal: si hay proveedor_sucursal_id, mostrar nombre + dirección (override).
+      let sucursalTxt: string
+      if (i.proveedor_sucursal_id && i.proveedor_sucursales) {
+        const ps = i.proveedor_sucursales
+        sucursalTxt = ps.direccion ? `${ps.nombre} — ${ps.direccion}` : ps.nombre
+      } else {
+        sucursalTxt = i.sucursal_entrega || "-"
+      }
       return `
       <tr>
         <td>${i.orden_reparto || "-"}</td>
         <td class="mono">${escapeHtml(String(nroPedido))}</td>
         <td>${escapeHtml(i.client_name || i.descripcion_extra || "-")}</td>
-        <td>${escapeHtml(i.sucursal_entrega || "-")}</td>
+        <td>${escapeHtml(sucursalTxt)}</td>
         <td class="obs">${obs}</td>
       </tr>`
     }).join("")
@@ -351,19 +360,42 @@ function DialogNuevoDestino({ open, onClose, selectedFecha, onSaved }: {
   const [selectedAsoc, setSelectedAsoc] = useState<AsocResult | null>(null)
   const [searching, setSearching] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [sucursalesProv, setSucursalesProv] = useState<Array<{ id: string; nombre: string; direccion: string | null }>>([])
+  const [selectedSucursalId, setSelectedSucursalId] = useState<string>("")
+  const [loadingSucursales, setLoadingSucursales] = useState(false)
 
   // Reset al abrir/cerrar
   useEffect(() => {
     if (!open) {
       setDescripcion(""); setSucursal(""); setRepartidor(""); setObservaciones("")
       setTipoAsoc("ninguno"); setSearchAsoc(""); setResults([]); setSelectedAsoc(null)
+      setSucursalesProv([]); setSelectedSucursalId("")
     }
   }, [open])
 
   // Resetear selección si cambia el tipo
   useEffect(() => {
     setSearchAsoc(""); setResults([]); setSelectedAsoc(null)
+    setSucursalesProv([]); setSelectedSucursalId("")
   }, [tipoAsoc])
+
+  // Cargar sucursales cuando se selecciona un proveedor
+  useEffect(() => {
+    if (tipoAsoc !== "proveedor" || !selectedAsoc) {
+      setSucursalesProv([]); setSelectedSucursalId("")
+      return
+    }
+    let cancelled = false
+    setLoadingSucursales(true)
+    fetchProveedorSucursales(selectedAsoc.id)
+      .then((data) => {
+        if (cancelled) return
+        setSucursalesProv(data.map((s: any) => ({ id: s.id, nombre: s.nombre, direccion: s.direccion })))
+      })
+      .catch((e) => console.error("Error cargando sucursales:", e))
+      .finally(() => { if (!cancelled) setLoadingSucursales(false) })
+    return () => { cancelled = true }
+  }, [tipoAsoc, selectedAsoc])
 
   // Búsqueda con debounce
   useEffect(() => {
@@ -419,6 +451,7 @@ function DialogNuevoDestino({ open, onClose, selectedFecha, onSaved }: {
         estado_entrega: "pendiente",
         cliente_id: tipoAsoc === "cliente" ? selectedAsoc?.id || null : null,
         proveedor_id: tipoAsoc === "proveedor" ? selectedAsoc?.id || null : null,
+        proveedor_sucursal_id: tipoAsoc === "proveedor" && selectedSucursalId ? selectedSucursalId : null,
         observaciones: observaciones.trim() || null,
       })
       await onSaved()
@@ -486,6 +519,32 @@ function DialogNuevoDestino({ open, onClose, selectedFecha, onSaved }: {
                     </div>
                   )}
                 </div>
+              )}
+            </div>
+          )}
+          {tipoAsoc === "proveedor" && selectedAsoc && (
+            <div>
+              <label className="text-sm font-medium mb-1 block">Sucursal de retiro</label>
+              {loadingSucursales ? (
+                <p className="text-xs text-muted-foreground py-2">Cargando sucursales…</p>
+              ) : sucursalesProv.length === 0 ? (
+                <div className="text-xs text-muted-foreground border rounded-md px-3 py-2 bg-gray-50">
+                  Sin sucursales cargadas —{" "}
+                  <Link href={`/admin/proveedores/${selectedAsoc.id}`} className="text-primary underline">
+                    configurar en ficha del proveedor
+                  </Link>
+                </div>
+              ) : (
+                <Select value={selectedSucursalId} onValueChange={setSelectedSucursalId}>
+                  <SelectTrigger><SelectValue placeholder="Sin sucursal específica" /></SelectTrigger>
+                  <SelectContent>
+                    {sucursalesProv.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.nombre}{s.direccion ? ` — ${s.direccion}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </div>
           )}

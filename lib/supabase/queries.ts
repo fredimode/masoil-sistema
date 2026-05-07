@@ -1309,11 +1309,10 @@ export async function ensureRepartoForFecha(fechaISO: string): Promise<string> {
 
 export async function fetchRepartoItems(repartoId: string): Promise<any[]> {
   const supabase = createSupabaseClient()
-  // Join con orders para obtener notes y order_number_serial — necesarios
-  // para el PDF de impresión (Nº Pedido y Observaciones).
+  // Join con orders y proveedor_sucursales para tener todos los datos del PDF.
   const { data, error } = await supabase
     .from("reparto_items")
-    .select("*, orders(order_number_serial, order_number, notes)")
+    .select("*, orders(order_number_serial, order_number, notes), proveedor_sucursales(nombre, direccion, localidad)")
     .eq("reparto_id", repartoId)
     .order("orden_reparto", { ascending: true, nullsFirst: false })
   if (error) return []
