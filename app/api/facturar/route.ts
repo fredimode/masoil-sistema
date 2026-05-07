@@ -355,6 +355,7 @@ export async function POST(request: NextRequest) {
       haber,
       saldo: debe - haber,
       referencia_id: String(factura.id),
+      empresa,
       observaciones: `${tipoFactura} generada desde el sistema`,
     })
     if (ccErr) {

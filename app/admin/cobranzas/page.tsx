@@ -13,7 +13,6 @@ import {
   deleteCobranzaPendiente, fetchVendedores, getNextReciboNumero,
   createReciboCobranza, createChequesRecibidos, fetchRecibosCobranza,
 } from "@/lib/supabase/queries"
-import { createClient } from "@/lib/supabase/client"
 import { formatCurrency, normalizeSearch, formatDateStr } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { Search, Download, Plus, Trash2, Eye, Printer } from "lucide-react"
@@ -44,6 +43,16 @@ type RetencionForm = {
 
 const TIPOS_RETENCION = ["ARBA", "ARCA", "IIBB_CABA", "IIBB_BSAS", "IVA", "GANANCIAS", "Otro"]
 const RAZONES_SOCIALES = ["Masoil", "Aquiles", "Conancap", "Todas"]
+
+// Devuelve la empresa a guardar en el movimiento manual a partir del filtro
+// global. Si el filtro está en "Todas" o "INCLUIR" no podemos asignar
+// (sería arbitrario) → null. El filtro de la cta cte deja pasar los nulls.
+function empresaParaInsert(empresaFilter: string): string | null {
+  if (!empresaFilter) return null
+  if (empresaFilter === "Todas") return null
+  if (empresaFilter === "INCLUIR") return null
+  return empresaFilter
+}
 
 // Normaliza tipos históricos a códigos cortos FC/NC/ND/RC/RT
 function normalizeTipoComp(t: string | null | undefined): string {
@@ -155,6 +164,7 @@ export default function CobranzasPage() {
             vendedores={vendedores}
             cobranzas={cobranzas}
             setCobranzas={setCobranzas}
+            empresaFilter={empresaFilter}
             onReciboCreado={(rec) => setRecibosCobranza((prev) => [rec, ...prev])}
           />
         </TabsContent>
@@ -205,45 +215,6 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
   const [todos, setTodos] = useState(false)
   const [page, setPage] = useState(1)
   const [activosFilter, setActivosFilter] = useState<"activos" | "inactivos" | "todos">("activos")
-  // Map movement.id → empresa (derivada de facturas vía referencia_id).
-  // Movements sin referencia_id o con ref a tabla distinta de facturas
-  // quedan sin empresa conocida y pasan el filtro siempre.
-  const [empresaByMov, setEmpresaByMov] = useState<Record<string, string>>({})
-
-  useEffect(() => {
-    let cancelled = false
-    async function annotate() {
-      const facturaIds = movimientos
-        .map((m) => parseInt(String(m.referencia_id), 10))
-        .filter((n) => Number.isFinite(n) && n > 0)
-      if (facturaIds.length === 0) {
-        setEmpresaByMov({})
-        return
-      }
-      try {
-        const supabase = createClient()
-        const { data } = await supabase
-          .from("facturas")
-          .select("id, empresa")
-          .in("id", [...new Set(facturaIds)])
-        if (cancelled) return
-        const empByFacturaId: Record<string, string> = {}
-        for (const f of data || []) {
-          if (f.empresa) empByFacturaId[String(f.id)] = f.empresa
-        }
-        const map: Record<string, string> = {}
-        for (const m of movimientos) {
-          const emp = empByFacturaId[String(m.referencia_id)]
-          if (emp) map[m.id] = emp
-        }
-        setEmpresaByMov(map)
-      } catch (e) {
-        console.error("Error anotando empresa de movimientos:", e)
-      }
-    }
-    annotate()
-    return () => { cancelled = true }
-  }, [movimientos])
   const [ajustarOpen, setAjustarOpen] = useState(false)
   const [ajusteTipo, setAjusteTipo] = useState<"DEBE" | "HABER">("DEBE")
   const [ajusteImporte, setAjusteImporte] = useState("")
@@ -322,18 +293,18 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
     let rows = movimientos
     if (desde) rows = rows.filter((m) => (m.fecha || "") >= desde)
     if (hasta) rows = rows.filter((m) => (m.fecha || "") <= hasta)
-    // Filtro por empresa (global del header). Si la empresa del movimiento no
-    // se conoce (RC, RT, ajustes manuales, GestionPro legacy), pasa siempre
-    // para no esconder data accidentalmente.
+    // Filtro por empresa (global del header). cuenta_corriente_cliente.empresa
+    // se persiste al insertar (Fix 2.5). Movimientos legacy sin backfill o
+    // tipos sin empresa conocida (algunos ajustes/NC manuales) quedan en NULL
+    // y pasan el filter para no esconder data.
     if (empresaFilter && empresaFilter !== "Todas") {
       rows = rows.filter((m) => {
-        const emp = empresaByMov[m.id]
-        if (!emp) return true
-        return emp.toLowerCase() === empresaFilter.toLowerCase()
+        if (!m.empresa) return true
+        return String(m.empresa).toLowerCase() === empresaFilter.toLowerCase()
       })
     }
     return rows
-  }, [movimientos, desde, hasta, empresaFilter, empresaByMov])
+  }, [movimientos, desde, hasta, empresaFilter])
 
   const totalDebe = useMemo(() => filtered.reduce((s, m) => s + (m.debe || 0), 0), [filtered])
   const totalHaber = useMemo(() => filtered.reduce((s, m) => s + (m.haber || 0), 0), [filtered])
@@ -371,6 +342,7 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
     try {
       await createMovimientoCuentaCorriente({
         client_id: selectedClient.id,
+        empresa: empresaParaInsert(empresaFilter),
         fecha: new Date().toISOString().slice(0, 10),
         tipo_comprobante: "AJ",
         punto_venta: null,
@@ -544,7 +516,11 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
                   <TableHead>Comprob.</TableHead>
                   <TableHead className="text-right">Debe</TableHead>
                   <TableHead className="text-right">Haber</TableHead>
-                  <TableHead className="text-right">Saldo</TableHead>
+                  <TableHead className="text-right">
+                    <span title="Acumulado según filtro actual (fechas y empresa)">
+                      Saldo <span className="text-muted-foreground/60 cursor-help">ⓘ</span>
+                    </span>
+                  </TableHead>
                   <TableHead className="w-24 text-center">Ver</TableHead>
                 </TableRow>
               </TableHeader>
@@ -676,9 +652,9 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
 // ─── Tab 2: Registrar Cobro ─────────────────────────────────────────────────
 
 function TabRegistrarCobro({
-  clients, vendedores, cobranzas, setCobranzas, onReciboCreado,
+  clients, vendedores, cobranzas, setCobranzas, empresaFilter, onReciboCreado,
 }: {
-  clients: any[]; vendedores: any[]; cobranzas: any[]; setCobranzas: (c: any[]) => void; onReciboCreado: (r: any) => void
+  clients: any[]; vendedores: any[]; cobranzas: any[]; setCobranzas: (c: any[]) => void; empresaFilter: string; onReciboCreado: (r: any) => void
 }) {
   const [search, setSearch] = useState("")
   const [showDropdown, setShowDropdown] = useState(false)
@@ -724,6 +700,7 @@ function TabRegistrarCobro({
       })
       await createMovimientoCuentaCorriente({
         client_id: selectedClient.id,
+        empresa: empresaParaInsert(empresaFilter),
         fecha: retForm.fecha,
         tipo_comprobante: "RT",
         punto_venta: 0,
@@ -754,6 +731,7 @@ function TabRegistrarCobro({
     try {
       await createMovimientoCuentaCorriente({
         client_id: selectedClient.id,
+        empresa: empresaParaInsert(empresaFilter),
         fecha: ncForm.fecha,
         tipo_comprobante: "NC",
         punto_venta: 0,
@@ -895,6 +873,7 @@ function TabRegistrarCobro({
         razon_social_cliente: selectedClient.businessName,
         vendedor_id: selectedClient.vendedorId || null,
         vendedor_nombre: vendedorNombre || null,
+        empresa: empresaParaInsert(empresaFilter),
         total_facturas: totalSeleccionado,
         total_retenciones: totalRets,
         total_valores: totalValores,
@@ -937,8 +916,10 @@ function TabRegistrarCobro({
 
       // Create movimiento en cuenta corriente - RECIBO (HABER)
       const reciboLabel = `REC-${String(reciboNum).padStart(4, "0")}`
+      const empresaRecibo = empresaParaInsert(empresaFilter)
       await createMovimientoCuentaCorriente({
         client_id: selectedClient.id,
+        empresa: empresaRecibo,
         fecha,
         tipo_comprobante: "RC",
         punto_venta: 0,
@@ -953,6 +934,7 @@ function TabRegistrarCobro({
       if (totalRets > 0) {
         await createMovimientoCuentaCorriente({
           client_id: selectedClient.id,
+          empresa: empresaRecibo,
           fecha,
           tipo_comprobante: "RT",
           punto_venta: 0,

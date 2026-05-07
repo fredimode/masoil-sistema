@@ -200,6 +200,7 @@ async function main() {
       debe,
       haber,
       saldo,
+      empresa: currentEmpresa || null,
       observaciones: `GestionPro | ${currentEmpresa || ""} | ${col1}${letra ? " " + letra : ""}`.trim(),
     })
   }
