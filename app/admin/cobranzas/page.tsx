@@ -1599,14 +1599,15 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
 
   // Agrupar por cliente (alfabético)
   const porCliente = useMemo(() => {
-    type Grupo = { client_id: string; client_name: string; facturas: any[]; total: number }
+    type Grupo = { client_id: string; client_name: string; client_cuit: string | null; facturas: any[]; total: number }
     const map = new Map<string, Grupo>()
     for (const c of pendientes) {
       const id = c.client_id || "sin_cliente"
       const cli = clientMap[id]
       const name = cli?.businessName || c.client_name || "Sin cliente"
+      const cuit = cli?.cuit || cli?.numeroDocum || c.cuit_cliente || null
       const saldo = Number(c.saldo_pendiente ?? c.total ?? 0)
-      const entry: Grupo = map.get(id) || { client_id: id, client_name: name, facturas: [] as any[], total: 0 }
+      const entry: Grupo = map.get(id) || { client_id: id, client_name: name, client_cuit: cuit, facturas: [] as any[], total: 0 }
       entry.facturas.push(c)
       entry.total += saldo
       map.set(id, entry)
@@ -1836,7 +1837,7 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
   )
 }
 
-function GrupoCliente({ grupo, expanded, onToggle }: { grupo: { client_id: string; client_name: string; facturas: any[]; total: number }; expanded: boolean; onToggle: () => void }) {
+function GrupoCliente({ grupo, expanded, onToggle }: { grupo: { client_id: string; client_name: string; client_cuit: string | null; facturas: any[]; total: number }; expanded: boolean; onToggle: () => void }) {
   const ordenadas = [...grupo.facturas].sort((a, b) => {
     const fa = a.fecha_comprobante || a.fecha || a.created_at || ""
     const fb = b.fecha_comprobante || b.fecha || b.created_at || ""
@@ -1850,7 +1851,12 @@ function GrupoCliente({ grupo, expanded, onToggle }: { grupo: { client_id: strin
         className="w-full px-4 py-2 flex items-center gap-3 hover:bg-blue-50 text-left"
       >
         <span className="inline-block w-4 text-gray-500">{expanded ? "▼" : "▶"}</span>
-        <span className="flex-1 font-medium">{grupo.client_name}</span>
+        <span className="flex-1">
+          <span className="font-medium">Cliente: {grupo.client_name}</span>
+          {grupo.client_cuit && (
+            <span className="ml-3 text-sm text-gray-600 font-mono">CUIT: {grupo.client_cuit}</span>
+          )}
+        </span>
         <span className="text-right text-sm text-gray-600 w-28">{grupo.facturas.length} facturas</span>
         <span className="text-right font-semibold text-red-600 w-32">{formatCurrency(grupo.total)}</span>
       </button>
