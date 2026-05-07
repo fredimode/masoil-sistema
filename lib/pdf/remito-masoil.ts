@@ -202,8 +202,9 @@ export async function generarRemitoPDF(data: RemitoPDFData): Promise<Uint8Array>
   y = y - CLIENTE_H - 14
 
   // ════════════════ DETALLE (sin precios) ════════════════
-  const COL_DESC = LEFT
-  const COL_CANT = LEFT + 430
+  // Cantidad a la izquierda, descripción después.
+  const COL_CANT = LEFT
+  const COL_DESC = LEFT + 70
 
   const HEAD_H = 18
   const headTop = y
@@ -214,11 +215,11 @@ export async function generarRemitoPDF(data: RemitoPDFData): Promise<Uint8Array>
     color: veryLight,
     borderColor: black, borderWidth: 0.6,
   })
+  page.drawText("CANT.", { x: COL_CANT + 8, y: y - 12, size: 8, font: fontBold, color: black })
   page.drawText("DESCRIPCIÓN", { x: COL_DESC + 8, y: y - 12, size: 8, font: fontBold, color: black })
-  page.drawText("CANTIDAD", { x: COL_CANT + 8, y: y - 12, size: 8, font: fontBold, color: black })
   page.drawLine({
-    start: { x: COL_CANT, y: headTop },
-    end: { x: COL_CANT, y: headBot },
+    start: { x: COL_DESC, y: headTop },
+    end: { x: COL_DESC, y: headBot },
     thickness: 0.5, color: black,
   })
   y = headBot
@@ -228,12 +229,14 @@ export async function generarRemitoPDF(data: RemitoPDFData): Promise<Uint8Array>
   for (const item of data.items) {
     const desc = item.descripcion.length > 75 ? item.descripcion.slice(0, 72) + "..." : item.descripcion
     const rowBaseY = y - 10
-    page.drawText(desc, { x: COL_DESC + 8, y: rowBaseY, size: 8, font: fontReg, color: black })
     const cantStr = String(item.cantidad)
+    // Cantidad alineada al centro del bloque cant (left side)
+    const cantW = fontReg.widthOfTextAtSize(cantStr, 8)
     page.drawText(cantStr, {
-      x: RIGHT - fontReg.widthOfTextAtSize(cantStr, 8) - 8,
+      x: COL_DESC - cantW - 10,
       y: rowBaseY, size: 8, font: fontReg, color: black,
     })
+    page.drawText(desc, { x: COL_DESC + 8, y: rowBaseY, size: 8, font: fontReg, color: black })
     y -= ROW_H
   }
 
@@ -244,8 +247,8 @@ export async function generarRemitoPDF(data: RemitoPDFData): Promise<Uint8Array>
     borderColor: black, borderWidth: 0.6,
   })
   page.drawLine({
-    start: { x: COL_CANT, y: detalleTop },
-    end: { x: COL_CANT, y: detalleBot },
+    start: { x: COL_DESC, y: detalleTop },
+    end: { x: COL_DESC, y: detalleBot },
     thickness: 0.4, color: lightGray,
   })
 
