@@ -1294,7 +1294,10 @@ export async function deleteRepartoItem(id: string): Promise<void> {
   if (error) throw error
 }
 
-// Al pasar un pedido a FACTURADO, asignarlo al reparto del próximo día hábil
+// Al pasar un pedido a FACTURADO o FACTURADO_PARCIAL, asignarlo al reparto
+// del próximo día hábil. Permitimos re-asignación: si el pedido ya está en
+// un reparto antiguo pero hoy hay items pendientes, lo movemos al nuevo.
+// Idempotente: si ya está en el reparto destino, no hacemos nada.
 export async function assignOrderToNextReparto(orderId: string): Promise<void> {
   const supabase = createSupabaseClient()
   const { data: order } = await supabase
@@ -1303,11 +1306,23 @@ export async function assignOrderToNextReparto(orderId: string): Promise<void> {
     .eq("id", orderId)
     .single()
   if (!order) return
-  if (order.reparto_id) return // ya asignado
 
   const fecha = proximoDiaHabil(new Date())
   const fechaISO = fecha.toISOString().slice(0, 10)
   const repartoId = await ensureRepartoForFecha(fechaISO)
+
+  // Ya está en este mismo reparto → nada que hacer.
+  if (order.reparto_id === repartoId) return
+
+  // Verificar si ya existe reparto_item para este order en el reparto destino
+  // (defensa contra duplicados aunque order.reparto_id apunte a otro lado).
+  const { data: existing } = await supabase
+    .from("reparto_items")
+    .select("id")
+    .eq("reparto_id", repartoId)
+    .eq("order_id", orderId)
+    .maybeSingle()
+  if (existing) return
 
   let facturaNro: string | null = null
   if (order.factura_id) {
