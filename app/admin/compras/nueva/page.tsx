@@ -568,8 +568,16 @@ function NuevaCompraForm() {
                                 />
                               </td>
                               <td className="px-2 py-1.5 min-w-0">
-                                <span className="font-mono text-xs text-gray-400 mr-1">{item.code || "S/C"}</span>
-                                <span className="text-sm font-medium">{item.name}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-xs text-gray-400 shrink-0">{item.code || "S/C"}</span>
+                                  <input
+                                    type="text"
+                                    value={item.name}
+                                    onChange={(e) => setCompraItems((prev) => prev.map((i, j) => (j === idx ? { ...i, name: e.target.value } : i)))}
+                                    className="flex-1 min-w-0 p-1 border rounded text-sm font-medium"
+                                    title="Editable: el código no cambia"
+                                  />
+                                </div>
                               </td>
                               <td className="px-2 py-1.5">
                                 <input
