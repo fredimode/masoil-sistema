@@ -19,12 +19,17 @@ import {
   fetchPagosProveedores,
   fetchReclamosByProveedor,
   updateProveedor,
+  fetchProveedorSucursales,
+  createProveedorSucursal,
+  updateProveedorSucursal,
+  deleteProveedorSucursal,
 } from "@/lib/supabase/queries"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { ArrowLeft, Edit, MessageCircle, Save } from "lucide-react"
+import { ArrowLeft, Edit, MessageCircle, Save, Plus, Trash2, X, Check } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { ProveedorProductosSection } from "@/components/admin/proveedor-productos-section"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 
 export default function AdminProveedorDetailPage({
   params,
@@ -385,6 +390,234 @@ export default function AdminProveedorDetailPage({
           </div>
         )}
       </Card>
+
+      {/* Sucursales de retiro */}
+      <SucursalesRetiroSection proveedorId={id} />
     </div>
+  )
+}
+
+// ─── Sucursales de retiro ────────────────────────────────────────────────────
+
+interface Sucursal {
+  id: string
+  proveedor_id: string
+  nombre: string
+  direccion: string | null
+  localidad: string | null
+  provincia: string | null
+  telefono: string | null
+  horario: string | null
+  notas: string | null
+}
+
+function SucursalesRetiroSection({ proveedorId }: { proveedorId: string }) {
+  const [sucursales, setSucursales] = useState<Sucursal[]>([])
+  const [loading, setLoading] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editing, setEditing] = useState<Sucursal | null>(null)
+
+  async function reload() {
+    setLoading(true)
+    try {
+      const data = await fetchProveedorSucursales(proveedorId)
+      setSucursales(data as Sucursal[])
+    } catch (e) {
+      console.error("Error cargando sucursales:", e)
+    } finally { setLoading(false) }
+  }
+
+  useEffect(() => { reload() }, [proveedorId])
+
+  async function handleEliminar(s: Sucursal) {
+    if (!confirm(`¿Eliminar la sucursal "${s.nombre}"?`)) return
+    try {
+      await deleteProveedorSucursal(s.id)
+      setSucursales((prev) => prev.filter((x) => x.id !== s.id))
+    } catch (e: any) {
+      alert("Error eliminando sucursal: " + (e?.message || e))
+    }
+  }
+
+  function abrirNueva() { setEditing(null); setDialogOpen(true) }
+  function abrirEditar(s: Sucursal) { setEditing(s); setDialogOpen(true) }
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold">Sucursales de retiro</h3>
+        <Button size="sm" onClick={abrirNueva}>
+          <Plus className="h-4 w-4 mr-1" /> Nueva sucursal
+        </Button>
+      </div>
+      {loading ? (
+        <p className="text-sm text-muted-foreground py-4">Cargando…</p>
+      ) : sucursales.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground">
+          <p className="text-sm">No hay sucursales cargadas para este proveedor.</p>
+        </div>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nombre</TableHead>
+              <TableHead>Dirección</TableHead>
+              <TableHead>Localidad / Provincia</TableHead>
+              <TableHead>Teléfono</TableHead>
+              <TableHead>Horario</TableHead>
+              <TableHead className="w-24"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {sucursales.map((s) => (
+              <TableRow key={s.id}>
+                <TableCell className="font-medium">{s.nombre}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{s.direccion || "-"}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {[s.localidad, s.provincia].filter(Boolean).join(" / ") || "-"}
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">{s.telefono || "-"}</TableCell>
+                <TableCell className="text-sm text-muted-foreground">{s.horario || "-"}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => abrirEditar(s)} title="Editar">
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleEliminar(s)} title="Eliminar"
+                      className="text-red-600 hover:text-red-800">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+
+      <SucursalDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        proveedorId={proveedorId}
+        editing={editing}
+        onSaved={async () => { setDialogOpen(false); await reload() }}
+      />
+    </Card>
+  )
+}
+
+function SucursalDialog({ open, onClose, proveedorId, editing, onSaved }: {
+  open: boolean
+  onClose: () => void
+  proveedorId: string
+  editing: Sucursal | null
+  onSaved: () => void | Promise<void>
+}) {
+  const [nombre, setNombre] = useState("")
+  const [direccion, setDireccion] = useState("")
+  const [localidad, setLocalidad] = useState("")
+  const [provincia, setProvincia] = useState("")
+  const [telefono, setTelefono] = useState("")
+  const [horario, setHorario] = useState("")
+  const [notas, setNotas] = useState("")
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setNombre(editing?.nombre || "")
+      setDireccion(editing?.direccion || "")
+      setLocalidad(editing?.localidad || "")
+      setProvincia(editing?.provincia || "")
+      setTelefono(editing?.telefono || "")
+      setHorario(editing?.horario || "")
+      setNotas(editing?.notas || "")
+    }
+  }, [open, editing])
+
+  async function handleGuardar() {
+    if (!nombre.trim()) { alert("El nombre es obligatorio"); return }
+    setSaving(true)
+    try {
+      const payload = {
+        nombre: nombre.trim(),
+        direccion: direccion.trim() || null,
+        localidad: localidad.trim() || null,
+        provincia: provincia.trim() || null,
+        telefono: telefono.trim() || null,
+        horario: horario.trim() || null,
+        notas: notas.trim() || null,
+      }
+      if (editing) {
+        await updateProveedorSucursal(editing.id, payload)
+      } else {
+        await createProveedorSucursal({ proveedor_id: proveedorId, ...payload })
+      }
+      await onSaved()
+    } catch (e: any) {
+      alert("Error: " + (e?.message || e))
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{editing ? "Editar sucursal" : "Nueva sucursal"}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div>
+            <label className="text-sm font-medium mb-1 block">Nombre *</label>
+            <input value={nombre} onChange={(e) => setNombre(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm"
+              placeholder="Ej: Sucursal Centro, Depósito Norte" />
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1 block">Dirección</label>
+            <input value={direccion} onChange={(e) => setDireccion(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Localidad</label>
+              <input value={localidad} onChange={(e) => setLocalidad(e.target.value)}
+                className="w-full border rounded-md px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Provincia</label>
+              <input value={provincia} onChange={(e) => setProvincia(e.target.value)}
+                className="w-full border rounded-md px-3 py-2 text-sm" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Teléfono</label>
+              <input value={telefono} onChange={(e) => setTelefono(e.target.value)}
+                className="w-full border rounded-md px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Horario</label>
+              <input value={horario} onChange={(e) => setHorario(e.target.value)}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+                placeholder="Ej: Lun-Vie 8 a 17" />
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1 block">Notas</label>
+            <textarea value={notas} onChange={(e) => setNotas(e.target.value)}
+              rows={2}
+              className="w-full border rounded-md px-3 py-2 text-sm"
+              placeholder="Indicaciones para el repartidor (opcional)" />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={onClose}>
+              <X className="h-4 w-4 mr-1" /> Cancelar
+            </Button>
+            <Button onClick={handleGuardar} disabled={saving}>
+              <Check className="h-4 w-4 mr-1" /> {saving ? "Guardando…" : "Guardar"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

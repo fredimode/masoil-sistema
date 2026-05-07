@@ -630,6 +630,49 @@ export async function fetchProveedores(): Promise<any[]> {
   return data || []
 }
 
+export async function fetchProveedorSucursales(proveedorId: string): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("proveedor_sucursales")
+    .select("*")
+    .eq("proveedor_id", proveedorId)
+    .order("nombre", { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
+export async function createProveedorSucursal(input: {
+  proveedor_id: string
+  nombre: string
+  direccion?: string | null
+  localidad?: string | null
+  provincia?: string | null
+  telefono?: string | null
+  horario?: string | null
+  notas?: string | null
+}): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("proveedor_sucursales")
+    .insert(input)
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+export async function updateProveedorSucursal(id: string, updates: Record<string, any>): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("proveedor_sucursales").update(updates).eq("id", id)
+  if (error) throw error
+}
+
+export async function deleteProveedorSucursal(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("proveedor_sucursales").delete().eq("id", id)
+  if (error) throw error
+}
+
 export async function fetchProveedoresCount(): Promise<number> {
   const supabase = createSupabaseClient()
   const { count, error } = await supabase
