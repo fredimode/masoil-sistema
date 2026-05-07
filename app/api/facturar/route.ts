@@ -335,6 +335,51 @@ export async function POST(request: NextRequest) {
     await supabase.from("orders").update({ factura_id: factura.id }).eq("id", orderId)
   }
 
+  // ───────────────── PASO 11b: Cta cte cliente ─────────────────
+  // Antes hacía esto el frontend después del response, lo cual era frágil:
+  // si fallaba storage/db acá pero AFIP ya tenía el CAE, la factura quedaba
+  // sin entrar a cta cte. Ahora se hace junto al insert de la factura.
+  // FC y ND → debe (suma deuda); NC → haber (resta deuda).
+  try {
+    const [pvCC, nroCC] = String(numero).split("-")
+    const tipoCC = esNC ? "NC" : esND ? "ND" : "FC"
+    const debe = esNC ? 0 : total
+    const haber = esNC ? total : 0
+    const { error: ccErr } = await supabase.from("cuenta_corriente_cliente").insert({
+      client_id: clientId,
+      fecha: new Date().toISOString().slice(0, 10),
+      tipo_comprobante: tipoCC,
+      punto_venta: pvCC || "",
+      numero_comprobante: nroCC || numero,
+      debe,
+      haber,
+      saldo: debe - haber,
+      referencia_id: String(factura.id),
+      observaciones: `${tipoFactura} generada desde el sistema`,
+    })
+    if (ccErr) {
+      // No revierto la factura — ya tiene CAE en AFIP. Loggeo claro para
+      // auditoría manual: hay que insertar el movimiento a mano si esto falla.
+      console.error('Step 11b: ERROR cta cte (factura YA emitida en AFIP):', {
+        facturaId: factura.id,
+        numero,
+        clientId,
+        cae,
+        error: ccErr,
+      })
+    } else {
+      console.log('Step 11b: Cta cte OK →', tipoCC, debe || -haber)
+    }
+  } catch (e) {
+    console.error('Step 11b: EXCEPTION cta cte (factura YA emitida en AFIP):', {
+      facturaId: factura.id,
+      numero,
+      clientId,
+      cae,
+      error: e,
+    })
+  }
+
   // ───────────────── PASO 12: Email (deshabilitado temporalmente para testing) ─────────────────
   const EMAIL_ENABLED = false // cambiar a true cuando esté listo para producción real
   let emailEnviado = false

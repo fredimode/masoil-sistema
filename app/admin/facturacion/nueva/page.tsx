@@ -422,27 +422,8 @@ export default function NuevaFacturaPage() {
           },
         })
 
-        // Register in cuenta corriente
-        try {
-          const facturaTotal = Number(data.total) || total
-          const isNC = tipoComprobante === "NOTA_CREDITO"
-          const [pv, nro] = String(data.numero || "").split("-")
-
-          await supabase.from("cuenta_corriente_cliente").insert({
-            client_id: clienteSeleccionado.id,
-            fecha: new Date().toISOString().slice(0, 10),
-            tipo_comprobante: tipoComprobante === "NOTA_CREDITO" ? "NC" : tipoComprobante === "NOTA_DEBITO" ? "ND" : "FC",
-            punto_venta: pv || "",
-            numero_comprobante: nro || data.numero || "",
-            debe: isNC ? 0 : facturaTotal,
-            haber: isNC ? facturaTotal : 0,
-            saldo: isNC ? -facturaTotal : facturaTotal,
-            referencia_id: String(data.facturaId || ""),
-            observaciones: `${tipoFactura} generada desde el sistema`,
-          })
-        } catch (ccErr) {
-          console.error("Error registrando en cuenta corriente:", ccErr)
-        }
+        // El insert en cuenta_corriente_cliente lo hace el endpoint /api/facturar
+        // (commit Fix 2.3). Acá ya no duplicamos la lógica.
 
         setPaso(3)
         scrollToTop()
