@@ -536,7 +536,7 @@ export default function FacturacionPage() {
                           <th className="px-2 py-1.5 text-left font-semibold text-gray-600">Descripción</th>
                           <th className="px-2 py-1.5 text-right font-semibold text-gray-600">Cant.</th>
                           <th className="px-2 py-1.5 text-right font-semibold text-gray-600">Precio Unit.</th>
-                          <th className="px-2 py-1.5 text-right font-semibold text-gray-600">Subtotal</th>
+                          <th className="px-2 py-1.5 text-right font-semibold text-gray-600">Subtotal s/IVA</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -545,13 +545,16 @@ export default function FacturacionPage() {
                           const name = it.products?.name || it.product_name || "-"
                           const qty = Number(it.quantity) || 0
                           const price = Number(it.unit_price) || 0
+                          // unit_price está cargado con IVA. Para subtotal neto
+                          // dividimos por 1.21 (todos los productos son alic 21%).
+                          const subtotalNeto = Math.round((qty * price / 1.21) * 100) / 100
                           return (
                             <tr key={it.id || idx} className="border-t">
                               <td className="px-2 py-1 font-mono text-gray-600">{code}</td>
                               <td className="px-2 py-1 text-gray-800">{name}</td>
                               <td className="px-2 py-1 text-right text-gray-700">{qty}</td>
                               <td className="px-2 py-1 text-right text-gray-700">{formatMoney(price)}</td>
-                              <td className="px-2 py-1 text-right font-medium text-gray-900">{formatMoney(qty * price)}</td>
+                              <td className="px-2 py-1 text-right font-medium text-gray-900">{formatMoney(subtotalNeto)}</td>
                             </tr>
                           )
                         })}
