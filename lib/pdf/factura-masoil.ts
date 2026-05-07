@@ -52,6 +52,11 @@ export interface FacturaPDFData {
   cae?: string | null
   vencimientoCae?: string | null    // formato AAAA-MM-DD
   observaciones?: string
+  comprobanteAsociado?: {
+    tipo: string                    // ej "FACTURA B"
+    puntoVenta: number | string
+    numero: number | string
+  }
 }
 
 const PAGE_W = 595.28
@@ -379,6 +384,16 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<Uint8Arra
     size: 10, font: fontBold, color: black,
   })
   y -= sonPesosBoxH + 14
+
+  // ════════════════ COMPROBANTE ASOCIADO (NC/ND) ════════════════
+  if (data.comprobanteAsociado) {
+    const ca = data.comprobanteAsociado
+    const pvFmt = String(ca.puntoVenta).padStart(5, "0")
+    const nroFmt = String(ca.numero).padStart(8, "0")
+    const leyenda = `Asociado a ${ca.tipo} Nº ${pvFmt}-${nroFmt}`
+    page.drawText(leyenda, { x: LEFT, y, size: 9, font: fontBold, color: black })
+    y -= 14
+  }
 
   // ════════════════ OBSERVACIONES ════════════════
   if (data.observaciones) {

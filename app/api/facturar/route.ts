@@ -269,6 +269,13 @@ export async function POST(request: NextRequest) {
       cae,
       vencimientoCae,
       observaciones,
+      comprobanteAsociado: comprobanteAsociado
+        ? {
+            tipo: String(comprobanteAsociado.tipo),
+            puntoVenta: comprobanteAsociado.puntoVenta,
+            numero: comprobanteAsociado.numero,
+          }
+        : undefined,
     })
     console.log('Step 9: PDF generado, bytes:', pdfBytes.length)
   } catch (e) {
