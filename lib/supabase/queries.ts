@@ -1294,6 +1294,52 @@ export async function deleteRepartoItem(id: string): Promise<void> {
   if (error) throw error
 }
 
+// Iniciar reparto: marca el reparto como en_curso y pasa todos sus pedidos
+// no terminales a EN_PROCESO_ENTREGA. Idempotente.
+export async function iniciarReparto(
+  repartoId: string,
+  changedBy: string,
+  changedByName?: string,
+): Promise<{ updated: number; skipped: number }> {
+  const supabase = createSupabaseClient()
+  await supabase.from("repartos").update({ estado: "en_curso" }).eq("id", repartoId)
+
+  const { data: items } = await supabase
+    .from("reparto_items")
+    .select("order_id")
+    .eq("reparto_id", repartoId)
+
+  let updated = 0
+  let skipped = 0
+  for (const it of items || []) {
+    if (!it.order_id) { skipped++; continue }
+    const { data: ord } = await supabase
+      .from("orders")
+      .select("status")
+      .eq("id", it.order_id)
+      .single()
+    if (!ord) { skipped++; continue }
+    if (ord.status === "EN_PROCESO_ENTREGA" || ord.status === "ENTREGADO" || ord.status === "CANCELADO") {
+      skipped++
+      continue
+    }
+    try {
+      await updateOrderStatus(
+        it.order_id,
+        "EN_PROCESO_ENTREGA",
+        changedBy,
+        changedByName || "Admin",
+        "Recorrido iniciado desde Logística",
+      )
+      updated++
+    } catch (e) {
+      console.error("iniciarReparto: pedido", it.order_id, e)
+      skipped++
+    }
+  }
+  return { updated, skipped }
+}
+
 // Al pasar un pedido a FACTURADO o FACTURADO_PARCIAL, asignarlo al reparto
 // del próximo día hábil. Permitimos re-asignación: si el pedido ya está en
 // un reparto antiguo pero hoy hay items pendientes, lo movemos al nuevo.

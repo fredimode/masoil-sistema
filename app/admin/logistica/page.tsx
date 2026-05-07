@@ -8,11 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   fetchRepartos, fetchRepartoItems, ensureRepartoForFecha, createRepartoItem,
   updateRepartoItem, deleteRepartoItem, formatNumeroReparto, proximoDiaHabil,
-  updateOrderStatus,
+  updateOrderStatus, iniciarReparto,
 } from "@/lib/supabase/queries"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import { formatDateStr } from "@/lib/utils"
-import { Plus, Printer, Download, Trash2, CheckCircle2 } from "lucide-react"
+import { Plus, Printer, Download, Trash2, CheckCircle2, PlayCircle } from "lucide-react"
 import * as XLSX from "xlsx"
 
 const REPARTIDORES = ["Alejandro", "Agustín"]
@@ -85,6 +85,23 @@ export default function LogisticaPage() {
 
   async function handleAgregarDestinoExtra() { setOpenNuevo(true) }
 
+  async function handleIniciarRecorrido() {
+    if (!currentRepartoId) return
+    const reparto = repartos.find((r) => r.id === currentRepartoId)
+    if (reparto?.estado === "en_curso") {
+      alert("Este recorrido ya está en curso.")
+      return
+    }
+    if (!confirm(`Iniciar recorrido ${numeroActual}? Los pedidos pasarán a "En proceso de entrega".`)) return
+    try {
+      const res = await iniciarReparto(currentRepartoId, vendedor?.id || "", vendedor?.name || "Admin")
+      await loadRepartos()
+      alert(`Recorrido iniciado. Pedidos actualizados: ${res.updated}. Sin cambio: ${res.skipped}.`)
+    } catch (e: any) {
+      alert("Error iniciando recorrido: " + (e?.message || e))
+    }
+  }
+
   function isCompletado(estado: string | null | undefined): boolean {
     return estado === "entregado" || estado === "cliente_retira"
   }
@@ -151,6 +168,16 @@ export default function LogisticaPage() {
             className="flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-md text-sm hover:bg-primary/90">
             <Plus className="h-4 w-4" /> Nuevo destino en reparto
           </button>
+          {currentRepartoId && (() => {
+            const reparto = repartos.find((r) => r.id === currentRepartoId)
+            const enCurso = reparto?.estado === "en_curso"
+            return (
+              <button onClick={handleIniciarRecorrido} disabled={enCurso || items.length === 0}
+                className="flex items-center gap-1.5 px-3 py-2 bg-amber-600 text-white rounded-md text-sm hover:bg-amber-700 disabled:opacity-50">
+                <PlayCircle className="h-4 w-4" /> {enCurso ? "Recorrido en curso" : "Iniciar recorrido"}
+              </button>
+            )
+          })()}
           <button onClick={handlePrint} disabled={visibles.length === 0}
             className="flex items-center gap-1.5 px-3 py-2 bg-gray-600 text-white rounded-md text-sm hover:bg-gray-700 disabled:opacity-50">
             <Printer className="h-4 w-4" /> Imprimir
