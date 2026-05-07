@@ -1040,6 +1040,7 @@ export async function createOrdenCompra(oc: {
     producto_codigo?: string | null
     cantidad: number
     precio_unitario: number
+    descuento_porcentaje?: number
     subtotal: number
   }[]
 }): Promise<string> {
@@ -1082,6 +1083,7 @@ export async function createOrdenCompra(oc: {
       producto_codigo: i.producto_codigo || null,
       cantidad: i.cantidad,
       precio_unitario: i.precio_unitario,
+      descuento_porcentaje: i.descuento_porcentaje ?? 0,
       subtotal: i.subtotal,
     }))
     const { error: itemsError } = await supabase.from("orden_compra_items").insert(itemsInsert)

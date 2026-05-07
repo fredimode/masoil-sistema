@@ -24,6 +24,7 @@ interface CompraItem {
   name: string
   costoNeto: number
   quantity: number
+  descuento?: number   // % 0-100
 }
 
 export default function NuevaCompraPage() {
@@ -241,6 +242,7 @@ function NuevaCompraForm() {
         name: product.name,
         costoNeto: product.costoNeto ?? product.price ?? 0,
         quantity: 1,
+        descuento: 0,
       }])
     }
     setProdSearch("")
@@ -250,13 +252,18 @@ function NuevaCompraForm() {
   function buildArticuloText(): string {
     if (articuloMode === "texto") return form.articulo
     if (compraItems.length === 0) return ""
-    return compraItems.map((i) =>
-      `${i.quantity}x ${i.code ? `[${i.code}] ` : ""}${i.name}${i.costoNeto ? ` - ${formatCurrency(i.costoNeto)}` : ""}`
-    ).join("\n")
+    return compraItems.map((i) => {
+      const desc = Number(i.descuento) || 0
+      const descTxt = desc > 0 ? ` (-${desc}%)` : ""
+      return `${i.quantity}x ${i.code ? `[${i.code}] ` : ""}${i.name}${i.costoNeto ? ` - ${formatCurrency(i.costoNeto)}${descTxt}` : ""}`
+    }).join("\n")
   }
 
   const totalCompra = useMemo(
-    () => compraItems.reduce((s, i) => s + (i.costoNeto || 0) * (i.quantity || 0), 0),
+    () => compraItems.reduce((s, i) => {
+      const desc = Number(i.descuento) || 0
+      return s + (i.costoNeto || 0) * (i.quantity || 0) * (1 - desc / 100)
+    }, 0),
     [compraItems],
   )
 
@@ -284,14 +291,18 @@ function NuevaCompraForm() {
           razon_social: form.empresa || "",
           empresa: form.empresa || null,
           email_comercial: form.email_comercial || null,
-          items: compraItems.map((i) => ({
-            product_id: i.productId || null,
-            producto_nombre: i.name,
-            producto_codigo: i.code || null,
-            cantidad: i.quantity,
-            precio_unitario: i.costoNeto,
-            subtotal: i.costoNeto * i.quantity,
-          })),
+          items: compraItems.map((i) => {
+            const desc = Number(i.descuento) || 0
+            return {
+              product_id: i.productId || null,
+              producto_nombre: i.name,
+              producto_codigo: i.code || null,
+              cantidad: i.quantity,
+              precio_unitario: i.costoNeto,
+              descuento_porcentaje: desc,
+              subtotal: i.costoNeto * i.quantity * (1 - desc / 100),
+            }
+          }),
         })
         const { data: ocRow } = await supabase
           .from("ordenes_compra")
@@ -506,12 +517,16 @@ function NuevaCompraForm() {
                             <th className="px-2 py-2 text-center w-20">Cant.</th>
                             <th className="px-2 py-2 text-left">Producto</th>
                             <th className="px-2 py-2 text-right w-28">Precio Unit.</th>
+                            <th className="px-2 py-2 text-right w-20">Desc. %</th>
                             <th className="px-2 py-2 text-right w-28">Subtotal</th>
                             <th className="w-10" />
                           </tr>
                         </thead>
                         <tbody>
-                          {compraItems.map((item, idx) => (
+                          {compraItems.map((item, idx) => {
+                            const desc = Number(item.descuento) || 0
+                            const subtotal = item.costoNeto * item.quantity * (1 - desc / 100)
+                            return (
                             <tr key={item.productId || `${item.code}-${idx}`} className="border-t">
                               <td className="px-2 py-1.5">
                                 <input
@@ -537,18 +552,35 @@ function NuevaCompraForm() {
                                   placeholder="0.00"
                                 />
                               </td>
-                              <td className="px-2 py-1.5 text-right text-sm font-semibold whitespace-nowrap">{formatCurrency(item.costoNeto * item.quantity)}</td>
+                              <td className="px-2 py-1.5">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  step={0.01}
+                                  value={item.descuento || ""}
+                                  onChange={(e) => {
+                                    const raw = parseFloat(e.target.value) || 0
+                                    const clamped = Math.max(0, Math.min(100, raw))
+                                    setCompraItems((prev) => prev.map((i, j) => (j === idx ? { ...i, descuento: clamped } : i)))
+                                  }}
+                                  className="w-full p-1 border rounded text-right text-sm"
+                                  placeholder="0"
+                                />
+                              </td>
+                              <td className="px-2 py-1.5 text-right text-sm font-semibold whitespace-nowrap">{formatCurrency(subtotal)}</td>
                               <td className="px-1 py-1.5 text-center">
                                 <button type="button" onClick={() => setCompraItems((prev) => prev.filter((_, j) => j !== idx))} className="p-1 hover:bg-red-100 rounded">
                                   <X className="h-4 w-4 text-red-500" />
                                 </button>
                               </td>
                             </tr>
-                          ))}
+                          )
+                          })}
                         </tbody>
                         <tfoot>
                           <tr className="bg-gray-50 border-t">
-                            <td colSpan={3} className="px-2 py-2 text-right font-semibold">Total</td>
+                            <td colSpan={4} className="px-2 py-2 text-right font-semibold">Total</td>
                             <td className="px-2 py-2 text-right font-bold">{formatCurrency(totalCompra)}</td>
                             <td />
                           </tr>
