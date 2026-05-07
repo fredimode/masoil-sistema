@@ -446,6 +446,18 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             .eq("product_id", p.productId)
         }
 
+        // Reflejar en estado local (sino el botón "Facturar" sigue visible
+        // hasta el próximo refresh de la página).
+        const facturadosIds = new Set(selectedProducts.map((sp) => sp.productId))
+        setOrder((prev) => prev ? {
+          ...prev,
+          products: prev.products.map((p) =>
+            facturadosIds.has(p.productId)
+              ? { ...p, facturado: true, cantidadFacturada: p.quantity, facturaId: data.facturaId }
+              : p
+          ),
+        } : prev)
+
         // El endpoint /api/facturar ya hace UPDATE orders.factura_id
         setOrderExtra((prev: any) => ({ ...prev, factura_id: data.facturaId }))
 
