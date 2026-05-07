@@ -317,9 +317,13 @@ export default function NuevaFacturaPage() {
     : `FACTURA ${letra}`
 
   async function generarFactura() {
+    const scrollToTop = () => {
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" })
+    }
     if (!clienteSeleccionado || items.length === 0) return
     if (!empresaFactura) {
       setResultado({ success: false, error: "Seleccioná una empresa antes de generar la factura" })
+      scrollToTop()
       return
     }
     setGenerando(true)
@@ -357,12 +361,14 @@ export default function NuevaFacturaPage() {
         if (!facturaReferenciaId) {
           setGenerando(false)
           setResultado({ success: false, error: "Seleccioná la factura de referencia para la NC/ND" })
+          scrollToTop()
           return
         }
         const original = facturasCliente.find((f) => String(f.id) === String(facturaReferenciaId))
         if (!original) {
           setGenerando(false)
           setResultado({ success: false, error: "No se encontró la factura de referencia seleccionada" })
+          scrollToTop()
           return
         }
         const numeroStr = String(original.numero || "")
@@ -439,6 +445,7 @@ export default function NuevaFacturaPage() {
         }
 
         setPaso(3)
+        scrollToTop()
       } else {
         setResultado({
           success: false,
@@ -447,9 +454,11 @@ export default function NuevaFacturaPage() {
           errores: data.errores,
           tusfacturas_response: data.tusfacturas_response,
         })
+        scrollToTop()
       }
     } catch (error) {
       setResultado({ success: false, error: "Error de conexión: " + (error instanceof Error ? error.message : "desconocido") })
+      scrollToTop()
     } finally {
       setGenerando(false)
     }
