@@ -535,8 +535,8 @@ export default function FacturacionPage() {
                           <th className="px-2 py-1.5 text-left font-semibold text-gray-600">Código</th>
                           <th className="px-2 py-1.5 text-left font-semibold text-gray-600">Descripción</th>
                           <th className="px-2 py-1.5 text-right font-semibold text-gray-600">Cant.</th>
-                          <th className="px-2 py-1.5 text-right font-semibold text-gray-600">Precio Unit.</th>
-                          <th className="px-2 py-1.5 text-right font-semibold text-gray-600">Subtotal s/IVA</th>
+                          <th className="px-2 py-1.5 text-right font-semibold text-gray-600">{(viewingFactura.tipo || "").endsWith("B") ? "Precio Unit." : "Precio Unit. s/IVA"}</th>
+                          <th className="px-2 py-1.5 text-right font-semibold text-gray-600">{(viewingFactura.tipo || "").endsWith("B") ? "Subtotal" : "Subtotal s/IVA"}</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -544,17 +544,19 @@ export default function FacturacionPage() {
                           const code = it.products?.code || it.product_code || "-"
                           const name = it.products?.name || it.product_name || "-"
                           const qty = Number(it.quantity) || 0
-                          const price = Number(it.unit_price) || 0
-                          // unit_price está cargado con IVA. Para subtotal neto
-                          // dividimos por 1.21 (todos los productos son alic 21%).
-                          const subtotalNeto = Math.round((qty * price / 1.21) * 100) / 100
+                          const price = Number(it.unit_price) || 0  // unit_price viene con IVA
+                          const esB = (viewingFactura.tipo || "").endsWith("B")
+                          // Para B mostramos precio final con IVA (el que ve el consumidor).
+                          // Para A mostramos neto (price / 1.21, asumiendo alic 21%).
+                          const precioMostrar = esB ? price : Math.round((price / 1.21) * 100) / 100
+                          const subtotalMostrar = Math.round((qty * precioMostrar) * 100) / 100
                           return (
                             <tr key={it.id || idx} className="border-t">
                               <td className="px-2 py-1 font-mono text-gray-600">{code}</td>
                               <td className="px-2 py-1 text-gray-800">{name}</td>
                               <td className="px-2 py-1 text-right text-gray-700">{qty}</td>
-                              <td className="px-2 py-1 text-right text-gray-700">{formatMoney(price)}</td>
-                              <td className="px-2 py-1 text-right font-medium text-gray-900">{formatMoney(subtotalNeto)}</td>
+                              <td className="px-2 py-1 text-right text-gray-700">{formatMoney(precioMostrar)}</td>
+                              <td className="px-2 py-1 text-right font-medium text-gray-900">{formatMoney(subtotalMostrar)}</td>
                             </tr>
                           )
                         })}
@@ -564,21 +566,47 @@ export default function FacturacionPage() {
                 )}
               </div>
 
-              {/* Importes */}
-              <div className="border-t pt-3 space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Subtotal neto</span>
-                  <span className="font-medium">{formatMoney(Number(viewingFactura.base_gravada) || 0)}</span>
+              {/* Importes — formato fiscal según letra */}
+              {(viewingFactura.tipo || "").endsWith("B") ? (
+                <div className="border-t pt-3 space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Subtotal</span>
+                    <span className="font-medium">{formatMoney(Number(viewingFactura.total) || 0)}</span>
+                  </div>
+                  <div className="flex justify-between text-base font-bold border-t pt-2">
+                    <span>Importe Total</span>
+                    <span className="text-primary">{formatMoney(Number(viewingFactura.total) || 0)}</span>
+                  </div>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mt-2">
+                    <p className="text-xs font-semibold text-gray-700 mb-1">
+                      Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)
+                    </p>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-600">IVA Contenido</span>
+                      <span className="font-medium">{formatMoney(Number(viewingFactura.iva_21) || 0)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-600">Otros Impuestos Nacionales Indirectos</span>
+                      <span className="font-medium">$0,00</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">IVA 21%</span>
-                  <span className="font-medium">{formatMoney(Number(viewingFactura.iva_21) || 0)}</span>
+              ) : (
+                <div className="border-t pt-3 space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Subtotal neto</span>
+                    <span className="font-medium">{formatMoney(Number(viewingFactura.base_gravada) || 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">IVA 21%</span>
+                    <span className="font-medium">{formatMoney(Number(viewingFactura.iva_21) || 0)}</span>
+                  </div>
+                  <div className="flex justify-between text-base font-bold border-t pt-2">
+                    <span>Total</span>
+                    <span className="text-primary">{formatMoney(Number(viewingFactura.total) || 0)}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between text-base font-bold border-t pt-2">
-                  <span>Total</span>
-                  <span className="text-primary">{formatMoney(Number(viewingFactura.total) || 0)}</span>
-                </div>
-              </div>
+              )}
 
               {/* CAE */}
               {viewingFactura.cae && (

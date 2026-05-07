@@ -295,11 +295,15 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<Uint8Arra
   }
   y = headBot
 
-  // Filas
+  // Filas. En facturas B mostramos precios CON IVA (precio final al consumidor).
+  // En facturas A mostramos netos y el IVA va discriminado en totales.
+  const esB = letra === "B"
   const ROW_H = 14
   const detalleTop = y
   for (const item of data.items) {
-    const subtotal = item.cantidad * item.precioUnitarioSinIva
+    const ivaMul = item.alicuota > 0 ? 1 + item.alicuota / 100 : 1
+    const punit = esB ? item.precioUnitarioSinIva * ivaMul : item.precioUnitarioSinIva
+    const subtotal = item.cantidad * punit
     const desc = item.descripcion.length > 55 ? item.descripcion.slice(0, 52) + "..." : item.descripcion
     const rowBaseY = y - 10
     page.drawText(desc, { x: COL_DESC + 8, y: rowBaseY, size: 8, font: fontReg, color: black })
@@ -309,7 +313,7 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<Uint8Arra
       x: COL_PUNIT - fontReg.widthOfTextAtSize(cantStr, 8) - 8,
       y: rowBaseY, size: 8, font: fontReg, color: black,
     })
-    const punitStr = fmt(item.precioUnitarioSinIva)
+    const punitStr = fmt(punit)
     page.drawText(punitStr, {
       x: COL_ALIC - fontReg.widthOfTextAtSize(punitStr, 8) - 8,
       y: rowBaseY, size: 8, font: fontReg, color: black,
@@ -357,18 +361,30 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<Uint8Arra
     y -= isFinal ? 18 : 13
   }
 
-  drawTotalRow("Subtotal Neto:", `$ ${fmt(data.totalNeto)}`)
-  for (const b of data.bases) {
-    if (b.iva > 0) drawTotalRow(`IVA ${b.alicuota}%:`, `$ ${fmt(b.iva)}`)
+  if (esB) {
+    // Factura B: precio final al consumidor. Subtotal e Importe Total = total final.
+    drawTotalRow("Subtotal:", `$ ${fmt(data.total)}`)
+    y += 4
+    page.drawLine({
+      start: { x: totalLabelX, y }, end: { x: RIGHT, y },
+      thickness: 0.8, color: black,
+    })
+    y -= 12
+    drawTotalRow("IMPORTE TOTAL:", `$ ${fmt(data.total)}`, true)
+  } else {
+    // Factura A: IVA discriminado.
+    drawTotalRow("Subtotal Neto:", `$ ${fmt(data.totalNeto)}`)
+    for (const b of data.bases) {
+      if (b.iva > 0) drawTotalRow(`IVA ${b.alicuota}%:`, `$ ${fmt(b.iva)}`)
+    }
+    y += 4
+    page.drawLine({
+      start: { x: totalLabelX, y }, end: { x: RIGHT, y },
+      thickness: 0.8, color: black,
+    })
+    y -= 12
+    drawTotalRow("TOTAL:", `$ ${fmt(data.total)}`, true)
   }
-  // Separador antes del TOTAL
-  y += 4
-  page.drawLine({
-    start: { x: totalLabelX, y }, end: { x: RIGHT, y },
-    thickness: 0.8, color: black,
-  })
-  y -= 12
-  drawTotalRow("TOTAL:", `$ ${fmt(data.total)}`, true)
   y -= 6
 
   // ════════════════ SON PESOS (destacado) ════════════════
@@ -384,6 +400,31 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<Uint8Arra
     size: 10, font: fontBold, color: black,
   })
   y -= sonPesosBoxH + 14
+
+  // ════════════════ RÉGIMEN DE TRANSPARENCIA FISCAL (Ley 27.743) — Solo B ════════════════
+  if (esB) {
+    const transpBoxH = 44
+    page.drawRectangle({
+      x: LEFT, y: y - transpBoxH,
+      width: W, height: transpBoxH,
+      borderColor: black, borderWidth: 0.6,
+    })
+    page.drawText("Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)", {
+      x: LEFT + 8, y: y - 12,
+      size: 8, font: fontBold, color: black,
+    })
+    const ivaContenido = data.totalIVA
+    const linea1 = `IVA Contenido: $ ${fmt(ivaContenido)}`
+    page.drawText(linea1, {
+      x: LEFT + 8, y: y - 26,
+      size: 8, font: fontReg, color: black,
+    })
+    page.drawText("Otros Impuestos Nacionales Indirectos: $ 0,00", {
+      x: LEFT + 8, y: y - 38,
+      size: 8, font: fontReg, color: black,
+    })
+    y -= transpBoxH + 10
+  }
 
   // ════════════════ COMPROBANTE ASOCIADO (NC/ND) ════════════════
   if (data.comprobanteAsociado) {
