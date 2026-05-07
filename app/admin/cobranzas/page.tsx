@@ -203,7 +203,6 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
   const [hasta, setHasta] = useState(new Date().toISOString().slice(0, 10))
   const [todos, setTodos] = useState(false)
   const [page, setPage] = useState(1)
-  const [empresaFilter, setEmpresaFilter] = useState("Todas")
   const [activosFilter, setActivosFilter] = useState<"activos" | "inactivos" | "todos">("activos")
   const [ajustarOpen, setAjustarOpen] = useState(false)
   const [ajusteTipo, setAjusteTipo] = useState<"DEBE" | "HABER">("DEBE")
@@ -380,7 +379,7 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
     w.document.write(`<html><head><title>Cuenta Corriente - ${clientName}</title>
       <style>body{font-family:sans-serif;max-width:900px;margin:30px auto}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px 8px;font-size:12px}th{background:#f5f5f5;text-align:left}.totals td{font-weight:bold;background:#f0f0f0}.total-deudor{margin-top:16px;padding:12px;background:#fef3c7;font-size:18px;font-weight:bold;text-align:right}</style></head><body>
       <h2>Cuenta Corriente</h2><p><strong>Cliente:</strong> ${clientName}</p>
-      <p><strong>Empresa:</strong> ${empresaFilter} | <strong>Período:</strong> ${desde || "..."} a ${hasta || "..."}</p>
+      <p><strong>Período:</strong> ${desde || "..."} a ${hasta || "..."}</p>
       <p><strong>Cantidad de comprobantes:</strong> ${filtered.length}</p>
       <table><thead><tr><th>Fecha</th><th>Comprob.</th><th>Número</th><th style="text-align:right">Debe</th><th style="text-align:right">Haber</th><th style="text-align:right">Saldo</th></tr></thead>
       <tbody>${rows}
@@ -392,23 +391,8 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
 
   return (
     <Card className="p-4 space-y-4">
-      {/* Fila superior: Empresa + Activos/Inactivos */}
+      {/* Fila superior: Activos/Inactivos (filtro Empresa global vive en el header) */}
       <div className="flex flex-wrap gap-3 items-end">
-        <div>
-          <label className="text-sm font-medium mb-1 block">Empresa</label>
-          <Select value={empresaFilter} onValueChange={setEmpresaFilter}>
-            <SelectTrigger className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="INCLUIR">INCLUIR empresas</SelectItem>
-              <SelectItem value="Aquiles">Aquiles</SelectItem>
-              <SelectItem value="Masoil">Masoil</SelectItem>
-              <SelectItem value="Conancap">Conancap</SelectItem>
-              <SelectItem value="Todas">Todas las Empr.</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
         <div>
           <label className="text-sm font-medium mb-1 block">Estado clientes</label>
           <Select value={activosFilter} onValueChange={(v) => setActivosFilter(v as any)}>
