@@ -7,7 +7,11 @@
  *   - Por grupo:
  *       fila header "Artículo | Proveedor | Comprobante | Fecha | ..."
  *       fila vacía
- *       primera compra: col 0 = "<código> <descripción>"
+ *       primera compra: col 0 = "<num_proveedor> <descripción> (<CODIGO>)"
+ *           donde <CODIGO> entre paréntesis al final es el del catálogo
+ *           Masoil (formato letras+digitos, ej: BC0023, CA0076).
+ *           El número al inicio (14821, 104) es código del proveedor / antiguo
+ *           y NO matchea con products.code.
  *       siguientes compras del mismo producto: col 0 vacía
  *       fila de totales al final (solo col 4 cant + col 8 monto)
  *   - Cols de DATOS reales:
@@ -112,18 +116,14 @@ function isEmptyRow(row: any[]): boolean {
 
 function parseCodeFromCol0(text: string): string | null {
   if (!text) return null
-  // Toma el primer token (hasta el primer espacio). Soporta códigos como
-  // "14821" o "2301-2R" o "ABC-123". Si el primer token es palabra puramente
-  // alfabética (>=4 chars sin números), probablemente no es código → null.
-  const trimmed = text.trim()
-  const firstSpace = trimmed.indexOf(" ")
-  if (firstSpace === -1) return trimmed  // toda la celda es el código
-  const candidate = trimmed.slice(0, firstSpace).trim()
-  if (!candidate) return null
-  // Heurística: si el candidato es puro alfabético >=4 chars, probablemente
-  // es la primera palabra de la descripción y no hay código.
-  if (/^[A-Za-zÀ-ÿ]{4,}$/.test(candidate)) return null
-  return candidate
+  // El código real del catálogo está entre paréntesis AL FINAL de la
+  // descripción, formato (LETRAS+DIGITOS) — ej: (BC0023), (CD0110), (CA0076).
+  // El "número al inicio" (14821, 104, 01/00074/00) es código del proveedor o
+  // código antiguo y NO matchea con products.code. Verificado: 1452/1456
+  // grupos (99.7%) tienen el código en este formato.
+  // Si está en ambos lados (inicio y final), gana el del final.
+  const match = text.trim().match(/\(([A-Z0-9]+)\)\s*$/i)
+  return match ? match[1].toUpperCase() : null
 }
 
 function parseFecha(v: any): string | null {
@@ -266,6 +266,27 @@ async function main() {
     if (p.code) productByCode.set(String(p.code).trim().toUpperCase(), { id: p.id, code: p.code, name: p.name })
   }
   console.log(`  Productos en DB: ${allProducts?.length || 0}`)
+
+  // 3b) Gate de match rate: si <80% de los códigos únicos parseados matchean
+  // contra products.code, abortamos con error claro. Esto protege contra
+  // ejecuciones accidentales con regex de parseo equivocada.
+  const uniqueCodes = new Set(compras.map((c) => c.code.trim().toUpperCase()))
+  const matchedCodes = [...uniqueCodes].filter((code) => productByCode.has(code))
+  const matchRate = uniqueCodes.size > 0 ? matchedCodes.length / uniqueCodes.size : 0
+  console.log(`\n=== VALIDACIÓN MATCH RATE ===`)
+  console.log(`  Códigos únicos parseados: ${uniqueCodes.size}`)
+  console.log(`  Matchean con products.code: ${matchedCodes.length}`)
+  console.log(`  Match rate: ${(matchRate * 100).toFixed(1)}%`)
+  if (matchRate < 0.80) {
+    console.error(`\n❌ ABORTANDO: match rate ${(matchRate * 100).toFixed(1)}% < 80% mínimo.`)
+    console.error(`   Esto sugiere que el regex de parseo de códigos está leyendo mal el archivo`)
+    console.error(`   o el archivo no corresponde al catálogo Masoil. Revisar y reintentar.`)
+    const noMatch = [...uniqueCodes].filter((c) => !productByCode.has(c)).slice(0, 30)
+    console.error(`\n   Primeros 30 códigos parseados que NO matchean:`)
+    for (const c of noMatch) console.error(`     ${c}`)
+    process.exit(1)
+  }
+  console.log(`  ✓ Match rate suficiente, sigo con el resto.`)
 
   const { data: allProvs, error: prErr } = await supabase
     .from("proveedores")
