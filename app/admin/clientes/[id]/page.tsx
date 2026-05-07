@@ -213,7 +213,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold mb-1">{client.businessName}</h1>
-          <div className="flex flex-wrap items-center gap-2 text-sm">
+          <div className="flex flex-wrap items-center gap-2 text-sm mb-1">
             {((client as any).cuit || (client as any).numeroDocum) && (
               <Badge variant="secondary" className="font-mono">
                 CUIT: {(client as any).cuit || (client as any).numeroDocum}
@@ -226,6 +226,12 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
             <span className="text-muted-foreground">•</span>
             <span className="text-muted-foreground">{client.totalOrders} pedidos realizados</span>
           </div>
+          {client.address && (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5" />
+              <span>{client.address}</span>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={openEditDialog}>
@@ -359,10 +365,6 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
                 <div className="flex items-center gap-2 text-sm">
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   <span>{client.email}</span>
-                </div>
-                <div className="flex items-start gap-2 text-sm">
-                  <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-                  <span>{client.address}</span>
                 </div>
                 {(client as any).domicilioEntrega && (
                   <div className="flex items-start gap-2 text-sm pl-6">
