@@ -13,6 +13,7 @@ import {
   deleteCobranzaPendiente, fetchVendedores, getNextReciboNumero,
   createReciboCobranza, createChequesRecibidos, fetchRecibosCobranza,
 } from "@/lib/supabase/queries"
+import { createClient } from "@/lib/supabase/client"
 import { formatCurrency, normalizeSearch, formatDateStr } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { Search, Download, Plus, Trash2, Eye, Printer } from "lucide-react"
@@ -145,7 +146,7 @@ export default function CobranzasPage() {
         </TabsList>
 
         <TabsContent value="cuenta-corriente">
-          <TabCuentaCorriente clients={clients} />
+          <TabCuentaCorriente clients={clients} empresaFilter={empresaFilter} />
         </TabsContent>
 
         <TabsContent value="registrar-cobro">
@@ -193,7 +194,7 @@ function formatNumeroComprobante(m: any): string {
   return m.pv_numero || ""
 }
 
-function TabCuentaCorriente({ clients }: { clients: any[] }) {
+function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empresaFilter: string }) {
   const [search, setSearch] = useState("")
   const [selectedClient, setSelectedClient] = useState<any | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
@@ -204,6 +205,45 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
   const [todos, setTodos] = useState(false)
   const [page, setPage] = useState(1)
   const [activosFilter, setActivosFilter] = useState<"activos" | "inactivos" | "todos">("activos")
+  // Map movement.id → empresa (derivada de facturas vía referencia_id).
+  // Movements sin referencia_id o con ref a tabla distinta de facturas
+  // quedan sin empresa conocida y pasan el filtro siempre.
+  const [empresaByMov, setEmpresaByMov] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    let cancelled = false
+    async function annotate() {
+      const facturaIds = movimientos
+        .map((m) => parseInt(String(m.referencia_id), 10))
+        .filter((n) => Number.isFinite(n) && n > 0)
+      if (facturaIds.length === 0) {
+        setEmpresaByMov({})
+        return
+      }
+      try {
+        const supabase = createClient()
+        const { data } = await supabase
+          .from("facturas")
+          .select("id, empresa")
+          .in("id", [...new Set(facturaIds)])
+        if (cancelled) return
+        const empByFacturaId: Record<string, string> = {}
+        for (const f of data || []) {
+          if (f.empresa) empByFacturaId[String(f.id)] = f.empresa
+        }
+        const map: Record<string, string> = {}
+        for (const m of movimientos) {
+          const emp = empByFacturaId[String(m.referencia_id)]
+          if (emp) map[m.id] = emp
+        }
+        setEmpresaByMov(map)
+      } catch (e) {
+        console.error("Error anotando empresa de movimientos:", e)
+      }
+    }
+    annotate()
+    return () => { cancelled = true }
+  }, [movimientos])
   const [ajustarOpen, setAjustarOpen] = useState(false)
   const [ajusteTipo, setAjusteTipo] = useState<"DEBE" | "HABER">("DEBE")
   const [ajusteImporte, setAjusteImporte] = useState("")
@@ -282,8 +322,18 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
     let rows = movimientos
     if (desde) rows = rows.filter((m) => (m.fecha || "") >= desde)
     if (hasta) rows = rows.filter((m) => (m.fecha || "") <= hasta)
+    // Filtro por empresa (global del header). Si la empresa del movimiento no
+    // se conoce (RC, RT, ajustes manuales, GestionPro legacy), pasa siempre
+    // para no esconder data accidentalmente.
+    if (empresaFilter && empresaFilter !== "Todas") {
+      rows = rows.filter((m) => {
+        const emp = empresaByMov[m.id]
+        if (!emp) return true
+        return emp.toLowerCase() === empresaFilter.toLowerCase()
+      })
+    }
     return rows
-  }, [movimientos, desde, hasta])
+  }, [movimientos, desde, hasta, empresaFilter, empresaByMov])
 
   const totalDebe = useMemo(() => filtered.reduce((s, m) => s + (m.debe || 0), 0), [filtered])
   const totalHaber = useMemo(() => filtered.reduce((s, m) => s + (m.haber || 0), 0), [filtered])
