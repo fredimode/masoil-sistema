@@ -331,15 +331,18 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
   }
 
   function exportXLSX() {
-    const ws = XLSX.utils.json_to_sheet(
-      sortedFiltered.map((m) => ({
-        Fecha: formatDateStr(m.fecha),
-        Tipo: normalizeTipoComp(m.tipo_comprobante),
-        Número: formatNumeroComprobante(m),
-        Debe: m.debe || 0,
-        Haber: m.haber || 0,
-      }))
-    )
+    const rows: Record<string, any>[] = sortedFiltered.map((m) => ({
+      Fecha: formatDateStr(m.fecha),
+      Tipo: normalizeTipoComp(m.tipo_comprobante),
+      Número: formatNumeroComprobante(m),
+      Debe: m.debe || 0,
+      Haber: m.haber || 0,
+    }))
+    // Fila vacía + totales al final, mismo formato que el PDF.
+    rows.push({ Fecha: "", Tipo: "", Número: "", Debe: "", Haber: "" })
+    rows.push({ Fecha: "", Tipo: "", Número: "TOTALES", Debe: totalDebe, Haber: totalHaber })
+    rows.push({ Fecha: "", Tipo: "", Número: "TOTAL DEUDOR", Debe: saldoTotal, Haber: "" })
+    const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "Cuenta Corriente")
     XLSX.writeFile(wb, "cuenta_corriente.xlsx")
