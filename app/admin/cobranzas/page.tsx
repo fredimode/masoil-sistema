@@ -254,7 +254,7 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
             const data = await fetchCuentaCorrienteCliente(id)
             allMov.push(...data)
           }
-          allMov.sort((a: any, b: any) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
+          allMov.sort((a: any, b: any) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime())
           setMovimientos(allMov)
         } catch (e) {
           console.error(e)
@@ -291,7 +291,7 @@ function TabCuentaCorriente({ clients }: { clients: any[] }) {
   const saldoTotal = totalDebe - totalHaber
 
   const sortedFiltered = useMemo(
-    () => [...filtered].sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")),
+    () => [...filtered].sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "")),
     [filtered]
   )
 
