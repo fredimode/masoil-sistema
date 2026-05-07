@@ -618,6 +618,16 @@ export default function FacturacionPage() {
             </div>
 
             <div className="flex justify-end gap-2 mt-4">
+              {viewingFactura.pdf_url && (
+                <a
+                  href={viewingFactura.pdf_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50 flex items-center gap-2"
+                >
+                  📄 Descargar PDF
+                </a>
+              )}
               <button
                 onClick={() => {
                   const w = window.open("", "_blank")
