@@ -356,7 +356,9 @@ export default function NuevaFacturaPage() {
       // El cuit asociado debe ser el del EMISOR (la empresa que emitió la factura
       // original y emite la NC/ND), no el del cliente. Doc TusFacturas:
       // "debe coincidir con el CUIT desde donde estas emitiendo la NC".
-      let comprobanteAsociado: { tipo: string; puntoVenta: number; numero: number; fecha?: string; cuit?: string } | undefined
+      // facturaOriginalId se pasa para que el endpoint pueble factura_referencia_id
+      // y se puedan listar NCs asociadas en el detalle de cada factura.
+      let comprobanteAsociado: { tipo: string; puntoVenta: number; numero: number; fecha?: string; cuit?: string; facturaOriginalId?: string } | undefined
       if (tipoComprobante !== "FACTURA") {
         if (!facturaReferenciaId) {
           setGenerando(false)
@@ -383,6 +385,7 @@ export default function NuevaFacturaPage() {
           puntoVenta: parseInt(pvStr || "0", 10) || 0,
           numero: parseInt(nroStr || "0", 10) || 0,
           cuit: EMPRESAS_DATA[empresaFactura].cuit,
+          facturaOriginalId: String(original.id),
           ...(fechaTF ? { fecha: fechaTF } : {}),
         }
       }

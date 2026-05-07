@@ -299,6 +299,11 @@ export async function POST(request: NextRequest) {
 
   // ───────────────── PASO 11: DB (facturas + orders.factura_id) ─────────────────
   console.log('Step 11: Insertando en DB...')
+  // factura_referencia_id: si esta es una NC/ND emitida sobre una factura local,
+  // guardamos el ID de la original para poder listar asociadas desde el detalle.
+  const facturaReferenciaId = comprobanteAsociado?.facturaOriginalId
+    ? parseInt(String(comprobanteAsociado.facturaOriginalId), 10) || null
+    : null
   const { data: factura, error: insertError } = await supabase
     .from("facturas")
     .insert({
@@ -316,6 +321,7 @@ export async function POST(request: NextRequest) {
       cae,
       vencimiento_cae: vencimientoCae,
       pdf_url: pdfUrl,
+      factura_referencia_id: facturaReferenciaId,
     })
     .select()
     .single()

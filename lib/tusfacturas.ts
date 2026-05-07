@@ -42,6 +42,10 @@ export interface ComprobanteAsociado {
   numero: string | number
   fecha?: string
   cuit?: string
+  // ID local de la factura original (facturas.id BIGINT). Se usa para
+  // popular factura_referencia_id en la NC/ND emitida y permitir queries
+  // como "todas las NC de esta factura".
+  facturaOriginalId?: number | string
 }
 
 export interface BasePorAlicuota {

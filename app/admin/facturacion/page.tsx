@@ -50,32 +50,50 @@ export default function FacturacionPage() {
   const [viewingFactura, setViewingFactura] = useState<any | null>(null)
   const [viewingItems, setViewingItems] = useState<any[]>([])
   const [loadingItems, setLoadingItems] = useState(false)
+  const [asociadas, setAsociadas] = useState<any[]>([])  // NC/ND que referencian esta factura
   const [ccData, setCcData] = useState<any[]>([])  // cuenta corriente for deuda calculation
 
   useEffect(() => {
     if (!viewingFactura) {
       setViewingItems([])
+      setAsociadas([])
       return
     }
     const orderId = viewingFactura.order_id
     if (!orderId) {
       setViewingItems([])
-      return
+    } else {
+      const supabase = createClient()
+      setLoadingItems(true)
+      supabase
+        .from("order_items")
+        .select("*, products(code, name)")
+        .eq("order_id", orderId)
+        .then(({ data, error }) => {
+          if (error) {
+            console.error("Error cargando items:", error)
+            setViewingItems([])
+          } else {
+            setViewingItems(data || [])
+          }
+          setLoadingItems(false)
+        })
     }
+
+    // NC/ND asociadas a esta factura (factura_referencia_id apunta acá)
     const supabase = createClient()
-    setLoadingItems(true)
     supabase
-      .from("order_items")
-      .select("*, products(code, name)")
-      .eq("order_id", orderId)
+      .from("facturas")
+      .select("id, numero, tipo, fecha, total")
+      .eq("factura_referencia_id", viewingFactura.id)
+      .order("fecha", { ascending: true })
       .then(({ data, error }) => {
         if (error) {
-          console.error("Error cargando items:", error)
-          setViewingItems([])
+          console.error("Error cargando asociadas:", error)
+          setAsociadas([])
         } else {
-          setViewingItems(data || [])
+          setAsociadas(data || [])
         }
-        setLoadingItems(false)
       })
   }, [viewingFactura])
 
@@ -613,6 +631,41 @@ export default function FacturacionPage() {
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                   <p className="text-xs text-green-600 font-medium">CAE</p>
                   <p className="font-mono font-semibold text-green-800">{viewingFactura.cae}</p>
+                </div>
+              )}
+
+              {/* Notas de Crédito / Débito asociadas */}
+              {asociadas.length > 0 && (
+                <div className="border-t pt-3">
+                  <p className="text-xs text-gray-500 font-medium mb-2">
+                    Notas de Crédito / Débito asociadas
+                  </p>
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-2 py-1.5 text-left font-semibold text-gray-600">Tipo</th>
+                          <th className="px-2 py-1.5 text-left font-semibold text-gray-600">Número</th>
+                          <th className="px-2 py-1.5 text-left font-semibold text-gray-600">Fecha</th>
+                          <th className="px-2 py-1.5 text-right font-semibold text-gray-600">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {asociadas.map((a) => (
+                          <tr key={a.id} className="border-t">
+                            <td className="px-2 py-1 text-gray-800">{a.tipo || "-"}</td>
+                            <td className="px-2 py-1 font-mono text-gray-700">{a.numero || "-"}</td>
+                            <td className="px-2 py-1 text-gray-600">
+                              {a.fecha ? formatDateStr(a.fecha) : "-"}
+                            </td>
+                            <td className="px-2 py-1 text-right font-medium text-gray-900">
+                              {formatMoney(Number(a.total) || 0)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
