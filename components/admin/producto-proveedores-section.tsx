@@ -24,6 +24,7 @@ export function ProductoProveedoresSection({ productId }: Props) {
   const [selectedProv, setSelectedProv] = useState<any | null>(null)
   const [precio, setPrecio] = useState<string>("")
   const [codigoProv, setCodigoProv] = useState("")
+  const [descuento, setDescuento] = useState<string>("")
   const [saving, setSaving] = useState(false)
 
   async function load() {
@@ -71,12 +72,14 @@ export function ProductoProveedoresSection({ productId }: Props) {
         proveedor_id: selectedProv.id,
         precio_proveedor: precio ? parseFloat(precio) : null,
         codigo_proveedor: codigoProv || null,
+        descuento_porcentaje: descuento ? Math.max(0, Math.min(100, parseFloat(descuento) || 0)) : 0,
       })
       setShowAdd(false)
       setSelectedProv(null)
       setProvSearch("")
       setPrecio("")
       setCodigoProv("")
+      setDescuento("")
       await load()
     } catch (e: any) {
       console.error(e)
@@ -123,6 +126,7 @@ export function ProductoProveedoresSection({ productId }: Props) {
                 <th className="px-2 py-2">Proveedor</th>
                 <th className="px-2 py-2">Cód. Prov.</th>
                 <th className="px-2 py-2 text-right">Precio</th>
+                <th className="px-2 py-2 text-right">Desc. %</th>
                 <th className="px-2 py-2">Última actualización</th>
                 <th className="px-2 py-2 w-10"></th>
               </tr>
@@ -137,6 +141,9 @@ export function ProductoProveedoresSection({ productId }: Props) {
                   <td className="px-2 py-2 font-mono">{a.codigo_proveedor || "-"}</td>
                   <td className="px-2 py-2 text-right font-medium">
                     {a.precio_proveedor ? formatCurrency(Number(a.precio_proveedor)) : "-"}
+                  </td>
+                  <td className="px-2 py-2 text-right text-muted-foreground">
+                    {Number(a.descuento_porcentaje) > 0 ? `${Number(a.descuento_porcentaje)}%` : "-"}
                   </td>
                   <td className="px-2 py-2 text-muted-foreground">
                     {a.ultimo_precio_fecha ? new Date(a.ultimo_precio_fecha).toLocaleDateString("es-AR") : "-"}
@@ -164,7 +171,7 @@ export function ProductoProveedoresSection({ productId }: Props) {
             <span className="text-xs font-medium">Asociar proveedor</span>
             <button
               type="button"
-              onClick={() => { setShowAdd(false); setSelectedProv(null); setProvSearch(""); setPrecio(""); setCodigoProv("") }}
+              onClick={() => { setShowAdd(false); setSelectedProv(null); setProvSearch(""); setPrecio(""); setCodigoProv(""); setDescuento("") }}
               className="p-1 hover:bg-gray-200 rounded"
             >
               <X className="h-3.5 w-3.5" />
@@ -195,7 +202,7 @@ export function ProductoProveedoresSection({ productId }: Props) {
               </div>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <div>
               <label className="text-[11px] text-muted-foreground">Precio</label>
               <input
@@ -206,6 +213,19 @@ export function ProductoProveedoresSection({ productId }: Props) {
                 onChange={(e) => setPrecio(e.target.value)}
                 className="w-full px-2 py-1 border rounded text-xs"
                 placeholder="0.00"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-muted-foreground">Desc. %</label>
+              <input
+                type="number"
+                step="0.01"
+                min={0}
+                max={100}
+                value={descuento}
+                onChange={(e) => setDescuento(e.target.value)}
+                className="w-full px-2 py-1 border rounded text-xs"
+                placeholder="0"
               />
             </div>
             <div>
@@ -222,7 +242,7 @@ export function ProductoProveedoresSection({ productId }: Props) {
           <div className="flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => { setShowAdd(false); setSelectedProv(null); setProvSearch(""); setPrecio(""); setCodigoProv("") }}
+              onClick={() => { setShowAdd(false); setSelectedProv(null); setProvSearch(""); setPrecio(""); setCodigoProv(""); setDescuento("") }}
               className="px-2 py-1 text-xs bg-gray-200 rounded hover:bg-gray-300"
             >
               Cancelar

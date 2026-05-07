@@ -2116,6 +2116,7 @@ export async function upsertProductoProveedor(row: {
   precio_proveedor?: number | null
   codigo_proveedor?: string | null
   observaciones?: string | null
+  descuento_porcentaje?: number | null
 }): Promise<string> {
   const supabase = createSupabaseClient()
   const hoy = new Date().toISOString().slice(0, 10)
@@ -2127,6 +2128,7 @@ export async function upsertProductoProveedor(row: {
       precio_proveedor: row.precio_proveedor ?? null,
       codigo_proveedor: row.codigo_proveedor ?? null,
       observaciones: row.observaciones ?? null,
+      descuento_porcentaje: row.descuento_porcentaje ?? 0,
       ultimo_precio_fecha: row.precio_proveedor ? hoy : null,
     }, { onConflict: "product_id,proveedor_id" })
     .select("id")
