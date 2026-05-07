@@ -1058,6 +1058,7 @@ export async function fetchFacturas(): Promise<any[]> {
     .from("facturas")
     .select("*")
     .order("fecha", { ascending: false })
+    .order("id", { ascending: false })
     .limit(50000)
   if (error) throw error
   return data || []
