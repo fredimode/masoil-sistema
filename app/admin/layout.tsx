@@ -8,6 +8,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { LogOut, Menu, Loader2 } from "lucide-react"
 import { AdminSidebarContent } from "@/components/admin/sidebar-nav"
 import { AiChat } from "@/components/chat/ai-chat"
+import { CaiBanner } from "@/components/admin/cai-banner"
 import { createClient } from "@/lib/supabase/client"
 
 type UserRole = "admin" | "usuario"
@@ -86,6 +87,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <span className="hidden sm:inline">Cerrar Sesión</span>
           </Button>
         </header>
+
+        {/* Banner CAI: solo aparece si hay alguna empresa con CAI vencido o
+            a <30 días de vencer. Sino se mantiene oculto (no ocupa espacio). */}
+        <div className="px-4 md:px-6 pt-3 empty:hidden">
+          <CaiBanner />
+        </div>
 
         {/* Page Content */}
         <main className="flex-1 overflow-auto">{children}</main>

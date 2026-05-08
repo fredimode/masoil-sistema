@@ -22,6 +22,7 @@ import type { Order, Client, OrderStatus, Product } from "@/lib/types"
 import { normalizeSearch } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ArrowLeft, Printer, MessageCircle, Phone, XCircle, FileText, Trash2 } from "lucide-react"
+import { CaiBanner, useCaiCanEmit } from "@/components/admin/cai-banner"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -1357,52 +1358,16 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           </DialogHeader>
 
           {!remitoResult ? (
-            <div className="space-y-4 pt-2">
-              <div className="space-y-2">
-                <Label>Empresa emisora</Label>
-                <Select value={remitoEmpresa} onValueChange={(v) => setRemitoEmpresa(v as "Aquiles" | "Conancap")}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Aquiles">Aquiles Equipamientos SRL</SelectItem>
-                    <SelectItem value="Conancap">Conancap SRL</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {remitoEmpresa === "Conancap" && (
-                <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-2">
-                  ⚠ <strong>CAI Conancap vencido (22/03/2026).</strong> Se generará el remito igual,
-                  pero solicitá nuevo CAI a AFIP.
-                </p>
-              )}
-
-              <div className="space-y-2">
-                <Label>Observaciones (opcional)</Label>
-                <Textarea
-                  rows={2}
-                  value={remitoObs}
-                  onChange={(e) => setRemitoObs(e.target.value)}
-                  placeholder="Texto opcional al pie del remito..."
-                />
-              </div>
-
-              <div className="text-xs text-muted-foreground bg-muted/40 border rounded p-2">
-                <strong>Items:</strong> {o.products.length} (sin precios — el remito documenta entrega física)
-              </div>
-
-              <div className="flex gap-2 justify-end">
-                <Button variant="outline" onClick={() => setRemitoOpen(false)} disabled={remitoLoading}>
-                  Cancelar
-                </Button>
-                <Button
-                  className="bg-blue-600 hover:bg-blue-700"
-                  onClick={handleGenerarRemito}
-                  disabled={remitoLoading}
-                >
-                  {remitoLoading ? "Generando..." : "Generar Remito"}
-                </Button>
-              </div>
-            </div>
+            <RemitoForm
+              remitoEmpresa={remitoEmpresa}
+              setRemitoEmpresa={setRemitoEmpresa}
+              remitoObs={remitoObs}
+              setRemitoObs={setRemitoObs}
+              itemsCount={o.products.length}
+              loading={remitoLoading}
+              onCancel={() => setRemitoOpen(false)}
+              onGenerate={handleGenerarRemito}
+            />
           ) : (
             <div className="space-y-3 py-2">
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
@@ -1445,6 +1410,68 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  )
+}
+
+// Subcomponente del form para que el hook useCaiCanEmit reaccione al cambio
+// de empresa sin que se ejecute en cada render del padre.
+function RemitoForm({
+  remitoEmpresa, setRemitoEmpresa, remitoObs, setRemitoObs,
+  itemsCount, loading, onCancel, onGenerate,
+}: {
+  remitoEmpresa: "Aquiles" | "Conancap"
+  setRemitoEmpresa: (e: "Aquiles" | "Conancap") => void
+  remitoObs: string
+  setRemitoObs: (v: string) => void
+  itemsCount: number
+  loading: boolean
+  onCancel: () => void
+  onGenerate: () => void
+}) {
+  const cai = useCaiCanEmit(remitoEmpresa)
+  return (
+    <div className="space-y-4 pt-2">
+      <div className="space-y-2">
+        <Label>Empresa emisora</Label>
+        <Select value={remitoEmpresa} onValueChange={(v) => setRemitoEmpresa(v as "Aquiles" | "Conancap")}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="Aquiles">Aquiles Equipamientos SRL</SelectItem>
+            <SelectItem value="Conancap">Conancap SRL</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <CaiBanner empresa={remitoEmpresa} />
+
+      <div className="space-y-2">
+        <Label>Observaciones (opcional)</Label>
+        <Textarea
+          rows={2}
+          value={remitoObs}
+          onChange={(e) => setRemitoObs(e.target.value)}
+          placeholder="Texto opcional al pie del remito..."
+        />
+      </div>
+
+      <div className="text-xs text-muted-foreground bg-muted/40 border rounded p-2">
+        <strong>Items:</strong> {itemsCount} (sin precios — el remito documenta entrega física)
+      </div>
+
+      <div className="flex gap-2 justify-end">
+        <Button variant="outline" onClick={onCancel} disabled={loading}>
+          Cancelar
+        </Button>
+        <Button
+          className="bg-blue-600 hover:bg-blue-700"
+          onClick={onGenerate}
+          disabled={loading || !cai.canEmit}
+          title={!cai.canEmit ? cai.reason : undefined}
+        >
+          {loading ? "Generando..." : "Generar Remito"}
+        </Button>
+      </div>
     </div>
   )
 }

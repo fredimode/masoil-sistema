@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createServiceClient } from "@/lib/supabase/server"
-import { generarRemitoPDF, CAI_DATA } from "@/lib/pdf/remito-masoil"
+import { generarRemitoPDF } from "@/lib/pdf/remito-masoil"
+import { getCaiConfig, shouldBlockOnExpired } from "@/lib/cai-status"
 import type { Empresa } from "@/lib/tusfacturas"
 
 interface BodyInput {
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
   }
   if (!orderId) return fail("parse", "orderId requerido", undefined, 400)
 
-  const cai = CAI_DATA[empresa]
+  const cai = getCaiConfig(empresa)
   const supabase = createServiceClient()
 
   // ───────── PASO 2: pedido + cliente + items ─────────
@@ -117,6 +118,17 @@ export async function POST(request: NextRequest) {
   const caiVencido = vencimientoDate ? vencimientoDate < fecha : false
 
   console.log(`Step 3: Próximo remito ${empresa} → ${numeroFormateado} (CAI ${caiVencido ? "VENCIDO" : "vigente"})`)
+
+  // Bloqueo duro si CAI_BLOCK_ON_EXPIRED=true y el CAI está vencido.
+  // Default (false): permite emitir con warning visible en el PDF + UI.
+  if (caiVencido && shouldBlockOnExpired()) {
+    return fail(
+      "numero",
+      `CAI de ${empresa} vencido el ${cai.vencimiento}. Renovar en AFIP antes de emitir.`,
+      { cai_vencimiento: cai.vencimiento, empresa, blocked: true },
+      400,
+    )
+  }
 
   // ───────── PASO 4: PDF ─────────
   let pdfBytes: Uint8Array

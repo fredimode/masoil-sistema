@@ -11,6 +11,10 @@ export interface CaiInfo {
   vencimiento: string                  // dd/mm/yyyy
 }
 
+// Hardcoded fallback. La fuente de verdad ahora son las env vars
+// (CAI_AQUILES, CAI_AQUILES_PV, CAI_AQUILES_DESDE, etc.) leídas vía
+// `getCaiConfig(empresa)` desde `@/lib/cai-status`. Este export se
+// mantiene para back-compat con código que lo referencia.
 export const CAI_DATA: Record<Empresa, CaiInfo> = {
   Aquiles: {
     cai: "52031216755243",
