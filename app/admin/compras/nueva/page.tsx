@@ -390,7 +390,10 @@ function NuevaCompraForm() {
       router.push("/admin/compras")
     } catch (err) {
       console.error("Error creando compra:", err)
-      alert("Error al crear la compra")
+      const msg = err instanceof Error
+        ? err.message
+        : ((err as any)?.message || (err as any)?.details || "desconocido")
+      alert("Error al crear la compra: " + msg)
     } finally {
       setSubmitting(false)
     }

@@ -228,7 +228,10 @@ export default function ComprasPage() {
       await loadData()
     } catch (err) {
       console.error("Error eliminando solicitud:", err)
-      alert("Error al eliminar la solicitud")
+      const msg = err instanceof Error
+        ? err.message
+        : ((err as any)?.message || (err as any)?.details || "desconocido")
+      alert("Error al eliminar la solicitud: " + msg)
     }
   }
 

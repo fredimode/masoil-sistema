@@ -66,6 +66,98 @@ Cuando se carga un cliente con `condicion_iva = "RESP. INSCRIPTO"`, el
 **Workaround actual:** `mapCondicionIvaToSelectOption()` traduce DB → Select
 on-the-fly. Funciona pero los datos guardados quedan en formatos inconsistentes.
 
+## Bugs reportados sin reproducción determinística
+
+### Bug 9.1 — Códigos de productos no se levantan al cargar factura proveedor
+**Origen:** sprint 9 (auditoría de bugs reportados, mayo 2026).
+
+**Reportado por usuarios:** "los códigos de productos no se levantan en factura proveedor".
+
+**Estado:** no reproducible deterministicamente. Verificado que `products.code` no es null en ningún row (4485 productos). La función `selectProducto` (`app/admin/facturas-proveedor/page.tsx:896-904`) sí asigna `codigo: p.code ?? ""` correctamente cuando se clickea una opción del dropdown.
+
+**Sospecha:** race condition en `onBlur` con `setTimeout` de 150ms (líneas 916, 946). Cuando el dropdown se cierra antes del click registrar, la selección se pierde y el código queda vacío. Hay `onMouseDown={(e) => e.preventDefault()}` que debería prevenirlo, pero es susceptible a timing en máquinas lentas.
+
+**Fix candidato (NO aplicado, esperando reproducción):**
+- Subir `setTimeout` a 250ms.
+- O reemplazar `onClick`+`preventDefault` por `onMouseDown` directo en los items del dropdown — elimina la condición de carrera.
+- Defensivo: en `onBlur` del input, autobuscar match exacto en `products` por code/name y autocompletar el otro campo si matchea exactamente. Cubre el caso "tipié el código entero, salí sin clickear dropdown".
+
+**Antes de aplicar:** pedirle screencast al reporter para confirmar el flujo exacto.
+
+### Bug 9.3 — Cotización → Pedido genera error
+**Origen:** sprint 9 (auditoría de bugs reportados, mayo 2026).
+
+**Reportado:** "al pasar cotización a pedido genera error".
+
+**Estado:** no reproducible. 7/9 cotizaciones se convirtieron exitosamente (`estado = convertida_pedido`). Las 2 pendientes están vacías y son bloqueadas correctamente antes del flow con el alert "No hay items aprobados para convertir" (cotizaciones-venta/[id]/page.tsx:272), nunca llegan al `try/catch` de error.
+
+**Hipótesis:**
+- Vendedor sin `iniciales` y email no matchable hardcoded (`pablo@`, `jestevez@`, `cobranzas@` en `createOrder` queries.ts:196-201) → `prefix` queda como `"PED-"` y la query del último serial puede colisionar con otros formats → 23505 unique violation.
+- FK violation a producto/cliente borrado en `order_items.product_id` o `orders.client_id`.
+- Race condition en `order_number_serial` con conversiones simultáneas.
+
+**Mejoras propuestas (NO aplicadas):**
+- Agregar `e?.code` y `e?.hint` al alert (`cotizaciones-venta/[id]/page.tsx:306`) para diagnóstico instantáneo cuando vuelva a aparecer.
+- Hacer `createOrder` transaccional con RPC, o al menos rollback explícito si falla items post-orders.
+
+**Antes de aplicar:** pedir nro de cotización exacto al reporter cuando vuelva a aparecer.
+
+## Alerts genéricos que ocultan errores reales (deuda técnica de UX)
+
+**Origen:** sprint 9. El bug 9.2 ("Error al crear la compra") quedó abierto mucho tiempo porque el alert mostraba solo el mensaje genérico, sin la causa real (columna `email_comercial` faltante en DB). Para evitar repetir el patrón, conviene migrar todos los alerts genéricos al formato que muestra `e.message` o `e.details`.
+
+**Patrón malo** (muestra al user un cartel inútil):
+```ts
+} catch (err) {
+  console.error(err)
+  alert("Error al hacer X")
+}
+```
+
+**Patrón bueno** (al menos lo que ya hace cobranzas/cotizaciones/logística):
+```ts
+} catch (err) {
+  console.error(err)
+  alert("Error al hacer X: " + (err instanceof Error ? err.message : (err as any)?.message || (err as any)?.details || "desconocido"))
+}
+```
+
+### Lista detectada (24 alerts), agrupada por módulo
+
+**Módulos críticos para producción** (priorizar):
+- `app/admin/pagos/nuevo/page.tsx:394` — "Error al crear el pago"
+- `app/admin/pagos/page.tsx:183` — "Error al enviar email"
+- `app/admin/pagos/page.tsx:382` — "Error al crear lote"
+- `app/admin/pagos/page.tsx:441` — "Error al enviar a lote"
+- `app/admin/pedidos/nuevo/page.tsx:227` — "Error al crear producto"
+- `app/admin/pedidos/nuevo/page.tsx:291` — "Error al crear el pedido"
+- `app/admin/pedidos/[id]/page.tsx:154` — "Error de conexión al generar factura"
+- `app/admin/pedidos/[id]/page.tsx:189` — "Error al actualizar el estado del pedido"
+- `app/admin/pedidos/[id]/page.tsx:246` — "Error al cancelar el pedido"
+
+**Operativos** (medium priority):
+- `app/admin/cobranzas/page.tsx:360` — "Error guardando ajuste"
+- `app/admin/clientes/[id]/page.tsx:162` — "Error al guardar"
+- `app/admin/clientes/[id]/page.tsx:196` — "Error al guardar"
+- `app/admin/proveedores/[id]/page.tsx:349` — "Error al guardar" (observaciones_pagos)
+- `app/admin/facturacion/nueva/page.tsx:300` — "Error cargando items de la factura original"
+- `app/admin/cotizaciones-venta/[id]/page.tsx:324` — "Error al generar PDF"
+- `app/admin/stock/nuevo/page.tsx:82` — "Error al crear el producto"
+
+**Tesorería / finanzas:**
+- `app/admin/caja-chica/page.tsx:135` — "Error guardando cambios"
+- `app/admin/caja-chica/page.tsx:156` — "Error creando movimiento"
+- `app/admin/finanzas/comisiones/page.tsx:124` — "Error guardando pago"
+- `app/admin/finanzas/egresos/page.tsx:285` — "Error guardando egreso"
+- `app/admin/finanzas/egresos/page.tsx:432` — "Error creando servicio fijo"
+- `app/admin/finanzas/egresos/page.tsx:515` — "Error creando movimiento"
+
+**Ya arreglados en sprint 9** (commit `<este>`):
+- `app/admin/compras/nueva/page.tsx:393` — ahora muestra `e.message`
+- `app/admin/compras/page.tsx:231` — ahora muestra `e.message`
+
+**Recomendación:** sprint dedicado de 1-2 horas para migrar los 22 restantes. Cambio mecánico, sin lógica nueva, riesgo bajo.
+
 ## Otros (sin urgencia inmediata)
 
 ### `xlsx` sin parche en npm
