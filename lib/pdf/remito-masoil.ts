@@ -265,19 +265,6 @@ export async function generarRemitoPDF(data: RemitoPDFData): Promise<Uint8Array>
     }
   }
 
-  // ════════════════ FIRMAS (espacio reservado en remito) ════════════════
-  const firmasY = MARGIN + 180
-  page.drawLine({ start: { x: LEFT + 30, y: firmasY }, end: { x: LEFT + 220, y: firmasY }, thickness: 0.5, color: black })
-  page.drawText("Firma y aclaración receptor", {
-    x: LEFT + 70, y: firmasY - 12,
-    size: 8, font: fontReg, color: gray,
-  })
-  page.drawLine({ start: { x: RIGHT - 220, y: firmasY }, end: { x: RIGHT - 30, y: firmasY }, thickness: 0.5, color: black })
-  page.drawText("Firma y aclaración entrega", {
-    x: RIGHT - 175, y: firmasY - 12,
-    size: 8, font: fontReg, color: gray,
-  })
-
   // ════════════════ FOOTER CAI ════════════════
   const FOOTER_H = 130
   const footerBottom = MARGIN
@@ -337,6 +324,66 @@ export async function generarRemitoPDF(data: RemitoPDFData): Promise<Uint8Array>
       size: 9, font: fontReg, color: gray,
     })
   }
+
+  // ════════════════ FIRMAS (2 bloques lado a lado, 5 campos c/u) ════════════════
+  // Posición fija sobre el footer CAI. Si hay muchas observaciones puede
+  // pisarse — trade-off conocido (deuda técnica: layout dinámico).
+  const firmaBlockTop = MARGIN + FOOTER_H + 130        // top del bloque
+  const firmaBlockBot = MARGIN + FOOTER_H + 8           // 8pt separación del footer
+  const firmaBlockH = firmaBlockTop - firmaBlockBot
+  const firmaBlockW = (W - 20) / 2                      // mitad menos 20pt margen
+
+  function drawFirmaBlock(xLeft: number, titulo: string) {
+    // Borde sutil
+    page.drawRectangle({
+      x: xLeft, y: firmaBlockBot,
+      width: firmaBlockW, height: firmaBlockH,
+      borderColor: lightGray, borderWidth: 0.5,
+    })
+    // Título centrado
+    const titleW = fontBold.widthOfTextAtSize(titulo, 9)
+    page.drawText(titulo, {
+      x: xLeft + (firmaBlockW - titleW) / 2,
+      y: firmaBlockTop - 12,
+      size: 9, font: fontBold, color: black,
+    })
+    // Filas con label + línea para escribir
+    const labelX = xLeft + 8
+    const lineRight = xLeft + firmaBlockW - 8
+    const lineH = 22
+    let lineY = firmaBlockTop - 32
+    const filas = [
+      { label: "Firma:",      lineFromOffset: 35 },
+      { label: "Aclaración:", lineFromOffset: 55 },
+      { label: "DNI:",        lineFromOffset: 25 },
+    ]
+    for (const f of filas) {
+      page.drawText(f.label, { x: labelX, y: lineY, size: 8, font: fontReg, color: black })
+      page.drawLine({
+        start: { x: labelX + f.lineFromOffset, y: lineY - 2 },
+        end:   { x: lineRight, y: lineY - 2 },
+        thickness: 0.4, color: black,
+      })
+      lineY -= lineH
+    }
+    // Fecha + Hora compactas (mitad y mitad)
+    const halfX = labelX + (firmaBlockW - 16) / 2
+    page.drawText("Fecha:", { x: labelX, y: lineY, size: 8, font: fontReg, color: black })
+    page.drawLine({
+      start: { x: labelX + 30, y: lineY - 2 },
+      end:   { x: halfX - 8, y: lineY - 2 },
+      thickness: 0.4, color: black,
+    })
+    page.drawText("Hora:", { x: halfX, y: lineY, size: 8, font: fontReg, color: black })
+    page.drawLine({
+      start: { x: halfX + 25, y: lineY - 2 },
+      end:   { x: lineRight, y: lineY - 2 },
+      thickness: 0.4, color: black,
+    })
+  }
+
+  drawFirmaBlock(LEFT, "RECEPTOR")
+  drawFirmaBlock(LEFT + firmaBlockW + 20, "ENTREGA")
 
   // Watermark "REMITO" (no es factura AFIP)
   page.drawText("REMITO", {
