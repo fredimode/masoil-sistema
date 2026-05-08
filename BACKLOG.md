@@ -200,6 +200,26 @@ de `TabRegistrarCobro`. Es donde debe estar según la spec original.
 
 **No hay acción pendiente** — el estado del código es correcto.
 
+## Seguridad y RLS
+
+### RLS de `plan_cuentas` abierta a cualquier autenticado
+**Origen:** sprint 10 (mayo 2026, fix 10.2).
+
+La policy actual (`plan_cuentas_auth_all` en
+`supabase/migrations/20260410_plan_cuentas_imputaciones.sql`) permite a
+cualquier usuario autenticado hacer SELECT/INSERT/UPDATE/DELETE en el plan
+de cuentas. Con el botón "+ Nueva imputación" del flow de carga de factura
+proveedor, ahora cualquier usuario puede agregar cuentas al catálogo.
+
+**A hacer:** restringir INSERT/UPDATE/DELETE a `role = 'admin'` cuando exista
+el sistema de roles real (hoy `vendedores.role` existe pero el filtrado por
+role en RLS de otras tablas tampoco está aplicado).
+
+**Por qué se aceptó hoy:** Masoil tiene equipo chico y confiable. Plan de
+cuentas tiene 109 filas, agregar 3-5 más por descuido no es crítico y se
+puede limpiar con un DELETE manual. La fricción de pasar por un módulo Plan
+de Cuentas standalone no compensa el riesgo actual.
+
 ## Otros (sin urgencia inmediata)
 
 ### `xlsx` sin parche en npm

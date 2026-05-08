@@ -11,6 +11,7 @@ import {
   fetchProducts,
   createFacturaProveedor,
   createFacturaProveedorItems,
+  createPlanCuenta,
   updateOrdenCompra,
   deleteFacturaProveedor,
 } from "@/lib/supabase/queries"
@@ -106,6 +107,13 @@ export default function FacturasProveedorPage() {
 
   // Stepper: 1 = datos de factura, 2 = items + imputación
   const [step, setStep] = useState<1 | 2>(1)
+
+  // Modal "Nueva imputación contable"
+  const [nuevaCuentaOpen, setNuevaCuentaOpen] = useState(false)
+  const [nuevaCuentaForm, setNuevaCuentaForm] = useState({ codigo: "", categoria: "", sub_categoria: "" })
+  const [nuevaCuentaError, setNuevaCuentaError] = useState("")
+  const [nuevaCuentaSaving, setNuevaCuentaSaving] = useState(false)
+  const [showCategoriaList, setShowCategoriaList] = useState(false)
 
   // Proveedor autocomplete
   const [proveedorSearch, setProveedorSearch] = useState("")
@@ -266,6 +274,76 @@ export default function FacturasProveedorPage() {
     }])
     setCuentaSearch("")
     setShowCuentaList(false)
+  }
+
+  // Categorías únicas existentes para autocomplete
+  const categoriasExistentes = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of planCuentas) {
+      if (c?.categoria) set.add(c.categoria)
+    }
+    return Array.from(set).sort()
+  }, [planCuentas])
+
+  const categoriasFiltradas = useMemo(() => {
+    if (!nuevaCuentaForm.categoria) return categoriasExistentes.slice(0, 10)
+    const q = normalizeSearch(nuevaCuentaForm.categoria)
+    return categoriasExistentes
+      .filter((c) => normalizeSearch(c).includes(q) && c !== nuevaCuentaForm.categoria)
+      .slice(0, 10)
+  }, [categoriasExistentes, nuevaCuentaForm.categoria])
+
+  // Sugerencia de código: max(codigo) parseado como int + 10
+  function sugerirCodigo(): string {
+    const numericCodes = planCuentas
+      .map((c: any) => parseInt(c.codigo, 10))
+      .filter((n) => !isNaN(n))
+    if (numericCodes.length === 0) return ""
+    const max = Math.max(...numericCodes)
+    return String(max + 10)
+  }
+
+  function abrirNuevaCuenta() {
+    setNuevaCuentaForm({ codigo: sugerirCodigo(), categoria: "", sub_categoria: "" })
+    setNuevaCuentaError("")
+    setShowCategoriaList(false)
+    setNuevaCuentaOpen(true)
+  }
+
+  async function handleCrearCuenta() {
+    setNuevaCuentaError("")
+    const codigo = nuevaCuentaForm.codigo.trim()
+    const categoria = nuevaCuentaForm.categoria.trim()
+    if (!codigo) {
+      setNuevaCuentaError("Completar código")
+      return
+    }
+    if (!categoria) {
+      setNuevaCuentaError("Completar categoría")
+      return
+    }
+    setNuevaCuentaSaving(true)
+    try {
+      const nueva = await createPlanCuenta({
+        codigo,
+        categoria,
+        sub_categoria: nuevaCuentaForm.sub_categoria || null,
+      })
+      // Refrescar plan de cuentas y agregar al form padre
+      setPlanCuentas((prev) => [...prev, nueva].sort((a: any, b: any) => (a.codigo || "").localeCompare(b.codigo || "")))
+      addImputacion(nueva)
+      setNuevaCuentaOpen(false)
+    } catch (err: any) {
+      const code = err?.code || ""
+      const msg = err?.message || ""
+      if (code === "23505" || /duplicate|unique/i.test(msg)) {
+        setNuevaCuentaError(`Ya existe una cuenta con código "${codigo}"`)
+      } else {
+        setNuevaCuentaError(msg || "Error al crear la cuenta")
+      }
+    } finally {
+      setNuevaCuentaSaving(false)
+    }
   }
 
   async function handleNext() {
@@ -1078,9 +1156,18 @@ export default function FacturasProveedorPage() {
 
             {/* Imputación Contable */}
             <div className="border rounded-lg p-3 bg-blue-50/50">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Imputación Contable <span className="text-red-600">*</span>
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Imputación Contable <span className="text-red-600">*</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={abrirNuevaCuenta}
+                  className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  + Nueva imputación
+                </button>
+              </div>
               <div className="relative mb-2">
                 <input
                   type="text"
@@ -1246,6 +1333,96 @@ export default function FacturasProveedorPage() {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ==================== DIALOG: Nueva imputación contable ==================== */}
+      <Dialog open={nuevaCuentaOpen} onOpenChange={setNuevaCuentaOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nueva imputación contable</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Código *</label>
+              <input
+                type="text"
+                value={nuevaCuentaForm.codigo}
+                onChange={(e) => setNuevaCuentaForm((prev) => ({ ...prev, codigo: e.target.value }))}
+                placeholder="Ej: 20020"
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm font-mono"
+              />
+              <p className="text-[11px] text-gray-500 mt-1">
+                Sugerido en base al máximo actual + 10. Editable.
+              </p>
+            </div>
+            <div className="relative">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Categoría *</label>
+              <input
+                type="text"
+                value={nuevaCuentaForm.categoria}
+                onChange={(e) => {
+                  setNuevaCuentaForm((prev) => ({ ...prev, categoria: e.target.value }))
+                  setShowCategoriaList(true)
+                }}
+                onFocus={() => setShowCategoriaList(true)}
+                onBlur={() => setTimeout(() => setShowCategoriaList(false), 150)}
+                placeholder="Ej: ALMACEN"
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+              />
+              {showCategoriaList && categoriasFiltradas.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
+                  {categoriasFiltradas.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setNuevaCuentaForm((prev) => ({ ...prev, categoria: c }))
+                        setShowCategoriaList(false)
+                      }}
+                      className="w-full text-left px-3 py-1.5 hover:bg-gray-100 text-sm border-b last:border-0"
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-[11px] text-gray-500 mt-1">
+                Reusá una existente del listado o tipeá una nueva.
+              </p>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Sub-categoría</label>
+              <input
+                type="text"
+                value={nuevaCuentaForm.sub_categoria}
+                onChange={(e) => setNuevaCuentaForm((prev) => ({ ...prev, sub_categoria: e.target.value }))}
+                placeholder="Opcional"
+                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+              />
+            </div>
+          </div>
+          {nuevaCuentaError && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
+              {nuevaCuentaError}
+            </div>
+          )}
+          <DialogFooter>
+            <button
+              onClick={() => setNuevaCuentaOpen(false)}
+              className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleCrearCuenta}
+              disabled={nuevaCuentaSaving}
+              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm disabled:opacity-50"
+            >
+              {nuevaCuentaSaving ? "Creando..." : "Crear y agregar"}
+            </button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

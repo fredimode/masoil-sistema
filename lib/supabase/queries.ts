@@ -1722,6 +1722,25 @@ export async function fetchPlanCuentas(): Promise<any[]> {
   return data || []
 }
 
+export async function createPlanCuenta(input: {
+  codigo: string
+  categoria: string
+  sub_categoria?: string | null
+}): Promise<any> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("plan_cuentas")
+    .insert({
+      codigo: input.codigo.trim(),
+      categoria: input.categoria.trim(),
+      sub_categoria: input.sub_categoria?.trim() || null,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 // ---------------------------------------------------------------------------
 // Retenciones
 // ---------------------------------------------------------------------------
