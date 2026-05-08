@@ -104,6 +104,9 @@ export default function FacturasProveedorPage() {
   const [showCuentaList, setShowCuentaList] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
 
+  // Stepper: 1 = datos de factura, 2 = items + imputación
+  const [step, setStep] = useState<1 | 2>(1)
+
   // Proveedor autocomplete
   const [proveedorSearch, setProveedorSearch] = useState("")
   const [showProveedorList, setShowProveedorList] = useState(false)
@@ -265,14 +268,22 @@ export default function FacturasProveedorPage() {
     setShowCuentaList(false)
   }
 
-  async function handleGuardar() {
+  async function handleNext() {
     setErrorMsg("")
-    if (!form.proveedor_nombre || !form.fecha || !form.neto) {
-      setErrorMsg("Completar proveedor, fecha y neto")
+    if (!form.empresa) {
+      setErrorMsg("Seleccionar empresa")
       return
     }
-    if (imputaciones.length === 0) {
-      setErrorMsg("Debe seleccionar al menos una imputación contable")
+    if (!form.proveedor_nombre) {
+      setErrorMsg("Seleccionar proveedor")
+      return
+    }
+    if (!form.fecha) {
+      setErrorMsg("Completar fecha")
+      return
+    }
+    if (!form.neto) {
+      setErrorMsg("Completar neto")
       return
     }
 
@@ -290,6 +301,16 @@ export default function FacturasProveedorPage() {
         setErrorMsg(`Ya existe la factura N° ${form.numero} de este proveedor para ${form.empresa}`)
         return
       }
+    }
+
+    setStep(2)
+  }
+
+  async function handleGuardar() {
+    setErrorMsg("")
+    if (imputaciones.length === 0) {
+      setErrorMsg("Debe seleccionar al menos una imputación contable")
+      return
     }
 
     setGuardando(true)
@@ -371,6 +392,7 @@ export default function FacturasProveedorPage() {
       setImputaciones([])
       setCuentaSearch("")
       setErrorMsg("")
+      setStep(1)
       setDialogOpen(false)
       await loadData()
     } catch (err) {
@@ -420,6 +442,7 @@ export default function FacturasProveedorPage() {
             setImputaciones([])
             setCuentaSearch("")
             setErrorMsg("")
+            setStep(1)
             setDialogOpen(true)
           }}
           className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2"
@@ -576,6 +599,49 @@ export default function FacturasProveedorPage() {
             <DialogTitle>Cargar Factura de Proveedor</DialogTitle>
           </DialogHeader>
 
+          {/* Stepper */}
+          <div className="flex items-center gap-2 px-1 py-2 border-b">
+            <button
+              type="button"
+              onClick={() => { setErrorMsg(""); setStep(1) }}
+              className={`flex items-center gap-2 text-sm font-medium px-2 py-1 rounded ${step === 1 ? "text-primary" : "text-gray-500 hover:text-gray-700"}`}
+            >
+              <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${step === 1 ? "bg-primary text-white" : "bg-gray-200 text-gray-600"}`}>1</span>
+              Datos de factura
+            </button>
+            <span className="flex-1 h-px bg-gray-300" />
+            <div
+              className={`flex items-center gap-2 text-sm font-medium px-2 py-1 rounded ${step === 2 ? "text-primary" : "text-gray-400"}`}
+            >
+              <span className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${step === 2 ? "bg-primary text-white" : "bg-gray-200 text-gray-500"}`}>2</span>
+              Items + imputación
+            </div>
+          </div>
+
+          {/* Resumen colapsado en etapa 2 */}
+          {step === 2 && (
+            <div className="bg-gray-50 border rounded-lg px-3 py-2 text-sm flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <span><span className="text-gray-500">Proveedor:</span> <span className="font-medium">{form.proveedor_nombre}</span></span>
+                <span className="text-gray-300">|</span>
+                <span><span className="text-gray-500">N°:</span> <span className="font-medium">{form.punto_venta || "-"}-{form.numero || "-"}</span></span>
+                <span className="text-gray-300">|</span>
+                <span><span className="text-gray-500">Fecha:</span> <span className="font-medium">{form.fecha ? new Date(form.fecha).toLocaleDateString("es-AR") : "-"}</span></span>
+                <span className="text-gray-300">|</span>
+                <span><span className="text-gray-500">Total:</span> <span className="font-semibold text-primary">{form.total ? formatCurrency(parseFloat(form.total)) : "$0,00"}</span></span>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setErrorMsg(""); setStep(1) }}
+                className="text-xs text-primary hover:underline whitespace-nowrap"
+              >
+                Editar datos
+              </button>
+            </div>
+          )}
+
+          {/* === ETAPA 1: Datos de factura === */}
+          {step === 1 && (
           <div className="grid gap-3 py-2">
             {/* Empresa - primer campo */}
             <div>
@@ -866,7 +932,12 @@ export default function FacturasProveedorPage() {
                 </select>
               </div>
             </div>
+          </div>
+          )}
 
+          {/* === ETAPA 2: Items + imputación + observaciones === */}
+          {step === 2 && (
+          <div className="grid gap-3 py-2">
             {/* Detalle de productos/items */}
             <div className="border rounded-lg p-4 bg-gray-50">
               <div className="flex items-center justify-between mb-3">
@@ -1081,6 +1152,7 @@ export default function FacturasProveedorPage() {
               />
             </div>
           </div>
+          )}
 
           {errorMsg && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">
@@ -1089,19 +1161,38 @@ export default function FacturasProveedorPage() {
           )}
 
           <DialogFooter>
-            <button
-              onClick={() => setDialogOpen(false)}
-              className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleGuardar}
-              disabled={guardando}
-              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm disabled:opacity-50"
-            >
-              {guardando ? "Guardando..." : "Guardar Factura"}
-            </button>
+            {step === 1 ? (
+              <>
+                <button
+                  onClick={() => setDialogOpen(false)}
+                  className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleNext}
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm"
+                >
+                  Siguiente →
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => { setErrorMsg(""); setStep(1) }}
+                  className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
+                >
+                  ← Atrás
+                </button>
+                <button
+                  onClick={handleGuardar}
+                  disabled={guardando}
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm disabled:opacity-50"
+                >
+                  {guardando ? "Guardando..." : "Guardar Factura"}
+                </button>
+              </>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
