@@ -664,9 +664,18 @@ function TabRegistrarCobro({
   const [rets, setRets] = useState<RetencionForm[]>([])
   const [confirmando, setConfirmando] = useState(false)
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10))
-  const [nextRecibo, setNextRecibo] = useState<number>(0)
+  // El próximo recibo se calcula por empresa (sprint 11). Si no hay empresa
+  // específica seleccionada en el filter global, queda null y bloqueamos
+  // la confirmación con un mensaje explícito.
+  const [nextRecibo, setNextRecibo] = useState<{ numero: number; numero_completo: string } | null>(null)
   // Unified CUIT pendientes
   const [pendientesUnificados, setPendientesUnificados] = useState<any[]>([])
+
+  // Empresa válida para registrar cobro (Aquiles/Conancap/Masoil).
+  // El filter global puede estar en "Todas"/"INCLUIR" — esos no son válidos.
+  const empresaValida = empresaFilter && ["Aquiles", "Conancap", "Masoil"].includes(empresaFilter)
+    ? empresaFilter
+    : null
 
   // Carga rápida de retención (sin recibo)
   const [retOpen, setRetOpen] = useState(false)
@@ -756,10 +765,20 @@ function TabRegistrarCobro({
     }
   }
 
-  // Load next recibo number on mount
+  // Próximo recibo: reactivo al cambio de empresa. Si no hay empresa válida
+  // seleccionada, se muestra "Seleccioná una empresa" y la confirmación queda
+  // bloqueada (ver botón Confirmar más abajo).
   useEffect(() => {
-    getNextReciboNumero().then(setNextRecibo).catch(() => setNextRecibo(1))
-  }, [])
+    if (!empresaValida) {
+      setNextRecibo(null)
+      return
+    }
+    let cancelled = false
+    getNextReciboNumero(empresaValida)
+      .then((r) => { if (!cancelled) setNextRecibo(r) })
+      .catch(() => { if (!cancelled) setNextRecibo(null) })
+    return () => { cancelled = true }
+  }, [empresaValida])
 
   const filteredClients = useMemo(() => {
     if (!search.trim()) return []
@@ -858,22 +877,28 @@ function TabRegistrarCobro({
 
   async function handleConfirmar() {
     if (!selectedClient || totalValores < totalSeleccionado) return
+    if (!empresaValida || !nextRecibo) {
+      alert("Seleccioná una empresa específica (Aquiles/Conancap) para registrar el cobro")
+      return
+    }
     setConfirmando(true)
     try {
-      const reciboNum = nextRecibo
+      const reciboNum = nextRecibo.numero
+      const reciboNumeroCompleto = nextRecibo.numero_completo
       const saldoFavor = totalValores - totalSeleccionado
       const cuit = selectedClient.numeroDocum || selectedClient.cuit || ""
 
       // Create recibo cobranza
       const reciboId = await createReciboCobranza({
         numero: reciboNum,
+        numero_completo: reciboNumeroCompleto,
         fecha,
         client_id: selectedClient.id,
         cuit_cliente: cuit,
         razon_social_cliente: selectedClient.businessName,
         vendedor_id: selectedClient.vendedorId || null,
         vendedor_nombre: vendedorNombre || null,
-        empresa: empresaParaInsert(empresaFilter),
+        empresa: empresaValida,
         total_facturas: totalSeleccionado,
         total_retenciones: totalRets,
         total_valores: totalValores,
@@ -915,8 +940,10 @@ function TabRegistrarCobro({
       }
 
       // Create movimiento en cuenta corriente - RECIBO (HABER)
-      const reciboLabel = `REC-${String(reciboNum).padStart(4, "0")}`
-      const empresaRecibo = empresaParaInsert(empresaFilter)
+      // reciboLabel ahora usa el numero_completo con prefijo por empresa
+      // (AQ-NNNN, CO-NNNN). Sprint 11.
+      const reciboLabel = reciboNumeroCompleto
+      const empresaRecibo = empresaValida
       await createMovimientoCuentaCorriente({
         client_id: selectedClient.id,
         empresa: empresaRecibo,
@@ -957,6 +984,7 @@ function TabRegistrarCobro({
       onReciboCreado({
         id: reciboId,
         numero: reciboNum,
+        numero_completo: reciboNumeroCompleto,
         fecha,
         razon_social_cliente: selectedClient.businessName,
         total_valores: totalValores,
@@ -965,8 +993,11 @@ function TabRegistrarCobro({
         vendedor_nombre: vendedorNombre,
       })
 
-      // Update next recibo number
-      setNextRecibo(reciboNum + 1)
+      // Re-fetch para asegurar que viene del DB con el último valor
+      // (por si dos usuarios crearon recibos al mismo tiempo, etc).
+      getNextReciboNumero(empresaValida)
+        .then(setNextRecibo)
+        .catch(() => setNextRecibo(null))
 
       // Reset form
       handleCancelar()
@@ -998,10 +1029,12 @@ function TabRegistrarCobro({
           <div>
             <label className="text-sm font-medium mb-1 block">N° de Recibo</label>
             <div className="w-full border rounded-md px-3 py-2 text-sm bg-gray-50 font-mono font-bold">
-              REC-{String(nextRecibo).padStart(4, "0")}
+              {nextRecibo ? nextRecibo.numero_completo : (
+                <span className="text-gray-400 font-normal">Seleccioná una empresa</span>
+              )}
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              Correlativo automático (siguiente al último usado). Si necesitás configurar el número inicial, contactá al admin.
+              Correlativo automático por empresa (siguiente al último usado).
             </p>
           </div>
           <div>
@@ -1343,6 +1376,14 @@ function TabRegistrarCobro({
             </div>
           )}
 
+          {/* Aviso si no hay empresa válida seleccionada (filter en "Todas") */}
+          {!empresaValida && (
+            <div className="bg-amber-50 border border-amber-300 rounded-md px-3 py-2 text-sm text-amber-900">
+              Seleccioná una empresa específica (Aquiles/Conancap) en el filtro
+              superior para registrar el cobro.
+            </div>
+          )}
+
           {/* Actions */}
           <div className="flex gap-3">
             <button
@@ -1353,8 +1394,9 @@ function TabRegistrarCobro({
             </button>
             <button
               onClick={handleConfirmar}
-              disabled={confirmando || !selectedClient || selectedIds.size === 0 || totalValores < totalSeleccionado}
+              disabled={confirmando || !selectedClient || selectedIds.size === 0 || totalValores < totalSeleccionado || !empresaValida || !nextRecibo}
               className="flex-1 py-2.5 bg-primary text-white rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={!empresaValida ? "Seleccioná una empresa específica para registrar el cobro" : undefined}
             >
               {confirmando ? "Registrando..." : "Confirmar Cobro"}
             </button>
@@ -1946,12 +1988,14 @@ function TabCobrosRealizados({ recibos, recibosCobranza }: { recibos: any[]; rec
   const [page, setPage] = useState(1)
   const [viewing, setViewing] = useState<any | null>(null)
 
-  // Merge old recibos (GestionPro) with new recibos_cobranza
+  // Merge old recibos (GestionPro) with new recibos_cobranza.
+  // Sprint 11: nro_comprobante usa numero_completo si está poblado (nuevos
+  // con prefijo AQ/CO/MA), fallback a "REC-NNNN" para registros pre-migration.
   const allRecibos = useMemo(() => {
     const fromCobranza = recibosCobranza.map((r) => ({
       id: r.id,
       fecha: r.fecha,
-      nro_comprobante: `REC-${String(r.numero).padStart(4, "0")}`,
+      nro_comprobante: r.numero_completo || `REC-${String(r.numero).padStart(4, "0")}`,
       razon_social: r.razon_social_cliente,
       importe: r.total_valores,
       vendedor: r.vendedor_nombre,

@@ -1763,15 +1763,41 @@ export async function fetchRecibosCobranza(): Promise<any[]> {
   return data || []
 }
 
-export async function getNextReciboNumero(): Promise<number> {
+// Mapeo de prefijos por empresa para el campo numero_completo de recibos.
+// Para empresas no listadas (o NULL), cae a "REC".
+export const RECIBO_PREFIX_POR_EMPRESA: Record<string, string> = {
+  "Aquiles": "AQ",
+  "Conancap": "CO",
+  "Masoil": "MA",
+}
+
+export interface NextReciboNumero {
+  numero: number             // correlativo POR empresa
+  numero_completo: string    // presentación con prefijo, ej "AQ-0001"
+}
+
+/**
+ * Próximo correlativo de recibo. POR EMPRESA: cada empresa tiene su propia
+ * secuencia 1..N. La empresa NULL cae a la secuencia legacy.
+ *
+ * Si no se pasa empresa o es null, busca el próximo entre los recibos con
+ * empresa NULL (legacy). En general el caller debería pasar empresa siempre.
+ */
+export async function getNextReciboNumero(empresa?: string | null): Promise<NextReciboNumero> {
   const supabase = createSupabaseClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from("recibos_cobranza")
     .select("numero")
     .order("numero", { ascending: false })
     .limit(1)
+  if (empresa) query = query.eq("empresa", empresa)
+  else query = query.is("empresa", null)
+  const { data, error } = await query
   if (error) throw error
-  return (data && data.length > 0) ? data[0].numero + 1 : 1
+  const numero = data && data.length > 0 ? data[0].numero + 1 : 1
+  const prefix = (empresa && RECIBO_PREFIX_POR_EMPRESA[empresa]) || "REC"
+  const numero_completo = `${prefix}-${String(numero).padStart(4, "0")}`
+  return { numero, numero_completo }
 }
 
 export async function createReciboCobranza(recibo: Record<string, any>): Promise<string> {
