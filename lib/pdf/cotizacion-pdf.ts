@@ -119,9 +119,9 @@ export function generateCotizacionPDF(data: CotizacionPDFData): Blob {
   const cols = [
     { label: "Cant.", w: 50, align: "center" as const },
     { label: "Producto", w: 220, align: "left" as const },
-    { label: "Código", w: 80, align: "left" as const },
-    { label: "P. Unit (s/IVA)", w: 90, align: "right" as const },
-    { label: "Subtotal", w: 95, align: "right" as const },
+    { label: "Código", w: 80, align: "center" as const },
+    { label: "P. Unit (s/IVA)", w: 90, align: "center" as const },
+    { label: "Subtotal", w: 95, align: "center" as const },
   ]
 
   function drawHeader() {
@@ -129,7 +129,7 @@ export function generateCotizacionPDF(data: CotizacionPDFData): Blob {
     doc.rect(margin, y - 10, pageW - margin * 2, 18, "F")
     let x = margin + 4
     for (const c of cols) {
-      doc.text(c.label, c.align === "right" ? x + c.w - 6 : c.align === "center" ? x + c.w / 2 : x, y + 2, { align: c.align })
+      doc.text(c.label, c.align === "center" ? x + c.w / 2 : x, y + 2, { align: c.align })
       x += c.w
     }
     y += 12
@@ -159,7 +159,7 @@ export function generateCotizacionPDF(data: CotizacionPDFData): Blob {
     cols.forEach((c, i) => {
       const text = row[i]
       const align = c.align
-      const xPos = align === "right" ? x + c.w - 6 : align === "center" ? x + c.w / 2 : x
+      const xPos = align === "center" ? x + c.w / 2 : x
       if (i === 1) {
         // producto: wrap
         const split = doc.splitTextToSize(text, c.w - 6)
