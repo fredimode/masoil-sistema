@@ -158,6 +158,23 @@ on-the-fly. Funciona pero los datos guardados quedan en formatos inconsistentes.
 
 **Recomendación:** sprint dedicado de 1-2 horas para migrar los 22 restantes. Cambio mecánico, sin lógica nueva, riesgo bajo.
 
+## Hallazgos de auditoría corregidos
+
+### Auditoría #19 — botón "Cargar NC" supuestamente en TabCuentaCorriente
+**Origen:** sprint 8 (mayo 2026), durante diagnóstico previo.
+
+Auditoría #19 reportó incorrectamente que el botón "Cargar NC" estaba en
+`TabCuentaCorriente` y debía moverse a `TabRegistrarCobro`. Verificación con
+`git log` mostró que el botón ya estaba en `TabRegistrarCobro` desde commit
+`919f5e8` (28-abr-2026). El reporte original probablemente confundió el rango
+de líneas entre `TabCuentaCorriente` (196-616) y `TabRegistrarCobro` (617-1447).
+
+**Estado actual:** botón "Cargar NC" en `app/admin/cobranzas/page.tsx:1014-1021`
+junto a "Cargar Retenciones" dentro de la card "Datos generales del recibo"
+de `TabRegistrarCobro`. Es donde debe estar según la spec original.
+
+**No hay acción pendiente** — el estado del código es correcto.
+
 ## Otros (sin urgencia inmediata)
 
 ### `xlsx` sin parche en npm
