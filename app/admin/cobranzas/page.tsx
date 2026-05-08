@@ -151,7 +151,7 @@ export default function CobranzasPage() {
           <TabsTrigger value="registrar-cobro">Registrar Cobro</TabsTrigger>
           <TabsTrigger value="cobros-realizados">Cobros Realizados</TabsTrigger>
           <TabsTrigger value="retenciones">Retenciones</TabsTrigger>
-          <TabsTrigger value="informe">Informe Cobranzas Pendientes</TabsTrigger>
+          <TabsTrigger value="informe">Informe Saldos Pendientes</TabsTrigger>
         </TabsList>
 
         <TabsContent value="cuenta-corriente">
@@ -1603,7 +1603,7 @@ function TabRetenciones({ retenciones, clients }: { retenciones: any[]; clients:
   )
 }
 
-// ─── Tab 4: Informe Cobranzas Pendientes ────────────────────────────────────
+// ─── Tab 4: Informe Saldos Pendientes ───────────────────────────────────────
 
 function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; clients: any[]; empresaFilter: string }) {
   const [desde, setDesde] = useState("2000-01-01")
@@ -1727,9 +1727,9 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
     }
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Cobranzas Pendientes")
+    XLSX.utils.book_append_sheet(wb, ws, "Saldos Pendientes")
     const empresaTxt = empresaFilter === "Todas" ? "todas" : empresaFilter.toLowerCase()
-    XLSX.writeFile(wb, `cobranzas_pendientes_${empresaTxt}.xlsx`)
+    XLSX.writeFile(wb, `saldos_pendientes_${empresaTxt}.xlsx`)
   }
 
   function handlePrint() {
@@ -1769,9 +1769,9 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
         ${clientes}
       `
     }).join("")
-    w.document.write(`<html><head><title>Cobranzas Pendientes - ${empresaTxt}</title>
+    w.document.write(`<html><head><title>Saldos Pendientes - ${empresaTxt}</title>
       <style>body{font-family:sans-serif;max-width:1100px;margin:30px auto}h2{margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #ddd;padding:6px 8px;font-size:12px}th{background:#f5f5f5;text-align:left}tr.empresa td{background:#cbd5e1;font-weight:700;font-size:13px}tr.cliente td{background:#eef2ff;font-weight:600}tr.sub-header th{background:#f9fafb;font-size:11px}.totals td{font-weight:bold;background:#f0f0f0}</style></head><body>
-      <h2>Informe de Cobranzas Pendientes</h2>
+      <h2>Informe de Saldos Pendientes</h2>
       <p><strong>${empresaTxt}</strong>${rangoTxt ? " — " + rangoTxt : ""}</p>
       <table>
         <tbody>
