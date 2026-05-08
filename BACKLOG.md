@@ -158,6 +158,31 @@ on-the-fly. Funciona pero los datos guardados quedan en formatos inconsistentes.
 
 **Recomendación:** sprint dedicado de 1-2 horas para migrar los 22 restantes. Cambio mecánico, sin lógica nueva, riesgo bajo.
 
+## Remitos sin pedido (manuales)
+
+### Crear remito desde factura sin pedido vinculado
+**Origen:** sprint 7 (mayo 2026), Fix 7.1.
+
+Hoy `/api/remito` exige `orderId`. Los items del remito se sacan de
+`order_items` vía `factura.order_id`. **No hay path para emitir un remito a
+partir de una factura manual** (creada desde `/admin/facturacion/nueva` sin
+pedido) ni para devoluciones/regalos sin pedido base.
+
+**A hacer cuando aparezca la necesidad real:**
+- Decidir fuente de items para el caso "remito sin pedido":
+  - Opción A: tabla nueva `factura_items` para todas las facturas
+    (también ayuda al detalle del modal de factura).
+  - Opción B: input manual del usuario (form con cantidad + descripción).
+- Modificar `/api/remito` para aceptar `facturaId` como alternativa a
+  `orderId`. Insertar en remitos con `factura_id` directo y `order_id = null`.
+- Agregar UI: botón "Generar remito" en `/admin/facturacion/[id]` o modal
+  de detalle de factura.
+
+**Hoy:** la columna `remitos.factura_id` ya está disponible (commit
+sprint 7) y se popula automáticamente desde `orders.factura_id` cuando se
+emite un remito desde pedido facturado. El backfill cubrió 6 de 8 remitos
+existentes (2 quedan en NULL porque sus pedidos no estaban facturados).
+
 ## Hallazgos de auditoría corregidos
 
 ### Auditoría #19 — botón "Cargar NC" supuestamente en TabCuentaCorriente

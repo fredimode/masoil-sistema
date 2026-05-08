@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
   // ───────── PASO 2: pedido + cliente + items ─────────
   const { data: order, error: orderError } = await supabase
     .from("orders")
-    .select("id, client_id, client_name, status")
+    .select("id, client_id, client_name, status, factura_id")
     .eq("id", orderId)
     .single()
 
@@ -176,6 +176,7 @@ export async function POST(request: NextRequest) {
       cai_vencimiento: vencimientoDate ? vencimientoDate.toISOString().slice(0, 10) : null,
       fecha_emision: fecha.toISOString().slice(0, 10),
       order_id: orderId,
+      factura_id: order.factura_id || null,
       client_id: order.client_id,
       cliente_nombre: cliente.razonSocial,
       cliente_cuit: cliente.cuit,
