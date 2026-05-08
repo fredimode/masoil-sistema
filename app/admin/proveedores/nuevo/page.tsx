@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { createProveedor } from "@/lib/supabase/queries"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
+import { BotonSincAfip, type CamposAFIP } from "@/components/admin/boton-sinc-afip"
 
 export default function AdminNuevoProveedorPage() {
   const router = useRouter()
@@ -120,12 +121,26 @@ export default function AdminNuevoProveedorPage() {
 
             <div className="space-y-2">
               <Label htmlFor="cuit">CUIT</Label>
-              <Input
-                id="cuit"
-                value={formData.cuit}
-                onChange={(e) => handleChange("cuit", e.target.value)}
-                placeholder="Ej: 30-12345678-9"
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  id="cuit"
+                  value={formData.cuit}
+                  onChange={(e) => handleChange("cuit", e.target.value)}
+                  placeholder="Ej: 30-12345678-9"
+                  className="flex-1"
+                />
+                <BotonSincAfip
+                  cuit={formData.cuit}
+                  valoresActuales={{ razon_social: formData.nombre }}
+                  camposAplicables={["razon_social"]}
+                  onAplicar={(campos: CamposAFIP) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      nombre: campos.razon_social ?? prev.nombre,
+                    }))
+                  }}
+                />
+              </div>
             </div>
 
             <div className="space-y-2">

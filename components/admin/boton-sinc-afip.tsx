@@ -23,15 +23,23 @@ export interface CamposAFIP {
   cp?: string
 }
 
+type FieldKey = keyof CamposAFIP
+
 interface Props {
   cuit: string
   valoresActuales: ValoresActuales
   onAplicar: (campos: CamposAFIP) => void
   /** Variante visual: "compact" para usar al lado de inputs, "full" para botones más grandes */
   variant?: "compact" | "full"
+  /**
+   * Campos del padrón que el form de destino sí puede aplicar.
+   * Los NO listados se muestran greyed con label "(no aplicable)" y no se
+   * pueden marcar. Útil cuando el form cubre solo un subset de los campos
+   * AFIP — ej: form de nuevo proveedor que solo tiene "nombre".
+   * Default: todos los campos son aplicables.
+   */
+  camposAplicables?: FieldKey[]
 }
-
-type FieldKey = keyof CamposAFIP
 
 interface FieldRow {
   key: FieldKey
@@ -40,7 +48,9 @@ interface FieldRow {
   afip: string
 }
 
-export function BotonSincAfip({ cuit, valoresActuales, onAplicar, variant = "compact" }: Props) {
+export function BotonSincAfip({ cuit, valoresActuales, onAplicar, variant = "compact", camposAplicables }: Props) {
+  const aplicableSet = camposAplicables ? new Set<FieldKey>(camposAplicables) : null
+  const isAplicable = (k: FieldKey) => !aplicableSet || aplicableSet.has(k)
   const [loading, setLoading] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [padron, setPadron] = useState<AfipPadronData | null>(null)
@@ -59,14 +69,16 @@ export function BotonSincAfip({ cuit, valoresActuales, onAplicar, variant = "com
         return
       }
       setPadron(data)
-      // Pre-marcar checkboxes para campos donde difiere
-      const sel: Partial<Record<FieldKey, boolean>> = {}
-      sel.razon_social = norm(data.razon_social) !== norm(valoresActuales.razon_social)
-      sel.condicion_iva = norm(data.condicion_iva || "") !== norm(valoresActuales.condicion_iva)
-      sel.domicilio = norm(data.domicilio.calle) !== norm(valoresActuales.domicilio)
-      sel.localidad = norm(data.domicilio.localidad) !== norm(valoresActuales.localidad)
-      sel.provincia = norm(data.domicilio.provincia) !== norm(valoresActuales.provincia)
-      sel.cp = norm(data.domicilio.cp) !== norm(valoresActuales.cp)
+      // Pre-marcar checkboxes para campos donde difiere Y son aplicables.
+      const diff = (a: string | null | undefined, b: string | null | undefined) => norm(a) !== norm(b)
+      const sel: Partial<Record<FieldKey, boolean>> = {
+        razon_social: isAplicable("razon_social") && diff(data.razon_social, valoresActuales.razon_social),
+        condicion_iva: isAplicable("condicion_iva") && diff(data.condicion_iva || "", valoresActuales.condicion_iva),
+        domicilio: isAplicable("domicilio") && diff(data.domicilio.calle, valoresActuales.domicilio),
+        localidad: isAplicable("localidad") && diff(data.domicilio.localidad, valoresActuales.localidad),
+        provincia: isAplicable("provincia") && diff(data.domicilio.provincia, valoresActuales.provincia),
+        cp: isAplicable("cp") && diff(data.domicilio.cp, valoresActuales.cp),
+      }
       setSelected(sel)
       setDialogOpen(true)
     } catch (e: unknown) {
@@ -99,6 +111,8 @@ export function BotonSincAfip({ cuit, valoresActuales, onAplicar, variant = "com
     { key: "provincia", label: "Provincia", actual: valoresActuales.provincia || "", afip: padron.domicilio.provincia || "" },
     { key: "cp", label: "CP", actual: valoresActuales.cp || "", afip: padron.domicilio.cp || "" },
   ] : []
+
+  const algunoNoAplicable = padron != null && fields.some((f) => !isAplicable(f.key))
 
   const btnSize = variant === "compact"
     ? "px-2 py-1 text-xs"
@@ -149,6 +163,13 @@ export function BotonSincAfip({ cuit, valoresActuales, onAplicar, variant = "com
                 </div>
               )}
 
+              {algunoNoAplicable && (
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-xs text-blue-900">
+                  Algunos campos del padrón no tienen destino en el form actual.
+                  Para cargarlos, editá manualmente después de crear el proveedor.
+                </div>
+              )}
+
               <div className="overflow-x-auto border rounded-md">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-xs">
@@ -161,20 +182,27 @@ export function BotonSincAfip({ cuit, valoresActuales, onAplicar, variant = "com
                   </thead>
                   <tbody>
                     {fields.map((f) => {
+                      const aplicable = isAplicable(f.key)
                       const igual = norm(f.actual) === norm(f.afip)
                       const checked = !!selected[f.key]
+                      const dimmed = !aplicable || igual
                       return (
-                        <tr key={f.key} className={`border-t ${igual ? "opacity-50" : ""}`}>
+                        <tr key={f.key} className={`border-t ${dimmed ? "opacity-50" : ""}`}>
                           <td className="px-2 py-1.5 text-center">
                             <input
                               type="checkbox"
                               checked={checked}
-                              disabled={igual}
+                              disabled={!aplicable || igual}
                               onChange={(e) => setSelected((s) => ({ ...s, [f.key]: e.target.checked }))}
                               className="h-4 w-4"
                             />
                           </td>
-                          <td className="px-2 py-1.5 font-medium text-gray-700">{f.label}</td>
+                          <td className="px-2 py-1.5 font-medium text-gray-700">
+                            {f.label}
+                            {!aplicable && (
+                              <span className="ml-2 text-[10px] font-normal text-blue-700">(no aplicable)</span>
+                            )}
+                          </td>
                           <td className="px-2 py-1.5 text-gray-600">{f.actual || <span className="text-gray-400">(vacío)</span>}</td>
                           <td className="px-2 py-1.5 text-gray-900">{f.afip || <span className="text-gray-400">(vacío)</span>}</td>
                         </tr>
