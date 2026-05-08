@@ -12,6 +12,8 @@ import { fetchVendedores, createClient } from "@/lib/supabase/queries"
 import type { Vendedor, Zona } from "@/lib/types"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
+import { BotonSincAfip, type CamposAFIP } from "@/components/admin/boton-sinc-afip"
+import { mapCondicionIvaToSelectOption } from "@/lib/afip-sync"
 
 const zonas: Zona[] = ["Norte", "Capital", "Sur", "Oeste", "GBA"]
 
@@ -184,12 +186,34 @@ export default function AdminNuevoClientePage() {
 
             <div className="space-y-2">
               <Label htmlFor="cuit">CUIT</Label>
-              <Input
-                id="cuit"
-                value={formData.cuit}
-                onChange={(e) => handleChange("cuit", e.target.value)}
-                placeholder="Ej: 20-12345678-9"
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  id="cuit"
+                  value={formData.cuit}
+                  onChange={(e) => handleChange("cuit", e.target.value)}
+                  placeholder="Ej: 20-12345678-9"
+                  className="flex-1"
+                />
+                <BotonSincAfip
+                  cuit={formData.cuit}
+                  valoresActuales={{
+                    razon_social: formData.businessName,
+                    condicion_iva: formData.condicionIva,
+                    domicilio: formData.address,
+                    // Form de nuevo cliente no tiene campos separados de localidad/provincia/cp.
+                  }}
+                  onAplicar={(campos: CamposAFIP) => {
+                    setFormData((prev) => ({
+                      ...prev,
+                      businessName: campos.razon_social ?? prev.businessName,
+                      condicionIva: campos.condicion_iva !== undefined
+                        ? mapCondicionIvaToSelectOption(campos.condicion_iva)
+                        : prev.condicionIva,
+                      address: campos.domicilio ?? prev.address,
+                    }))
+                  }}
+                />
+              </div>
             </div>
 
             <div className="space-y-2">

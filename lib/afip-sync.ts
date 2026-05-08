@@ -52,6 +52,20 @@ export function mapCondicionIVA(tf: string | null | undefined): string | null {
   return null
 }
 
+// Mapea el string DB ("RESP. INSCRIPTO" etc.) al string que usan los <select>
+// de los forms ("Responsable Inscripto" etc.). Existe porque hay un mismatch
+// pre-existente entre DB y forms — deuda técnica para un sprint dedicado.
+export function mapCondicionIvaToSelectOption(dbValue: string | null | undefined): string {
+  if (!dbValue) return ""
+  const up = String(dbValue).toUpperCase().trim()
+  if (up.startsWith("RESP")) return "Responsable Inscripto"
+  if (up.startsWith("MONOTRI")) return "Monotributo"
+  if (up === "EXENTO") return "Exento"
+  if (up.startsWith("CONSUMIDOR")) return "Consumidor Final"
+  if (up.startsWith("NO RESPONSABLE")) return "No Responsable"
+  return dbValue
+}
+
 // Cliente del wrapper local. Llamar desde browser.
 // Devuelve null si AFIP no encuentra el CUIT, lanza Error en otros casos.
 export async function sincronizarCUIT(cuit: string): Promise<AfipPadronData | null> {

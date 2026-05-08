@@ -13,6 +13,8 @@ import { getStatusConfig } from "@/lib/status-config"
 import { ArrowLeft, Edit, MessageCircle, Phone, Mail, MapPin, CreditCard, FileText, Globe, Save } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { BotonSincAfip, type CamposAFIP } from "@/components/admin/boton-sinc-afip"
+import { mapCondicionIvaToSelectOption } from "@/lib/afip-sync"
 
 export default function AdminClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params)
@@ -669,7 +671,29 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">CUIT</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-sm font-medium text-gray-700">CUIT</label>
+                  <BotonSincAfip
+                    cuit={editForm.cuit}
+                    valoresActuales={{
+                      razon_social: editForm.businessName,
+                      condicion_iva: editForm.condicionIva,
+                      domicilio: editForm.address,
+                      // Form de editar no tiene localidad/provincia/cp separados,
+                      // pero sí domicilioEntrega — eso es de entrega, no fiscal.
+                    }}
+                    onAplicar={(campos: CamposAFIP) => {
+                      setEditForm((prev) => ({
+                        ...prev,
+                        businessName: campos.razon_social ?? prev.businessName,
+                        condicionIva: campos.condicion_iva !== undefined
+                          ? mapCondicionIvaToSelectOption(campos.condicion_iva)
+                          : prev.condicionIva,
+                        address: campos.domicilio ?? prev.address,
+                      }))
+                    }}
+                  />
+                </div>
                 <input
                   value={editForm.cuit}
                   onChange={(e) => setEditForm((f) => ({ ...f, cuit: e.target.value }))}
