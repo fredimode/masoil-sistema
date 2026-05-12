@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { formatMoney } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
-import { EMPRESAS_DATA } from "@/lib/pdf/factura-masoil"
+import { EMPRESAS_DATA } from "@/lib/empresas"
 import Link from "next/link"
 
 interface ClienteDB {

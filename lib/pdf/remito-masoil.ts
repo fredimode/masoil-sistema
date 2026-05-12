@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib"
 import bwipjs from "bwip-js/node"
-import { EMPRESAS_DATA } from "@/lib/pdf/factura-masoil"
+import { EMPRESAS_DATA } from "@/lib/empresas"
 import type { Empresa } from "@/lib/tusfacturas"
 
 export interface CaiInfo {

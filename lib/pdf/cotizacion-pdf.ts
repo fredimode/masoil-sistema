@@ -1,22 +1,6 @@
 import { jsPDF } from "jspdf"
-
-const RAZONES_SOCIALES: Record<string, { nombre: string; cuit: string; domicilio: string }> = {
-  Masoil: {
-    nombre: "MASOIL S.R.L.",
-    cuit: "30-71122333-4",
-    domicilio: "Av. Corrientes 1234, CABA",
-  },
-  Aquiles: {
-    nombre: "AQUILES S.A.",
-    cuit: "30-71222444-5",
-    domicilio: "Av. Rivadavia 5678, CABA",
-  },
-  Conancap: {
-    nombre: "CONANCAP S.A.",
-    cuit: "30-71333555-6",
-    domicilio: "Av. Santa Fe 910, CABA",
-  },
-}
+import { EMPRESAS_DATA } from "@/lib/empresas"
+import type { Empresa } from "@/lib/tusfacturas"
 
 function fmt(n: number): string {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS" }).format(n)
@@ -65,18 +49,22 @@ export function generateCotizacionPDF(data: CotizacionPDFData): Blob {
   const margin = 40
   let y = margin
 
-  const razon = RAZONES_SOCIALES[data.razon_social || "Masoil"] || RAZONES_SOCIALES.Masoil
+  const empresaKey = data.razon_social as Empresa | null
+  if (!empresaKey || !(empresaKey in EMPRESAS_DATA)) {
+    throw new Error(`Empresa desconocida o no especificada en cotización: ${empresaKey}`)
+  }
+  const razon = EMPRESAS_DATA[empresaKey]
 
   // Header
   doc.setFont("helvetica", "bold")
   doc.setFontSize(16)
-  doc.text(razon.nombre, margin, y)
+  doc.text(razon.razonSocial, margin, y)
   y += 16
   doc.setFont("helvetica", "normal")
   doc.setFontSize(9)
   doc.text(`CUIT: ${razon.cuit}`, margin, y)
   y += 12
-  doc.text(razon.domicilio, margin, y)
+  doc.text(`${razon.direccion} - ${razon.localidad}`, margin, y)
   y += 20
 
   // Title + número
@@ -231,7 +219,7 @@ export function generateCotizacionPDF(data: CotizacionPDFData): Blob {
     doc.setPage(i)
     doc.setFontSize(8)
     doc.setTextColor(150)
-    doc.text(`${razon.nombre} — Página ${i} de ${pageCount}`, pageW / 2, pageH - 20, { align: "center" })
+    doc.text(`${razon.razonSocial} — Página ${i} de ${pageCount}`, pageW / 2, pageH - 20, { align: "center" })
   }
 
   return doc.output("blob")

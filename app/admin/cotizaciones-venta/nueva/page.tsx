@@ -136,6 +136,10 @@ export default function NuevaCotizacionVentaPage() {
       alert("Seleccioná un cliente y agregá al menos un producto")
       return
     }
+    if (!razonSocial) {
+      alert("Seleccioná la razón social emisora (Aquiles o Conancap)")
+      return
+    }
     const vendedor = vendedores.find((v) => v.id === selectedVendedorId) || currentUser
     if (!vendedor || !esVendedorComercial(vendedor as any)) {
       alert("Seleccioná un vendedor comercial (PSG, JGE o DDM)")
@@ -236,7 +240,6 @@ export default function NuevaCotizacionVentaPage() {
               <Select value={razonSocial} onValueChange={setRazonSocial}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar empresa..." /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Masoil">Masoil</SelectItem>
                   <SelectItem value="Aquiles">Aquiles</SelectItem>
                   <SelectItem value="Conancap">Conancap</SelectItem>
                 </SelectContent>
