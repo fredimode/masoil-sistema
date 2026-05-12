@@ -432,6 +432,13 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           clientId: o.clientId,
           items,
           observaciones: facturarObs || undefined,
+          // El endpoint usa estos para marcar order_items.facturado/factura_id
+          // de forma transaccional. Antes lo hacíamos acá con un for-loop post
+          // AFIP-OK, lo cual era frágil: si el browser se cerraba entre el
+          // response y el UPDATE, los items quedaban sin tracking y la próxima
+          // parcial los repetía.
+          productIdsFacturados: selectedProducts.map((p) => p.productId),
+          cantidadesFacturadas: selectedProducts.map((p) => p.quantity),
         }),
       })
       const data = await res.json()
@@ -445,19 +452,6 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           emailError: data.emailError,
         })
         setFacturaDialogOpen(true)
-
-        // Marcar items facturados en DB
-        for (const p of selectedProducts) {
-          await supabase
-            .from("order_items")
-            .update({
-              facturado: true,
-              factura_id: data.facturaId,
-              cantidad_facturada: p.quantity,
-            })
-            .eq("order_id", o.id)
-            .eq("product_id", p.productId)
-        }
 
         // Reflejar en estado local (sino el botón "Facturar" sigue visible
         // hasta el próximo refresh de la página).

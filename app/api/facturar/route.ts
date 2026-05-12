@@ -38,6 +38,14 @@ interface BodyInput {
   observaciones?: string
   tipoComprobante?: TipoFactura
   comprobanteAsociado?: ComprobanteAsociado
+  // IDs de productos que se están facturando en esta emisión (para parciales).
+  // Si vienen, el endpoint marca esos order_items como facturados y los asocia
+  // a esta factura. Sin esto, una segunda parcial sobre el mismo pedido
+  // mostraría los mismos items en el detalle.
+  productIdsFacturados?: string[]
+  // Cantidad facturada por producto, paralela a productIdsFacturados (mismo orden).
+  // Si no se pasa, se asume "cantidad pedida" (caso facturación total).
+  cantidadesFacturadas?: number[]
 }
 
 type Paso = "parse" | "cliente" | "tusfacturas" | "pdf" | "storage" | "db" | "email"
@@ -70,7 +78,7 @@ export async function POST(request: NextRequest) {
     return fail("parse", "JSON inválido", undefined, undefined, 400)
   }
 
-  const { empresa, modo, orderId, clientId, items, observaciones, tipoComprobante, comprobanteAsociado } = body
+  const { empresa, modo, orderId, clientId, items, observaciones, tipoComprobante, comprobanteAsociado, productIdsFacturados, cantidadesFacturadas } = body
 
   console.log('Body recibido:', {
     empresa,
@@ -339,6 +347,37 @@ export async function POST(request: NextRequest) {
 
   if (orderId) {
     await supabase.from("orders").update({ factura_id: factura.id }).eq("id", orderId)
+
+    // Marcar items como facturados acá (no en el frontend) garantiza que el
+    // tracking de parciales no se pierda si el cliente cierra el browser entre
+    // AFIP-OK y el UPDATE. Si productIdsFacturados no vino, no hacemos nada —
+    // facturas legacy o emisiones manuales no requieren tracking per-item.
+    if (productIdsFacturados && productIdsFacturados.length > 0) {
+      for (let i = 0; i < productIdsFacturados.length; i++) {
+        const productId = productIdsFacturados[i]
+        const cantidad = cantidadesFacturadas?.[i]
+        const updateFields: Record<string, unknown> = {
+          facturado: true,
+          factura_id: factura.id,
+        }
+        if (typeof cantidad === "number" && cantidad > 0) {
+          updateFields.cantidad_facturada = cantidad
+        }
+        const { error: oiErr } = await supabase
+          .from("order_items")
+          .update(updateFields)
+          .eq("order_id", orderId)
+          .eq("product_id", productId)
+        if (oiErr) {
+          console.error("Step 11c: ERROR marcando order_item facturado:", {
+            facturaId: factura.id,
+            orderId,
+            productId,
+            error: oiErr,
+          })
+        }
+      }
+    }
   }
 
   // ───────────────── PASO 11b: Cta cte cliente ─────────────────

@@ -65,16 +65,36 @@ export default function FacturacionPage() {
     } else {
       const supabase = createClient()
       setLoadingItems(true)
+      // Filtrar items por factura_id para soportar facturas parciales: una
+      // factura solo debe mostrar SUS items, no todos los del pedido.
+      // Fallback a order_id para facturas legacy (pre migración 20260414) cuyos
+      // order_items aún no tengan factura_id seteado.
       supabase
         .from("order_items")
         .select("*, products(code, name)")
-        .eq("order_id", orderId)
-        .then(({ data, error }) => {
+        .eq("factura_id", viewingFactura.id)
+        .then(async ({ data, error }) => {
           if (error) {
-            console.error("Error cargando items:", error)
+            console.error("Error cargando items por factura_id:", error)
+            setViewingItems([])
+            setLoadingItems(false)
+            return
+          }
+          if (data && data.length > 0) {
+            setViewingItems(data)
+            setLoadingItems(false)
+            return
+          }
+          // Fallback legacy
+          const { data: legacy, error: legacyErr } = await supabase
+            .from("order_items")
+            .select("*, products(code, name)")
+            .eq("order_id", orderId)
+          if (legacyErr) {
+            console.error("Error cargando items (fallback order_id):", legacyErr)
             setViewingItems([])
           } else {
-            setViewingItems(data || [])
+            setViewingItems(legacy || [])
           }
           setLoadingItems(false)
         })
