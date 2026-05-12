@@ -227,6 +227,14 @@ export default function NuevaFacturaPage() {
   }
 
   function agregarProducto(p: ProductoDB) {
+    // products.price y order_items.unit_price se guardan CON IVA incluido
+    // (criterio establecido del proyecto — ver pedidos/[id]/page.tsx:420 y
+    // app/admin/facturacion/page.tsx:570 "unit_price viene con IVA").
+    // La columna del form se llama "Precio s/IVA" y el endpoint /api/facturar
+    // espera precioUnitarioSinIva — por eso dividimos por 1.21 al cargar.
+    // Sin esto, se mandaba al endpoint un valor con IVA pretendiendo ser
+    // sin IVA, TusFacturas le sumaba 21% encima, y el total quedaba inflado.
+    const precioSinIva = Math.round((Number(p.price) / 1.21) * 100) / 100
     setItems((prev) => [
       ...prev,
       {
@@ -234,7 +242,7 @@ export default function NuevaFacturaPage() {
         codigo: p.code,
         descripcion: p.name,
         cantidad: 1,
-        precioUnitario: Number(p.price),
+        precioUnitario: precioSinIva,
       },
     ])
     setProductoSearch("")
@@ -285,15 +293,23 @@ export default function NuevaFacturaPage() {
       }
 
       // 3. Mapear a ItemFactura. Para NC el precio se invierte (negativo).
+      //    order_items.unit_price se guarda CON IVA incluido — dividimos por
+      //    1.21 para que precioUnitario quede s/IVA (como espera el endpoint
+      //    /api/facturar y como dice el header "Precio s/IVA" del form). Sin
+      //    esto la NC tomaba el monto con IVA, TusFacturas le sumaba 21%
+      //    encima, y la NC quedaba inflada (~21% mas que la FC original).
       const factor = tipoComprobante === "NOTA_CREDITO" ? -1 : 1
       type OIRow = { quantity: number; unit_price: number; product_id: string | null; products: { name?: string | null; code?: string | null } | null }
-      const nuevosItems: ItemFactura[] = (orderItems as unknown as OIRow[]).map((oi) => ({
-        productId: oi.product_id || `ref-${Math.random().toString(36).slice(2)}`,
-        codigo: oi.products?.code || "",
-        descripcion: oi.products?.name || "Producto",
-        cantidad: Number(oi.quantity) || 1,
-        precioUnitario: factor * (Number(oi.unit_price) || 0),
-      }))
+      const nuevosItems: ItemFactura[] = (orderItems as unknown as OIRow[]).map((oi) => {
+        const precioSinIva = Math.round(((Number(oi.unit_price) || 0) / 1.21) * 100) / 100
+        return {
+          productId: oi.product_id || `ref-${Math.random().toString(36).slice(2)}`,
+          codigo: oi.products?.code || "",
+          descripcion: oi.products?.name || "Producto",
+          cantidad: Number(oi.quantity) || 1,
+          precioUnitario: factor * precioSinIva,
+        }
+      })
       setItems(nuevosItems)
     } catch (e) {
       console.error("Error cargando items de factura referenciada:", e)
