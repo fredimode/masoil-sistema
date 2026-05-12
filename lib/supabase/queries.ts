@@ -858,14 +858,115 @@ export async function createReclamo(reclamo: Record<string, any>): Promise<void>
 // ---------------------------------------------------------------------------
 
 export async function fetchCobranzasPendientes(): Promise<any[]> {
+  // Fuente unificada para el Informe de Saldos Pendientes (bug A.3).
+  //
+  // Antes leia solo de cobranzas_pendientes, que es snapshot del importador
+  // gestionpro (marzo 2026). Las facturas emitidas despues no aparecian en
+  // el informe pero si en la cta cte -> los dos numeros divergian.
+  //
+  // Ahora une:
+  //   (a) legacy de cobranzas_pendientes (saldo precalculado por el importador)
+  //   (b) facturas FC/ND con saldo imputado FIFO desde cuenta_corriente_cliente
+  //
+  // Para (b): saldo neto del cliente = sum(debe) - sum(haber). Si es deudor,
+  // imputamos ese saldo a las facturas mas antiguas primero (FIFO). Si es
+  // <=0, no las incluimos (asumido cobradas).
+  //
+  // Asuncion: cobranzas_pendientes y cuenta_corriente_cliente son disjuntas
+  // (la importacion de gestionpro no metio en cta cte). Si el usuario verifica
+  // overlap, hay que descontar para evitar doble conteo.
   const supabase = createSupabaseClient()
-  const { data, error } = await supabase
-    .from("cobranzas_pendientes")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(50000)
-  if (error) throw error
-  return data || []
+
+  const [legacyRes, facturasRes, ccRes] = await Promise.all([
+    supabase
+      .from("cobranzas_pendientes")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(50000),
+    supabase
+      .from("facturas")
+      .select("id, client_id, razon_social, numero, comprobante_nro, fecha, total, tipo, created_at, empresa")
+      .order("fecha", { ascending: true })
+      .limit(50000),
+    supabase
+      .from("cuenta_corriente_cliente")
+      .select("client_id, debe, haber")
+      .limit(100000),
+  ])
+  if (legacyRes.error) throw legacyRes.error
+  if (facturasRes.error) throw facturasRes.error
+  if (ccRes.error) throw ccRes.error
+
+  type FactRow = {
+    id: number
+    client_id: string | null
+    razon_social: string | null
+    numero: string | null
+    comprobante_nro: string | null
+    fecha: string | null
+    total: number | string
+    tipo: string | null
+    created_at: string | null
+    empresa: string | null
+  }
+  type CCRow = { client_id: string | null; debe: number | string | null; haber: number | string | null }
+
+  const saldoCliente = new Map<string, number>()
+  for (const mov of (ccRes.data || []) as CCRow[]) {
+    if (!mov.client_id) continue
+    const prev = saldoCliente.get(mov.client_id) || 0
+    saldoCliente.set(
+      mov.client_id,
+      prev + (Number(mov.debe) || 0) - (Number(mov.haber) || 0)
+    )
+  }
+
+  const facturasFCND = ((facturasRes.data || []) as FactRow[]).filter((f) => {
+    const t = (f.tipo || "").toUpperCase()
+    return t.startsWith("FACTURA ") || t.startsWith("NOTA DE DEBITO")
+  })
+
+  const porCliente = new Map<string, FactRow[]>()
+  for (const f of facturasFCND) {
+    if (!f.client_id) continue
+    const arr = porCliente.get(f.client_id) || []
+    arr.push(f)
+    porCliente.set(f.client_id, arr)
+  }
+
+  const nuevas: any[] = []
+  for (const [clientId, fcs] of porCliente) {
+    let restante = saldoCliente.get(clientId) || 0
+    if (restante <= 0) continue
+    fcs.sort((a, b) => {
+      const da = a.fecha ? new Date(a.fecha).getTime() : 0
+      const db = b.fecha ? new Date(b.fecha).getTime() : 0
+      return da - db
+    })
+    for (const f of fcs) {
+      if (restante <= 0) break
+      const total = Number(f.total) || 0
+      if (total <= 0) continue
+      const saldoFactura = Math.min(restante, total)
+      restante -= saldoFactura
+      nuevas.push({
+        id: `f-${f.id}`,
+        client_id: f.client_id,
+        cliente_nombre: f.razon_social,
+        comprobante: `${f.tipo || "FC"} ${f.comprobante_nro || f.numero || ""}`.trim(),
+        fecha_comprobante: f.fecha,
+        total,
+        saldo: saldoFactura,
+        saldo_acumulado: null,
+        razon_social: f.razon_social,
+        created_at: f.created_at,
+        empresa: f.empresa,
+        origen: "facturas",
+      })
+    }
+  }
+
+  return [...(legacyRes.data || []), ...nuevas]
 }
 
 export async function createCobro(cobro: {
