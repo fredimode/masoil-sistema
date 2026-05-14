@@ -20,7 +20,9 @@ import {
   createSolicitudCompra,
   fetchProveedores,
   fetchProducts,
+  fetchOrdenCompraItems,
 } from "@/lib/supabase/queries"
+import { generateOrdenCompraPDF } from "@/lib/pdf/orden-compra-pdf"
 import type { Product } from "@/lib/types"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -31,7 +33,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { Eye, Pencil, Trash2, Paperclip } from "lucide-react"
+import { Eye, Pencil, Trash2, Paperclip, FileText } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
 const ESTADOS_OC = ["Pendiente", "Realizado", "Recibido Completo", "Recibido Incompleto", "Factura Cargada", "Cancelado"]
@@ -289,6 +291,57 @@ export default function ComprasPage() {
     const supabase = createClient()
     const { data } = await supabase.storage.from("comprobantes").createSignedUrl(path, 60)
     if (data?.signedUrl) window.open(data.signedUrl, "_blank")
+  }
+
+  // Genera el PDF de OC al vuelo y lo abre en nueva pestaña (item Excel #58).
+  // No persiste el blob — si se necesita guardar en Storage, lo agregamos en
+  // un sprint posterior. Hoy: el operador lo abre, lo descarga o lo imprime.
+  async function handleViewOrdenPDF(orden: any) {
+    try {
+      const supabase = createClient()
+      const items = await fetchOrdenCompraItems(orden.id)
+      // Buscar proveedor para enriquecer datos del PDF (CUIT/domicilio/email).
+      let proveedorData: any = null
+      if (orden.proveedor_id) {
+        const { data } = await supabase
+          .from("proveedores")
+          .select("razon_social, nombre, cuit, domicilio, email_comercial")
+          .eq("id", orden.proveedor_id)
+          .maybeSingle()
+        proveedorData = data
+      }
+      const blob = generateOrdenCompraPDF({
+        nro_oc: orden.nro_oc || `OC-${String(orden.id).slice(0, 8)}`,
+        fecha: orden.fecha || null,
+        empresa: orden.empresa || null,
+        razon_social_emisor: orden.razon_social || null,
+        proveedor: {
+          nombre: proveedorData?.razon_social || proveedorData?.nombre || orden.proveedor_nombre || "-",
+          cuit: proveedorData?.cuit || null,
+          domicilio: proveedorData?.domicilio || null,
+          email: proveedorData?.email_comercial || orden.email_comercial || null,
+        },
+        items: items.map((it: any) => ({
+          codigo: it.producto_codigo || null,
+          descripcion: it.producto_nombre || "Sin descripción",
+          cantidad: Number(it.cantidad) || 0,
+          precio_unitario: Number(it.precio_unitario) || 0,
+          descuento_porcentaje: it.descuento_porcentaje ? Number(it.descuento_porcentaje) : null,
+          subtotal: Number(it.subtotal) || 0,
+        })),
+        total: Number(orden.importe_total) || 0,
+        observaciones: orden.observaciones || null,
+        condicion_pago: orden.condicion_pago || null,
+        estado: orden.estado || null,
+      })
+      const url = URL.createObjectURL(blob)
+      window.open(url, "_blank")
+      // Liberar el objectURL despues de un rato (no inmediato porque rompe el tab nuevo).
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (e) {
+      console.error("Error generando PDF de OC:", e)
+      alert("Error generando el PDF de la orden de compra.")
+    }
   }
 
   // --- Export ---
@@ -855,6 +908,13 @@ export default function ComprasPage() {
                               title="Ver detalle"
                             >
                               <Eye className="h-4 w-4 text-gray-600" />
+                            </button>
+                            <button
+                              onClick={() => handleViewOrdenPDF(o)}
+                              className="p-1 hover:bg-gray-200 rounded"
+                              title="Ver PDF"
+                            >
+                              <FileText className="h-4 w-4 text-blue-600" />
                             </button>
                             <button
                               onClick={() => {
