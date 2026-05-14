@@ -151,10 +151,11 @@ export async function POST(request: NextRequest) {
   let cotizacionId: string | null = null
   let cotizacionNumero: string | null = null
   let pedidoNumero: string | null = null
+  let pedidoVendedorId: string | null = null
   if (orderId) {
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, order_number_serial, order_number")
+      .select("id, order_number_serial, order_number, vendedor_id")
       .eq("id", orderId)
       .single()
 
@@ -162,6 +163,7 @@ export async function POST(request: NextRequest) {
       return fail("cliente", `Pedido ${orderId} no encontrado`, undefined, undefined, 404)
     }
     pedidoNumero = order.order_number_serial || order.order_number || null
+    pedidoVendedorId = order.vendedor_id || null
 
     // Lookup automático: si hay cotización con order_id = orderId, asociarla.
     // cotizaciones_venta.order_id es TEXT; orderId puede ser UUID — comparamos
@@ -361,6 +363,9 @@ export async function POST(request: NextRequest) {
       pdf_url: pdfUrl,
       factura_referencia_id: facturaReferenciaId,
       cotizacion_id: cotizacionId,
+      // G2.2: hereda vendedor del pedido para que aparezca en el historial
+      // del vendedor. Para facturas manuales sin pedido queda null.
+      vendedor_id: pedidoVendedorId,
     })
     .select()
     .single()

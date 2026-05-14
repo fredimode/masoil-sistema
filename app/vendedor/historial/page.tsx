@@ -38,14 +38,11 @@ export default function VendedorHistorialPage() {
       .then(([cots, facts, recs]) => {
         // Cotizaciones: filtro por vendedor_id directo en la tabla.
         setCotizaciones((cots || []).filter((c: any) => c.vendedor_id === vendedor.id))
-        // Facturas: no tienen vendedor_id directo. Filtramos por razon_social
-        // del cliente del vendedor — aproximacion. Si en el futuro se agrega
-        // facturas.vendedor_id, cambiar a filtro directo.
-        // Workaround: traer todas y filtrar por vendedor_nombre si existe en
-        // alguna columna; sino mostrar todas las del cliente cuyo vendedor
-        // sea este. Por ahora filtramos por vendedor_name si existe.
+        // Facturas: filtro por vendedor_id (agregado en G2.2). Para facturas
+        // legacy sin vendedor_id, fallback por vendedor_name como
+        // aproximacion para que no desaparezcan del historial.
         setFacturas((facts || []).filter((f: any) =>
-          f.vendedor_name === vendedor.name || f.vendedor_id === vendedor.id
+          f.vendedor_id === vendedor.id || (!f.vendedor_id && f.vendedor_name === vendedor.name)
         ))
         // Recibos: filtro por vendedor_id
         setRecibos((recs || []).filter((r: any) => r.vendedor_id === vendedor.id))
