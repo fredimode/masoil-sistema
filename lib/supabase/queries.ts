@@ -1918,6 +1918,42 @@ export async function createPlanCuenta(input: {
   return data
 }
 
+export async function updatePlanCuenta(id: string, updates: {
+  codigo?: string
+  categoria?: string
+  sub_categoria?: string | null
+}): Promise<void> {
+  const supabase = createSupabaseClient()
+  const cleaned: Record<string, unknown> = {}
+  if (updates.codigo !== undefined) cleaned.codigo = updates.codigo.trim()
+  if (updates.categoria !== undefined) cleaned.categoria = updates.categoria.trim()
+  if (updates.sub_categoria !== undefined) cleaned.sub_categoria = updates.sub_categoria?.trim() || null
+  const { error } = await supabase.from("plan_cuentas").update(cleaned).eq("id", id)
+  if (error) throw error
+}
+
+// Borrar cuenta del plan, validando que no esté usada en imputaciones de
+// facturas de proveedor. Imputaciones es JSONB array con shape
+// [{ plan_cuenta_id, monto, ... }]; usamos contains para ver si la cuenta
+// aparece en alguna factura. Si tiene uso, lanzamos error con mensaje claro.
+export async function deletePlanCuenta(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { data: used, error: usedErr } = await supabase
+    .from("facturas_proveedor")
+    .select("id")
+    .filter("imputaciones", "cs", JSON.stringify([{ plan_cuenta_id: id }]))
+    .limit(1)
+  if (usedErr) {
+    console.error("deletePlanCuenta: error verificando uso", usedErr)
+    throw new Error("No se pudo verificar el uso de la cuenta — abortando borrado por seguridad.")
+  }
+  if (used && used.length > 0) {
+    throw new Error("Esta cuenta está usada en imputaciones de facturas de proveedor. No se puede eliminar.")
+  }
+  const { error } = await supabase.from("plan_cuentas").delete().eq("id", id)
+  if (error) throw error
+}
+
 // ---------------------------------------------------------------------------
 // Retenciones
 // ---------------------------------------------------------------------------

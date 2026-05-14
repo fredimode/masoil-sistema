@@ -107,6 +107,7 @@ const navSections: NavSection[] = [
     roles: ["admin"],
     items: [
       { href: "/admin/contabilidad", label: "Informes Contables", icon: Calculator },
+      { href: "/admin/plan-cuentas", label: "Plan de Cuentas", icon: FileText },
     ],
   },
   {
