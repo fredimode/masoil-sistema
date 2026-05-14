@@ -31,6 +31,7 @@ export interface FacturaPDFData {
   cae?: string | null
   vencimientoCae?: string | null    // formato AAAA-MM-DD
   observaciones?: string
+  pedidoNumero?: string | null      // N° de pedido origen si la FC proviene de uno (item Excel #42)
   comprobanteAsociado?: {
     tipo: string                    // ej "FACTURA B"
     puntoVenta: number | string
@@ -213,7 +214,8 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<Uint8Arra
   let y = HEADER_BOTTOM - 16
 
   // ════════════════ CLIENTE (sección con borde) ════════════════
-  const CLIENTE_H = data.cliente.condicionPago ? 84 : 70
+  const tieneLineaExtra = !!(data.cliente.condicionPago || data.pedidoNumero)
+  const CLIENTE_H = tieneLineaExtra ? 84 : 70
   page.drawRectangle({
     x: LEFT, y: y - CLIENTE_H,
     width: W, height: CLIENTE_H,
@@ -242,6 +244,14 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<Uint8Arra
   if (data.cliente.condicionPago) {
     page.drawText(`Cond. Pago: ${data.cliente.condicionPago}`, {
       x: LEFT + 8, y: y - 70,
+      size: 9, font: fontReg, color: black,
+    })
+  }
+  if (data.pedidoNumero) {
+    // Lado derecho de la misma línea — convive con Cond. Pago. Si no hay
+    // Cond. Pago, esta es la única línea de la fila inferior.
+    page.drawText(`Pedido N°: ${data.pedidoNumero}`, {
+      x: LEFT + 280, y: y - 70,
       size: 9, font: fontReg, color: black,
     })
   }

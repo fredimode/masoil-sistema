@@ -150,16 +150,18 @@ export async function POST(request: NextRequest) {
   // se muestran en Observaciones del PDF (item Excel #89).
   let cotizacionId: string | null = null
   let cotizacionNumero: string | null = null
+  let pedidoNumero: string | null = null
   if (orderId) {
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id")
+      .select("id, order_number_serial, order_number")
       .eq("id", orderId)
       .single()
 
     if (orderError || !order) {
       return fail("cliente", `Pedido ${orderId} no encontrado`, undefined, undefined, 404)
     }
+    pedidoNumero = order.order_number_serial || order.order_number || null
 
     // Lookup automático: si hay cotización con order_id = orderId, asociarla.
     // cotizaciones_venta.order_id es TEXT; orderId puede ser UUID — comparamos
@@ -304,6 +306,7 @@ export async function POST(request: NextRequest) {
       cae,
       vencimientoCae,
       observaciones: observacionesPDF,
+      pedidoNumero,
       comprobanteAsociado: comprobanteAsociado
         ? {
             tipo: String(comprobanteAsociado.tipo),

@@ -1564,7 +1564,7 @@ export async function assignOrderToNextReparto(orderId: string): Promise<void> {
   const supabase = createSupabaseClient()
   const { data: order } = await supabase
     .from("orders")
-    .select("id, client_name, zona, entrega_otra_sucursal, factura_id, reparto_id")
+    .select("id, client_name, zona, entrega_otra_sucursal, factura_id, reparto_id, status")
     .eq("id", orderId)
     .single()
   if (!order) return
@@ -1603,10 +1603,32 @@ export async function assignOrderToNextReparto(orderId: string): Promise<void> {
     es_destino_extra: false,
   })
 
-  await supabase.from("orders").update({
+  // Auto-transicion FACTURADO -> EN_PROCESO_ENTREGA (item Excel #30).
+  // FACTURADO_PARCIAL queda como esta porque puede tener items pendientes
+  // de facturar todavia, y el operador puede querer facturar mas antes de
+  // marcar como "en proceso de entrega".
+  const updateFields: Record<string, unknown> = {
     reparto_id: repartoId,
     numero_reparto: formatNumeroReparto(fecha),
-  }).eq("id", orderId)
+  }
+  if (order.status === "FACTURADO") {
+    updateFields.status = "EN_PROCESO_ENTREGA"
+    console.log(`assignOrderToNextReparto: ${orderId} FACTURADO -> EN_PROCESO_ENTREGA al asignar reparto ${repartoId}`)
+  }
+
+  await supabase.from("orders").update(updateFields).eq("id", orderId)
+
+  // Si cambiamos el estado, registramos en order_status_history para que
+  // el timeline del pedido refleje la transicion (auto).
+  if (updateFields.status === "EN_PROCESO_ENTREGA") {
+    await supabase.from("order_status_history").insert({
+      order_id: orderId,
+      status: "EN_PROCESO_ENTREGA",
+      changed_by: "sistema",
+      user_name: "Sistema",
+      notes: `Auto: asignacion a reparto ${formatNumeroReparto(fecha)}`,
+    })
+  }
 }
 
 // ---------------------------------------------------------------------------
