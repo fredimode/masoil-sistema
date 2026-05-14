@@ -8,7 +8,7 @@ import { fetchCuentaCorrienteCliente } from "@/lib/supabase/queries"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Eye, Printer } from "lucide-react"
+import { Eye, Printer, FileText, Undo2 } from "lucide-react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
 
@@ -338,7 +338,7 @@ export default function FacturacionPage() {
                         <th className="px-4 py-3 text-right font-semibold text-gray-700">Total</th>
                         <th className="px-4 py-3 text-right font-semibold text-gray-700">Deuda</th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-700">Vendedor</th>
-                        <th className="px-4 py-3 text-center font-semibold text-gray-700 w-20">Ver</th>
+                        <th className="px-4 py-3 text-center font-semibold text-gray-700 w-28">Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -355,6 +355,7 @@ export default function FacturacionPage() {
                           nroFmt = f.comprobante_nro || f.numero || "-"
                         }
                         const tipoNumero = tipoCompleto ? `${tipoCompleto} ${nroFmt}` : nroFmt
+                        const esNC = tipoCompleto.toUpperCase().startsWith("NOTA DE CREDITO")
                         return (
                           <tr key={f.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                             <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
@@ -368,9 +369,20 @@ export default function FacturacionPage() {
                                 {f.razon_social || "-"}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-right font-bold text-gray-900">{formatMoney(Number(f.total) || 0)}</td>
                             <td className="px-4 py-3 text-right">
-                              {deuda > 0 ? (
+                              {esNC ? (
+                                <span className="inline-flex items-center gap-1 font-bold text-green-700" title="Devolución (Nota de Crédito)">
+                                  <Undo2 className="h-3.5 w-3.5" />
+                                  {formatMoney(Number(f.total) || 0)}
+                                </span>
+                              ) : (
+                                <span className="font-bold text-gray-900">{formatMoney(Number(f.total) || 0)}</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              {esNC ? (
+                                <span className="text-xs text-gray-400">—</span>
+                              ) : deuda > 0 ? (
                                 <span className="font-semibold text-red-600">{formatMoney(deuda)}</span>
                               ) : (
                                 <span className="font-medium text-green-600">Pagado</span>
@@ -378,9 +390,22 @@ export default function FacturacionPage() {
                             </td>
                             <td className="px-4 py-3 text-gray-600">{f.vendedor_name || "-"}</td>
                             <td className="px-4 py-3 text-center">
-                              <button onClick={() => setViewingFactura(f)} className="p-1 rounded hover:bg-gray-200" title="Ver detalle">
-                                <Eye className="h-4 w-4 text-gray-600" />
-                              </button>
+                              <div className="inline-flex items-center gap-1">
+                                <button onClick={() => setViewingFactura(f)} className="p-1 rounded hover:bg-gray-200" title="Ver detalle">
+                                  <Eye className="h-4 w-4 text-gray-600" />
+                                </button>
+                                {f.pdf_url && (
+                                  <a
+                                    href={f.pdf_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1 rounded hover:bg-gray-200 inline-flex"
+                                    title="Abrir PDF en nueva pestaña"
+                                  >
+                                    <FileText className="h-4 w-4 text-blue-600" />
+                                  </a>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         )
