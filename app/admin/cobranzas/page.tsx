@@ -15,7 +15,9 @@ import {
 } from "@/lib/supabase/queries"
 import { formatCurrency, normalizeSearch, formatDateStr } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
-import { Search, Download, Plus, Trash2, Eye, Printer } from "lucide-react"
+import { Search, Download, Plus, Trash2, Eye, Printer, FileText } from "lucide-react"
+import { generateReciboPDF } from "@/lib/pdf/recibo-pdf"
+import { createClient } from "@/lib/supabase/client"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import * as XLSX from "xlsx"
@@ -2007,6 +2009,88 @@ function TabCobrosRealizados({ recibos, recibosCobranza }: { recibos: any[]; rec
   const [page, setPage] = useState(1)
   const [viewing, setViewing] = useState<any | null>(null)
 
+  // Genera el PDF formal del recibo (item Excel #9 — falta PDF tipo remito).
+  // Soporta tanto recibos_cobranza (nuevos, con medios_pago + facturas_ids
+  // JSONB) como recibos GestionPro legacy (solo total, sin desglose).
+  async function handleViewReciboPDF(r: any) {
+    try {
+      const supabase = createClient()
+      const det = r.detalle || {}
+      const esNuevo = r.tipo === "nuevo"
+
+      // Cliente: busco domicilio en clients si tengo client_id
+      let domicilio: string | null = null
+      const clientId = esNuevo ? det.client_id : det.client_id
+      if (clientId) {
+        const { data: cli } = await supabase
+          .from("clients")
+          .select("address, domicilio_entrega")
+          .eq("id", clientId)
+          .maybeSingle()
+        domicilio = cli?.address || cli?.domicilio_entrega || null
+      }
+
+      // Imputaciones: para recibos nuevos miramos facturas_ids JSONB y
+      // hacemos lookup en facturas. Para legacy GP no hay desglose.
+      type ImputacionPDF = { comprobante: string; total: number; monto_imputado: number; fecha?: string | null }
+      let imputaciones: ImputacionPDF[] = []
+      if (esNuevo && Array.isArray(det.facturas_ids) && det.facturas_ids.length > 0) {
+        const { data: facts } = await supabase
+          .from("facturas")
+          .select("id, tipo, numero, comprobante_nro, fecha, total")
+          .in("id", det.facturas_ids)
+        imputaciones = (facts || []).map((f: any) => ({
+          comprobante: [f.tipo, f.comprobante_nro || f.numero].filter(Boolean).join(" ") || "-",
+          total: Number(f.total) || 0,
+          // Sin imputaciones parciales hoy: el recibo cancela la factura completa
+          // o queda como saldo a favor. Mostramos total como monto imputado.
+          monto_imputado: Number(f.total) || 0,
+          fecha: f.fecha || null,
+        }))
+      }
+
+      // Medios de pago: viene como JSONB en recibos nuevos. Legacy GP no tiene.
+      type MedioPDF = { tipo: string; importe: number; referencia?: string | null; banco?: string | null; numero?: string | null }
+      let medios_pago: MedioPDF[] = []
+      if (esNuevo && Array.isArray(det.medios_pago)) {
+        medios_pago = det.medios_pago.map((m: any) => ({
+          tipo: m.tipo || "-",
+          importe: Number(m.importe) || 0,
+          referencia: m.referencia || null,
+          banco: m.banco || null,
+          numero: m.numero || null,
+        }))
+      } else {
+        // Legacy: una sola fila genérica con el total
+        medios_pago = [{
+          tipo: "Efectivo / sin desglose",
+          importe: Number(r.importe) || 0,
+        }]
+      }
+
+      const blob = generateReciboPDF({
+        numero_completo: r.nro_comprobante || "-",
+        fecha: r.fecha || null,
+        empresa: esNuevo ? det.empresa : null,
+        cliente: {
+          razon_social: r.razon_social || "-",
+          cuit: esNuevo ? det.cuit_cliente : null,
+          domicilio,
+        },
+        imputaciones,
+        medios_pago,
+        total: Number(r.importe) || 0,
+        observaciones: esNuevo ? det.observaciones : null,
+      })
+      const url = URL.createObjectURL(blob)
+      window.open(url, "_blank")
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (e) {
+      console.error("Error generando PDF de recibo:", e)
+      alert("Error generando el PDF del recibo.")
+    }
+  }
+
   // Merge old recibos (GestionPro) with new recibos_cobranza.
   // Sprint 11: nro_comprobante usa numero_completo si está poblado (nuevos
   // con prefijo AQ/CO/MA), fallback a "REC-NNNN" para registros pre-migration.
@@ -2104,31 +2188,11 @@ function TabCobrosRealizados({ recibos, recibosCobranza }: { recibos: any[]; rec
                         <Eye className="h-4 w-4 text-gray-600" />
                       </button>
                       <button
-                        onClick={() => {
-                          const w = window.open("", "_blank")
-                          if (w) {
-                            const det = r.detalle || {}
-                            const mediosHtml = r.tipo === "nuevo" && det.medios_pago
-                              ? (Array.isArray(det.medios_pago) ? det.medios_pago : []).map((mp: any) =>
-                                `<tr><td>${mp.tipo}</td><td style="text-align:right">$${Number(mp.importe || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}</td></tr>`
-                              ).join("")
-                              : ""
-                            w.document.write(`<html><head><title>Recibo ${r.nro_comprobante}</title>
-                              <style>body{font-family:sans-serif;max-width:600px;margin:40px auto}table{width:100%;border-collapse:collapse;margin:10px 0}td{padding:4px 8px;border-bottom:1px solid #eee}</style></head><body>
-                              <h2>Recibo de Cobro</h2>
-                              <p><strong>Nro:</strong> ${r.nro_comprobante || "-"}</p>
-                              <p><strong>Fecha:</strong> ${r.fecha ? new Date(r.fecha).toLocaleDateString("es-AR") : "-"}</p>
-                              <p><strong>Cliente:</strong> ${r.razon_social || "-"}</p>
-                              <p><strong>Vendedor:</strong> ${r.vendedor || "-"}</p>
-                              ${mediosHtml ? `<h3>Medios de Pago</h3><table>${mediosHtml}</table>` : ""}
-                              <p style="font-size:18px;margin-top:20px"><strong>Total:</strong> $${Number(r.importe || 0).toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
-                              <script>window.print()<\/script></body></html>`)
-                          }
-                        }}
+                        onClick={() => handleViewReciboPDF(r)}
                         className="p-1.5 rounded hover:bg-gray-100"
-                        title="Imprimir"
+                        title="Ver PDF"
                       >
-                        <Printer className="h-4 w-4 text-gray-600" />
+                        <FileText className="h-4 w-4 text-blue-600" />
                       </button>
                     </div>
                   </TableCell>
