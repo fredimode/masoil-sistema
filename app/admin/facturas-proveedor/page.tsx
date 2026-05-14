@@ -188,6 +188,43 @@ export default function FacturasProveedorPage() {
     return ordenes.filter((o) => o.proveedor_id === form.proveedor_id)
   }, [ordenes, form.proveedor_id])
 
+  // Vincular OC + autocargar items de esa OC en formItems (item Excel #48).
+  // Si el operador ya tenía items cargados, confirma antes de reemplazar.
+  async function handleVincularOC(ocId: string) {
+    setForm((prev) => ({ ...prev, orden_compra_id: ocId }))
+    if (!ocId) return
+    if (formItems.length > 0) {
+      const ok = confirm("Esto reemplazará los items actuales con los de la OC seleccionada. ¿Continuar?")
+      if (!ok) return
+    }
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from("orden_compra_items")
+        .select("producto_nombre, producto_codigo, cantidad, precio_unitario")
+        .eq("orden_compra_id", ocId)
+      if (error) {
+        console.error("Error cargando items de OC:", error)
+        return
+      }
+      if (!data || data.length === 0) {
+        alert("La OC seleccionada no tiene items cargados.")
+        return
+      }
+      setFormItems(
+        data.map((it) => ({
+          id: Math.random().toString(36).slice(2),
+          nombre: it.producto_nombre || "",
+          codigo: it.producto_codigo || "",
+          cantidad: String(it.cantidad || 1),
+          precio: String(it.precio_unitario || ""),
+        }))
+      )
+    } catch (e) {
+      console.error("Error cargando items de OC:", e)
+    }
+  }
+
   // Auto-calculate IVA when neto changes
   function handleNetoChange(value: string) {
     const neto = parseFloat(value) || 0
@@ -1008,7 +1045,7 @@ export default function FacturasProveedorPage() {
                 <label className="block text-xs font-medium text-gray-700 mb-1">Vincular con Orden de Compra</label>
                 <select
                   value={form.orden_compra_id}
-                  onChange={(e) => setForm((prev) => ({ ...prev, orden_compra_id: e.target.value }))}
+                  onChange={(e) => handleVincularOC(e.target.value)}
                   className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 >
                   <option value="">Sin vincular</option>
@@ -1018,6 +1055,11 @@ export default function FacturasProveedorPage() {
                     </option>
                   ))}
                 </select>
+                {form.orden_compra_id && formItems.length > 0 && (
+                  <p className="text-[11px] text-blue-600 mt-1">
+                    Items de la OC autocargados — editables en la siguiente etapa.
+                  </p>
+                )}
               </div>
             </div>
           </div>
