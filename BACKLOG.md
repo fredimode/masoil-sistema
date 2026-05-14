@@ -3,6 +3,26 @@
 Items conocidos que no entran en sprints actuales pero deben resolverse.
 No es exhaustivo — solo cosas detectadas durante sprints recientes.
 
+## Estados de pedido pendientes
+
+### D.8 — Filtro "Entregado Parcial" en /admin/pedidos
+**Origen:** Sprint D (mayo 2026).
+
+El item Excel pedía un filtro por estado "Entregado Parcial" en el
+listado de pedidos. El enum `order_status` actual no incluye
+`ENTREGADO_PARCIAL` — los estados son: BORRADOR, INGRESADO,
+EN_PREPARACION, FACTURADO, FACTURADO_PARCIAL, EN_PROCESO_ENTREGA,
+ESPERANDO_MERCADERIA, ENTREGADO, CANCELADO.
+
+**Bloqueado por:** Sprint H (modificación del enum de estados).
+
+**A hacer cuando se haga H:**
+- `ALTER TYPE order_status ADD VALUE 'ENTREGADO_PARCIAL'`.
+- Agregar opción al filtro en `/admin/pedidos/page.tsx` (junto a
+  los otros estados).
+- Decidir transición desde `EN_PROCESO_ENTREGA` (manual o
+  semi-automática con un check por item entregado).
+
 ## Persistencia de items de factura
 
 ### C.3 — Facturas manuales con descuento no persisten detalle

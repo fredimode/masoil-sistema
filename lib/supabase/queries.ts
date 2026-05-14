@@ -472,6 +472,37 @@ export async function updateOrderStatus(
   }
 }
 
+// Edicion generica de pedido (item Excel #92, D.7). NO toca status — para
+// eso usar updateOrderStatus. NO toca productos — la card de productos
+// tiene su propio flow (agregar/eliminar). Solo modifica campos generales
+// del pedido. La validacion de que se permita editar segun el estado vive
+// en el caller (UI condicional).
+export async function updateOrder(
+  id: string,
+  updates: Partial<{
+    notes: string | null
+    sector: string | null
+    solicita: string | null
+    recibe: string | null
+    entrega_otra_sucursal: string | null
+    razon_social: string | null
+    is_urgent: boolean
+    client_id: string | null
+    client_name: string | null
+    vendedor_id: string | null
+    vendedor_name: string | null
+    zona: string | null
+    observaciones_incompleto: string | null
+  }>
+): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase
+    .from("orders")
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (error) throw error
+}
+
 // ---------------------------------------------------------------------------
 // Products
 // ---------------------------------------------------------------------------

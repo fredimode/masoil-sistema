@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
@@ -14,8 +14,10 @@ import { CountdownWidget } from "@/components/vendedor/countdown-widget"
 import {
   fetchOrderById, fetchClientById, updateOrderStatus, addItemsToOrder, fetchProducts,
   fetchOrdenCompraArchivos, createOrdenCompraArchivo, deleteOrdenCompraArchivo,
+  fetchClients, fetchVendedores, esVendedorComercial, updateOrder,
   type OrdenCompraArchivo,
 } from "@/lib/supabase/queries"
+import type { Vendedor } from "@/lib/types"
 import { getStatusConfig, getNextStatuses } from "@/lib/status-config"
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils"
 import type { Order, Client, OrderStatus, Product } from "@/lib/types"
@@ -71,6 +73,24 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [prodSearch, setProdSearch] = useState("")
   const [prodToAdd, setProdToAdd] = useState<{ product: Product; qty: number; price: number }[]>([])
   const [agregando, setAgregando] = useState(false)
+
+  // Editar pedido (item Excel #92, D.7)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editClients, setEditClients] = useState<Client[]>([])
+  const [editVendedores, setEditVendedores] = useState<Vendedor[]>([])
+  const [editForm, setEditForm] = useState({
+    notes: "",
+    sector: "",
+    solicita: "",
+    recibe: "",
+    entrega_otra_sucursal: "",
+    razon_social: "",
+    is_urgent: false,
+    client_id: "",
+    vendedor_id: "",
+    observaciones_incompleto: "",
+  })
 
   const { vendedor: currentUser } = useCurrentVendedor()
 
@@ -570,6 +590,116 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     }
   }
 
+  // Abre el dialog de edicion precargando los campos actuales del pedido +
+  // los extras de orderExtra. Si los listados de clients/vendedores aun no
+  // se cargaron, los carga ahora (lazy, solo cuando hace falta).
+  async function openEditDialog() {
+    if (!order) return
+    if (editClients.length === 0) {
+      try {
+        const [cs, vs] = await Promise.all([fetchClients(), fetchVendedores()])
+        setEditClients(cs)
+        setEditVendedores(vs)
+      } catch (e) {
+        console.error("Error cargando clients/vendedores para edicion:", e)
+      }
+    }
+    setEditForm({
+      notes: order.notes || "",
+      sector: orderExtra?.sector || "",
+      solicita: orderExtra?.solicita || "",
+      recibe: orderExtra?.recibe || "",
+      entrega_otra_sucursal: orderExtra?.entrega_otra_sucursal || "",
+      razon_social: order.razonSocial || "",
+      is_urgent: !!order.isUrgent,
+      client_id: order.clientId || "",
+      vendedor_id: order.vendedorId || "",
+      observaciones_incompleto: order.observacionesIncompleto || "",
+    })
+    setEditOpen(true)
+  }
+
+  // Permisos de edicion segun estado (matriz D.7 aprobada).
+  // cliente/vendedor solo editables en BORRADOR e INGRESADO.
+  // datos generales editables salvo en CANCELADO.
+  const puedeEditarClienteVendedor = currentStatus === "BORRADOR" || currentStatus === "INGRESADO"
+
+  async function handleSaveEdit() {
+    if (!order) return
+    setEditSaving(true)
+    try {
+      const original = order
+      const clientChanged = puedeEditarClienteVendedor && editForm.client_id && editForm.client_id !== original.clientId
+      if (clientChanged) {
+        const ok = confirm(
+          "Cambiar el cliente moverá este pedido a la cta cte del nuevo cliente. ¿Continuar?"
+        )
+        if (!ok) {
+          setEditSaving(false)
+          return
+        }
+      }
+
+      const updates: Parameters<typeof updateOrder>[1] = {
+        notes: editForm.notes,
+        sector: editForm.sector || null,
+        solicita: editForm.solicita || null,
+        recibe: editForm.recibe || null,
+        entrega_otra_sucursal: editForm.entrega_otra_sucursal || null,
+        razon_social: editForm.razon_social || null,
+        is_urgent: editForm.is_urgent,
+        observaciones_incompleto: editForm.observaciones_incompleto || null,
+      }
+
+      if (puedeEditarClienteVendedor) {
+        const cli = editClients.find((c) => c.id === editForm.client_id)
+        const vend = editVendedores.find((v) => v.id === editForm.vendedor_id)
+        if (cli) {
+          updates.client_id = cli.id
+          updates.client_name = cli.businessName
+          updates.zona = cli.zona
+        }
+        if (vend) {
+          updates.vendedor_id = vend.id
+          updates.vendedor_name = vend.name
+        }
+      }
+
+      await updateOrder(order.id, updates)
+
+      // Refresh local
+      setOrder((prev) => prev ? {
+        ...prev,
+        notes: editForm.notes,
+        razonSocial: editForm.razon_social || undefined,
+        isUrgent: editForm.is_urgent,
+        observacionesIncompleto: editForm.observaciones_incompleto || undefined,
+        ...(puedeEditarClienteVendedor && updates.client_id ? {
+          clientId: updates.client_id!,
+          clientName: updates.client_name!,
+          zona: updates.zona as Order["zona"],
+        } : {}),
+        ...(puedeEditarClienteVendedor && updates.vendedor_id ? {
+          vendedorId: updates.vendedor_id!,
+          vendedorName: updates.vendedor_name!,
+        } : {}),
+      } : prev)
+      setOrderExtra((prev: any) => ({
+        ...(prev || {}),
+        sector: editForm.sector || null,
+        solicita: editForm.solicita || null,
+        recibe: editForm.recibe || null,
+        entrega_otra_sucursal: editForm.entrega_otra_sucursal || null,
+      }))
+
+      setEditOpen(false)
+    } catch (e: any) {
+      alert("Error al guardar cambios: " + (e?.message || ""))
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
   function openRemitoDialog() {
     const rs = (o.razonSocial || "").toLowerCase()
     const defaultEmpresa: "Aquiles" | "Conancap" = rs.includes("conancap") ? "Conancap" : "Aquiles"
@@ -684,6 +814,13 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
               }}
             >
               + Agregar productos
+            </Button>
+          )}
+
+          {/* Editar pedido (item Excel #92, D.7). Disponible salvo en CANCELADO. */}
+          {currentStatus !== "CANCELADO" && (
+            <Button variant="outline" onClick={openEditDialog}>
+              Editar pedido
             </Button>
           )}
 
@@ -1370,6 +1507,152 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Editar Pedido Dialog (D.7) */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar Pedido {o.orderNumber}</DialogTitle>
+            <DialogDescription>
+              {puedeEditarClienteVendedor
+                ? "Estado actual permite editar cliente, vendedor y datos generales."
+                : `Estado ${currentStatus}: solo podés editar datos administrativos (cliente y vendedor están bloqueados).`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-2 max-h-[60vh] overflow-y-auto pr-1">
+            {/* Cliente / Vendedor (solo en estados editables) */}
+            {puedeEditarClienteVendedor && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Cliente</Label>
+                  <select
+                    value={editForm.client_id}
+                    onChange={(e) => setEditForm((p) => ({ ...p, client_id: e.target.value }))}
+                    className="w-full p-2 border rounded text-sm"
+                  >
+                    <option value="">— Sin cambio —</option>
+                    {editClients.map((c) => (
+                      <option key={c.id} value={c.id}>{c.businessName}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Vendedor</Label>
+                  <select
+                    value={editForm.vendedor_id}
+                    onChange={(e) => setEditForm((p) => ({ ...p, vendedor_id: e.target.value }))}
+                    className="w-full p-2 border rounded text-sm"
+                  >
+                    <option value="">— Sin cambio —</option>
+                    {editVendedores.filter((v) => v.isActive).map((v) => (
+                      <option key={v.id} value={v.id}>{v.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Razón social emisora */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Razón social emisora</Label>
+                <select
+                  value={editForm.razon_social}
+                  onChange={(e) => setEditForm((p) => ({ ...p, razon_social: e.target.value }))}
+                  className="w-full p-2 border rounded text-sm"
+                >
+                  <option value="">— Sin asignar —</option>
+                  <option value="Aquiles">Aquiles</option>
+                  <option value="Conancap">Conancap</option>
+                </select>
+              </div>
+              <div className="space-y-1 flex items-end">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.is_urgent}
+                    onChange={(e) => setEditForm((p) => ({ ...p, is_urgent: e.target.checked }))}
+                  />
+                  Pedido urgente
+                </label>
+              </div>
+            </div>
+
+            {/* Datos de entrega */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Sector</Label>
+                <input
+                  type="text"
+                  value={editForm.sector}
+                  onChange={(e) => setEditForm((p) => ({ ...p, sector: e.target.value }))}
+                  className="w-full p-2 border rounded text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Solicita</Label>
+                <input
+                  type="text"
+                  value={editForm.solicita}
+                  onChange={(e) => setEditForm((p) => ({ ...p, solicita: e.target.value }))}
+                  className="w-full p-2 border rounded text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Recibe</Label>
+                <input
+                  type="text"
+                  value={editForm.recibe}
+                  onChange={(e) => setEditForm((p) => ({ ...p, recibe: e.target.value }))}
+                  className="w-full p-2 border rounded text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Otra sucursal de entrega</Label>
+                <input
+                  type="text"
+                  value={editForm.entrega_otra_sucursal}
+                  onChange={(e) => setEditForm((p) => ({ ...p, entrega_otra_sucursal: e.target.value }))}
+                  className="w-full p-2 border rounded text-sm"
+                />
+              </div>
+            </div>
+
+            {/* Notas / observaciones */}
+            <div className="space-y-1">
+              <Label className="text-xs">Notas internas</Label>
+              <Textarea
+                value={editForm.notes}
+                onChange={(e) => setEditForm((p) => ({ ...p, notes: e.target.value }))}
+                rows={2}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Observaciones (pedido incompleto / faltantes)</Label>
+              <Textarea
+                value={editForm.observaciones_incompleto}
+                onChange={(e) => setEditForm((p) => ({ ...p, observaciones_incompleto: e.target.value }))}
+                rows={2}
+              />
+            </div>
+
+            <div className="text-xs text-muted-foreground border-t pt-3">
+              Para modificar productos o cantidades, usá los botones "Agregar productos" o el modal de
+              facturación.
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)} disabled={editSaving}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={editSaving}>
+              {editSaving ? "Guardando..." : "Guardar cambios"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
