@@ -228,7 +228,11 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
       const activo = c.activo !== false
       return activosFilter === "activos" ? activo : !activo
     })
-    return pool.filter((c) => normalizeSearch(c.businessName || "").includes(norm)).slice(0, 10)
+    return pool.filter((c) => {
+      const nameMatch = normalizeSearch(c.businessName || "").includes(norm)
+      const codeMatch = normalizeSearch(c.codigoGestionpro || "").includes(norm)
+      return nameMatch || codeMatch
+    }).slice(0, 10)
   }, [search, clients, activosFilter])
 
   async function loadMovimientos(clientId?: string) {
@@ -437,7 +441,7 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
               value={search}
               onChange={(e) => { setSearch(e.target.value); setShowDropdown(true) }}
               onFocus={() => setShowDropdown(true)}
-              placeholder="Razón social..."
+              placeholder="Nombre o código..."
               className="w-full pl-9 pr-3 py-2 border rounded-md text-sm"
               disabled={todos}
             />
@@ -450,6 +454,7 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
                   onClick={() => handleSelectClient(c)}
                   className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
                 >
+                  {c.codigoGestionpro ? <span className="text-xs text-gray-500 mr-1">[{c.codigoGestionpro}]</span> : null}
                   {c.businessName} {c.cuit || c.numeroDocum ? `(${c.cuit || c.numeroDocum})` : ""}
                 </button>
               ))}
@@ -783,7 +788,11 @@ function TabRegistrarCobro({
   const filteredClients = useMemo(() => {
     if (!search.trim()) return []
     const norm = normalizeSearch(search)
-    return clients.filter((c) => normalizeSearch(c.businessName || "").includes(norm)).slice(0, 10)
+    return clients.filter((c) => {
+      const nameMatch = normalizeSearch(c.businessName || "").includes(norm)
+      const codeMatch = normalizeSearch(c.codigoGestionpro || "").includes(norm)
+      return nameMatch || codeMatch
+    }).slice(0, 10)
   }, [search, clients])
 
   // Vendedor auto-resolved from client
@@ -1074,7 +1083,7 @@ function TabRegistrarCobro({
               value={search}
               onChange={(e) => { setSearch(e.target.value); setShowDropdown(true) }}
               onFocus={() => setShowDropdown(true)}
-              placeholder="Buscar cliente por razón social..."
+              placeholder="Buscar cliente por nombre o código..."
               className="w-full pl-9 pr-3 py-2 border rounded-md text-sm"
             />
             {showDropdown && filteredClients.length > 0 && (
@@ -1085,6 +1094,7 @@ function TabRegistrarCobro({
                     onClick={() => handleSelectClient(c)}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
                   >
+                    {c.codigoGestionpro ? <span className="text-xs text-gray-500 mr-1">[{c.codigoGestionpro}]</span> : null}
                     {c.businessName} {c.cuit || c.numeroDocum ? `(${c.cuit || c.numeroDocum})` : ""}
                   </button>
                 ))}
