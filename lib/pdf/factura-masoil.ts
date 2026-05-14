@@ -16,6 +16,7 @@ export interface FacturaPDFData {
     cuit: string                    // sin guiones o con guiones, lo normalizamos
     condicionIva: string
     domicilio: string
+    condicionPago?: string | null   // ej "30 días", "Contado" — opcional para no romper callers
   }
   items: Array<{
     descripcion: string
@@ -212,7 +213,7 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<Uint8Arra
   let y = HEADER_BOTTOM - 16
 
   // ════════════════ CLIENTE (sección con borde) ════════════════
-  const CLIENTE_H = 70
+  const CLIENTE_H = data.cliente.condicionPago ? 84 : 70
   page.drawRectangle({
     x: LEFT, y: y - CLIENTE_H,
     width: W, height: CLIENTE_H,
@@ -238,6 +239,12 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<Uint8Arra
     x: LEFT + 8, y: y - 56,
     size: 9, font: fontReg, color: black,
   })
+  if (data.cliente.condicionPago) {
+    page.drawText(`Cond. Pago: ${data.cliente.condicionPago}`, {
+      x: LEFT + 8, y: y - 70,
+      size: 9, font: fontReg, color: black,
+    })
+  }
   y = y - CLIENTE_H - 14
 
   // ════════════════ DETALLE (tabla con divisores) ════════════════

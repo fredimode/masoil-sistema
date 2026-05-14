@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
   // ───────────────── PASO 2: cliente ─────────────────
   const { data: cliente, error: clienteError } = await supabase
     .from("clients")
-    .select("id, business_name, razon_social, numero_docum, cuit, condicion_iva, domicilio, provincia, email")
+    .select("id, business_name, razon_social, numero_docum, cuit, condicion_iva, condicion_pago, payment_terms, domicilio, provincia, email")
     .eq("id", clientId)
     .single()
 
@@ -268,6 +268,7 @@ export async function POST(request: NextRequest) {
         cuit: cuitCliente,
         condicionIva: cliente.condicion_iva || "Consumidor Final",
         domicilio: cliente.domicilio || "Sin domicilio",
+        condicionPago: cliente.condicion_pago || cliente.payment_terms || null,
       },
       items,
       bases,
