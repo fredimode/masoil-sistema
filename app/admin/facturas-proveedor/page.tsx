@@ -723,7 +723,10 @@ export default function FacturasProveedorPage() {
           <div className="grid gap-3 py-2">
             {/* Empresa - primer campo */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Empresa *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Empresa contable *
+              </label>
+              <p className="text-[11px] text-gray-500 mb-1">Empresa nuestra que registra y paga esta factura.</p>
               <select
                 value={form.empresa}
                 onChange={(e) => setForm((prev) => ({ ...prev, empresa: e.target.value }))}
@@ -850,7 +853,10 @@ export default function FacturasProveedorPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Razón Social</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Razón social emitida
+                </label>
+                <p className="text-[10px] text-gray-500 mb-1">A nombre de quién figura en la factura del proveedor.</p>
                 <select
                   value={form.razon_social}
                   onChange={(e) => setForm((prev) => ({ ...prev, razon_social: e.target.value }))}
