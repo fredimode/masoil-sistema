@@ -827,23 +827,47 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           <Card className="p-6">
             <h3 className="font-semibold mb-4">Productos</h3>
             <div className="space-y-3">
-              {o.products.map((product, index) => (
-                <div key={index} className={`flex items-center justify-between py-3 border-b last:border-0 ${product.facturado ? "bg-green-50/50" : ""}`}>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{product.productName}</p>
-                      {product.facturado && (
-                        <Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-200">Facturado</Badge>
+              {o.products.map((product, index) => {
+                // Desglose facturado/pendiente (item Excel #76).
+                // cantidad_facturada se persiste desde fix A.1.
+                const cantFact = Number(product.cantidadFacturada || 0)
+                const cantPend = Math.max(0, product.quantity - cantFact)
+                const totalmenteFacturado = product.facturado && cantFact >= product.quantity
+                const parcial = cantFact > 0 && cantPend > 0
+                const rowBg = totalmenteFacturado
+                  ? "bg-green-50/50"
+                  : parcial
+                  ? "bg-amber-50/50"
+                  : ""
+                return (
+                  <div key={index} className={`flex items-center justify-between py-3 border-b last:border-0 ${rowBg}`}>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-medium">{product.productName}</p>
+                        {totalmenteFacturado && (
+                          <Badge variant="outline" className="text-xs bg-green-100 text-green-700 border-green-200">Facturado completo</Badge>
+                        )}
+                        {parcial && (
+                          <Badge variant="outline" className="text-xs bg-amber-100 text-amber-700 border-amber-200">Parcial</Badge>
+                        )}
+                        {!product.facturado && cantFact === 0 && (
+                          <Badge variant="outline" className="text-xs bg-gray-100 text-gray-600 border-gray-200">Pendiente</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground font-mono">{product.productCode}</p>
+                      {cantFact > 0 && cantFact < product.quantity && (
+                        <p className="text-xs text-amber-700 mt-1">
+                          Facturado: {cantFact} de {product.quantity} · Pendiente: {cantPend}
+                        </p>
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground font-mono">{product.productCode}</p>
+                    <div className="flex items-center gap-4">
+                      <span className="text-sm text-muted-foreground">Cant: {product.quantity}</span>
+                      <span className="font-semibold">{formatCurrency(product.price * product.quantity)}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-sm text-muted-foreground">Cant: {product.quantity}</span>
-                    <span className="font-semibold">{formatCurrency(product.price * product.quantity)}</span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
             <Separator className="my-4" />
             <div className="flex items-center justify-between">
@@ -1062,7 +1086,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                 const subtotal = (Number(override.precio) || 0) * product.quantity
                 const isChecked = facturarItems[product.productId] || false
                 return (
-                  <div key={product.productId} className={`p-3 border rounded-lg ${isChecked ? "bg-white" : "bg-muted/30 opacity-70"}`}>
+                  <div key={product.productId} className={`p-3 border rounded-lg ${isChecked ? "bg-white" : "bg-red-50/40 border-red-200"}`}>
                     <div className="flex items-start gap-3">
                       <Checkbox
                         checked={isChecked}
@@ -1074,6 +1098,11 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                       <div className="flex-1 grid grid-cols-12 gap-2">
                         <div className="col-span-2 text-xs font-mono text-muted-foreground self-center">
                           {product.productCode}
+                          {!isChecked && (
+                            <Badge variant="outline" className="ml-1 text-[10px] bg-red-100 text-red-700 border-red-300">
+                              Excluido
+                            </Badge>
+                          )}
                         </div>
                         <div className="col-span-6">
                           <label className="text-[10px] uppercase text-muted-foreground block">Nombre/descripción</label>
