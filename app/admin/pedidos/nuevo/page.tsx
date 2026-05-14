@@ -28,6 +28,7 @@ interface OrderItem {
   price: number
   stock: number
   requiereCotizacion: boolean
+  tipoLinea?: "producto" | "libre" | "descuento"
 }
 
 export default function AdminNuevoPedidoPage() {
@@ -233,6 +234,42 @@ export default function AdminNuevoPedidoPage() {
   const subtotal = orderItems.reduce((sum, i) => sum + i.price * i.quantity, 0)
   const hayItemsCotizacion = orderItems.some((i) => i.requiereCotizacion)
 
+  // Línea libre: producto no catalogado (item Excel #78). product_id null,
+  // nombre/precio/cantidad editables, sin stock check ni requiereCotizacion.
+  function addLineaLibre() {
+    setOrderItems([
+      ...orderItems,
+      {
+        productId: `libre-${Date.now()}`,
+        productCode: "",
+        productName: "",
+        quantity: 1,
+        price: 0,
+        stock: 999999, // no aplica
+        requiereCotizacion: false,
+        tipoLinea: "libre",
+      },
+    ])
+  }
+
+  // Línea de descuento general (item Excel #90). Precio negativo editable,
+  // cantidad fija en 1, suma algebraica al total.
+  function addDescuento() {
+    setOrderItems([
+      ...orderItems,
+      {
+        productId: `desc-${Date.now()}`,
+        productCode: "DESCUENTO",
+        productName: "Descuento",
+        quantity: 1,
+        price: 0,
+        stock: 999999,
+        requiereCotizacion: false,
+        tipoLinea: "descuento",
+      },
+    ])
+  }
+
   async function handleSubmit(asDraft: boolean = false) {
     if (!selectedClientId || orderItems.length === 0) {
       alert("Seleccioná un cliente y agregá al menos un producto")
@@ -255,11 +292,14 @@ export default function AdminNuevoPedidoPage() {
         isUrgent,
         total: subtotal,
         items: orderItems.map((i) => ({
-          productId: i.productId,
+          // productId sintético "libre-…"/"desc-…" se filtra en queries.ts
+          // (no es UUID válido) y queda como null en BD.
+          productId: i.tipoLinea === "producto" || !i.tipoLinea ? i.productId : null,
           productCode: i.productCode,
           productName: i.productName,
           quantity: i.quantity,
           price: i.price,
+          tipoLinea: i.tipoLinea || "producto",
         })),
         razonSocial,
         status: asDraft ? "BORRADOR" : "INGRESADO",
@@ -373,12 +413,20 @@ export default function AdminNuevoPedidoPage() {
 
         {/* 2. Productos */}
         <Card className="p-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <h2 className="text-lg font-semibold">2. Productos</h2>
-            <Button variant="outline" size="sm" onClick={() => setShowNewProductDialog(true)}>
-              <PackagePlus className="h-4 w-4 mr-2" />
-              Crear Producto
-            </Button>
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="outline" size="sm" onClick={addLineaLibre}>
+                + Línea libre
+              </Button>
+              <Button variant="outline" size="sm" onClick={addDescuento}>
+                + Descuento
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowNewProductDialog(true)}>
+                <PackagePlus className="h-4 w-4 mr-2" />
+                Crear Producto
+              </Button>
+            </div>
           </div>
 
           {/* Product search */}
@@ -449,93 +497,130 @@ export default function AdminNuevoPedidoPage() {
                 </thead>
                 <tbody>
                   {orderItems.map((item) => {
-                    const stockOk = item.stock >= item.quantity
-                    const product = products.find((p) => p.id === item.productId)
+                    const tipo = item.tipoLinea || "producto"
+                    const esCatalogo = tipo === "producto"
+                    const esDescuento = tipo === "descuento"
+                    const stockOk = !esCatalogo || item.stock >= item.quantity
+                    const product = esCatalogo ? products.find((p) => p.id === item.productId) : undefined
                     const history = priceHistory[item.productId]
+                    const rowBg = esDescuento
+                      ? "bg-amber-50"
+                      : tipo === "libre"
+                      ? "bg-blue-50/60"
+                      : item.requiereCotizacion ? "bg-amber-50" : ""
                     return (
-                      <tr key={item.productId} className={`border-t ${item.requiereCotizacion ? "bg-amber-50" : ""}`}>
+                      <tr key={item.productId} className={`border-t ${rowBg}`}>
                         <td className="px-2 py-1.5">
                           <Input
                             type="number"
                             min={1}
                             value={item.quantity}
+                            disabled={esDescuento}
                             onChange={(e) => updateItemQuantity(item.productId, parseInt(e.target.value) || 0)}
                             className="h-8 text-center text-sm"
                           />
                         </td>
                         <td className="px-2 py-1.5 text-center">
-                          {stockOk ? (
-                            <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">{item.stock}</Badge>
+                          {esCatalogo ? (
+                            stockOk ? (
+                              <Badge variant="outline" className="bg-green-50 text-green-700 text-xs">{item.stock}</Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-red-50 text-red-700 text-xs">{item.stock}</Badge>
+                            )
                           ) : (
-                            <Badge variant="outline" className="bg-red-50 text-red-700 text-xs">{item.stock}</Badge>
+                            <span className="text-xs text-gray-400">—</span>
                           )}
                         </td>
                         <td className="px-2 py-1.5 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-mono text-xs text-muted-foreground">{item.productCode}</span>
-                            <span className="font-medium">{item.productName}</span>
-                            {product?.costoNeto != null && (
-                              <span className="text-xs text-gray-400">(Costo: {formatCurrency(product.costoNeto)})</span>
+                            {!esCatalogo ? (
+                              <>
+                                <Badge variant="outline" className={esDescuento ? "bg-amber-100 text-amber-800 border-amber-300 text-xs" : "bg-blue-100 text-blue-800 border-blue-300 text-xs"}>
+                                  {esDescuento ? "DESCUENTO" : "LIBRE"}
+                                </Badge>
+                                {tipo === "libre" && (
+                                  <Input
+                                    value={item.productCode}
+                                    onChange={(e) => setOrderItems(orderItems.map((i) => (i.productId === item.productId ? { ...i, productCode: e.target.value } : i)))}
+                                    placeholder="Código (opcional)"
+                                    className="h-7 text-xs font-mono w-32"
+                                  />
+                                )}
+                                <Input
+                                  value={item.productName}
+                                  onChange={(e) => setOrderItems(orderItems.map((i) => (i.productId === item.productId ? { ...i, productName: e.target.value } : i)))}
+                                  placeholder={esDescuento ? "Ej: Descuento pago contado" : "Descripción del producto"}
+                                  className="h-7 text-sm flex-1 min-w-[200px]"
+                                />
+                              </>
+                            ) : (
+                              <>
+                                <span className="font-mono text-xs text-muted-foreground">{item.productCode}</span>
+                                <span className="font-medium">{item.productName}</span>
+                                {product?.costoNeto != null && (
+                                  <span className="text-xs text-gray-400">(Costo: {formatCurrency(product.costoNeto)})</span>
+                                )}
+                                {item.requiereCotizacion && (
+                                  <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 text-xs">Cotizar</Badge>
+                                )}
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        type="button"
+                                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
+                                        onMouseEnter={() => loadPriceHistory(item.productId)}
+                                      >
+                                        <History className="h-3 w-3" /> Hist.
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom" className="max-w-xs">
+                                      <p className="font-semibold text-xs mb-1">Últimas ventas:</p>
+                                      {!history || history.length === 0 ? (
+                                        <p className="text-xs text-gray-400">Sin historial</p>
+                                      ) : (
+                                        history.map((h, i) => (
+                                          <p key={i} className="text-xs">{h.fecha}: {formatCurrency(h.precio)}</p>
+                                        ))
+                                      )}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        type="button"
+                                        className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-0.5"
+                                        onMouseEnter={() => loadProveedoresProducto(item.productId)}
+                                      >
+                                        <Truck className="h-3 w-3" /> Prov.
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom" className="max-w-xs">
+                                      <p className="font-semibold text-xs mb-1">Proveedores asociados:</p>
+                                      {(() => {
+                                        const list = provsByProduct[item.productId]
+                                        if (!list) return <p className="text-xs text-gray-400">Cargando...</p>
+                                        if (list.length === 0) return <p className="text-xs text-gray-400">Sin proveedores asociados</p>
+                                        return list.map((p, i) => (
+                                          <p key={i} className="text-xs">
+                                            {p.proveedor_nombre}{p.precio_proveedor ? ` - ${formatCurrency(Number(p.precio_proveedor))}` : ""}
+                                          </p>
+                                        ))
+                                      })()}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </>
                             )}
-                            {item.requiereCotizacion && (
-                              <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 text-xs">Cotizar</Badge>
-                            )}
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
-                                    onMouseEnter={() => loadPriceHistory(item.productId)}
-                                  >
-                                    <History className="h-3 w-3" /> Hist.
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom" className="max-w-xs">
-                                  <p className="font-semibold text-xs mb-1">Últimas ventas:</p>
-                                  {!history || history.length === 0 ? (
-                                    <p className="text-xs text-gray-400">Sin historial</p>
-                                  ) : (
-                                    history.map((h, i) => (
-                                      <p key={i} className="text-xs">{h.fecha}: {formatCurrency(h.precio)}</p>
-                                    ))
-                                  )}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <button
-                                    type="button"
-                                    className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-0.5"
-                                    onMouseEnter={() => loadProveedoresProducto(item.productId)}
-                                  >
-                                    <Truck className="h-3 w-3" /> Prov.
-                                  </button>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom" className="max-w-xs">
-                                  <p className="font-semibold text-xs mb-1">Proveedores asociados:</p>
-                                  {(() => {
-                                    const list = provsByProduct[item.productId]
-                                    if (!list) return <p className="text-xs text-gray-400">Cargando...</p>
-                                    if (list.length === 0) return <p className="text-xs text-gray-400">Sin proveedores asociados</p>
-                                    return list.map((p, i) => (
-                                      <p key={i} className="text-xs">
-                                        {p.proveedor_nombre}{p.precio_proveedor ? ` - ${formatCurrency(Number(p.precio_proveedor))}` : ""}
-                                      </p>
-                                    ))
-                                  })()}
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
                           </div>
                         </td>
                         <td className="px-2 py-1.5">
                           <Input
                             type="number"
                             step="0.01"
-                            min={0}
+                            min={esDescuento ? undefined : 0}
                             value={item.price}
                             onChange={(e) => {
                               const newPrice = parseFloat(e.target.value) || 0

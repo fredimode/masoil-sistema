@@ -43,6 +43,10 @@ export interface OrderProduct {
   facturado?: boolean
   cantidadFacturada?: number
   facturaId?: number | null
+  // tipo_linea distingue items reales del catalogo ("producto"), lineas
+  // libres ad-hoc para productos no catalogados ("libre") y descuentos
+  // generales con precio negativo ("descuento"). Default backend: "producto".
+  tipoLinea?: "producto" | "libre" | "descuento"
 }
 
 export interface StatusChange {

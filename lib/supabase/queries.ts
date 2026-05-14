@@ -35,13 +35,16 @@ function mapOrder(row: any): Order {
 function mapOrderItem(row: any): OrderProduct {
   return {
     productId: row.product_id,
-    productCode: row.products?.code || row.product_code || "",
-    productName: row.products?.name || row.product_name || "",
+    // Para lineas libres/descuento product_id es null y los datos viven en
+    // las columnas denormalizadas producto_nombre/producto_codigo.
+    productCode: row.products?.code || row.producto_codigo || row.product_code || "",
+    productName: row.products?.name || row.producto_nombre || row.product_name || "",
     quantity: row.quantity,
     price: Number(row.unit_price ?? 0),
     facturado: row.facturado || false,
     cantidadFacturada: row.cantidad_facturada || 0,
     facturaId: row.factura_id || null,
+    tipoLinea: (row.tipo_linea as "producto" | "libre" | "descuento") || "producto",
   }
 }
 
@@ -174,7 +177,7 @@ export async function createOrder(order: {
   isCustom: boolean
   isUrgent: boolean
   total: number
-  items: { productId: string | null; productCode: string; productName: string; quantity: number; price: number }[]
+  items: { productId: string | null; productCode: string; productName: string; quantity: number; price: number; tipoLinea?: "producto" | "libre" | "descuento" }[]
   razonSocial?: string
   status?: "BORRADOR" | "INGRESADO"
 }): Promise<string> {
@@ -254,15 +257,25 @@ export async function createOrder(order: {
     throw orderError
   }
 
-  // Insert order items
-  const items = order.items.map((item) => ({
-    order_id: orderData.id,
-    product_id: item.productId && item.productId.trim() !== "" ? item.productId : null,
-    quantity: item.quantity,
-    unit_price: item.price,
-    reservado: true,
-    reservado_at: new Date().toISOString(),
-  }))
+  // Insert order items.
+  // Para lineas libres y descuentos, product_id queda null y los datos del
+  // item se denormalizan en producto_nombre/producto_codigo (la lectura los
+  // recupera via mapOrderItem).
+  const items = order.items.map((item) => {
+    const tipo = item.tipoLinea || "producto"
+    const esCatalogo = tipo === "producto"
+    return {
+      order_id: orderData.id,
+      product_id: esCatalogo && item.productId && item.productId.trim() !== "" ? item.productId : null,
+      quantity: item.quantity,
+      unit_price: item.price,
+      reservado: tipo === "producto", // descuentos/libres no reservan stock
+      reservado_at: new Date().toISOString(),
+      tipo_linea: tipo,
+      producto_nombre: esCatalogo ? null : item.productName,
+      producto_codigo: esCatalogo ? null : (item.productCode || (tipo === "descuento" ? "DESCUENTO" : "LIBRE")),
+    }
+  })
 
   const { error: itemsError } = await supabase.from("order_items").insert(items)
   if (itemsError) {
@@ -349,19 +362,26 @@ export async function createOrder(order: {
 
 export async function addItemsToOrder(
   orderId: string,
-  items: { productId: string | null; productCode: string; productName: string; quantity: number; price: number }[]
+  items: { productId: string | null; productCode: string; productName: string; quantity: number; price: number; tipoLinea?: "producto" | "libre" | "descuento" }[]
 ): Promise<void> {
   const supabase = createSupabaseClient()
   if (items.length === 0) return
 
-  const rows = items.map((item) => ({
-    order_id: orderId,
-    product_id: item.productId && item.productId.trim() !== "" ? item.productId : null,
-    quantity: item.quantity,
-    unit_price: item.price,
-    reservado: true,
-    reservado_at: new Date().toISOString(),
-  }))
+  const rows = items.map((item) => {
+    const tipo = item.tipoLinea || "producto"
+    const esCatalogo = tipo === "producto"
+    return {
+      order_id: orderId,
+      product_id: esCatalogo && item.productId && item.productId.trim() !== "" ? item.productId : null,
+      quantity: item.quantity,
+      unit_price: item.price,
+      reservado: tipo === "producto",
+      reservado_at: new Date().toISOString(),
+      tipo_linea: tipo,
+      producto_nombre: esCatalogo ? null : item.productName,
+      producto_codigo: esCatalogo ? null : (item.productCode || (tipo === "descuento" ? "DESCUENTO" : "LIBRE")),
+    }
+  })
   const { error: itemsError } = await supabase.from("order_items").insert(rows)
   if (itemsError) throw itemsError
 

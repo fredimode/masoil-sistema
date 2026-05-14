@@ -23,6 +23,7 @@ interface OrderItem {
   productName: string
   quantity: number
   price: number
+  tipoLinea?: "producto" | "libre" | "descuento"
 }
 
 function NuevoPedidoContent() {
@@ -140,6 +141,37 @@ function NuevoPedidoContent() {
     return product?.isCustomizable
   })
 
+  // Línea libre: producto no catalogado. Vendedor puede cargar productos
+  // que el cliente le pide pero que no están en el catálogo (item Excel #78).
+  const addLineaLibre = () => {
+    setOrderItems([
+      ...orderItems,
+      {
+        productId: `libre-${Date.now()}`,
+        productCode: "",
+        productName: "",
+        quantity: 1,
+        price: 0,
+        tipoLinea: "libre",
+      },
+    ])
+  }
+
+  // Línea de descuento general (item Excel #90). Precio negativo editable.
+  const addDescuento = () => {
+    setOrderItems([
+      ...orderItems,
+      {
+        productId: `desc-${Date.now()}`,
+        productCode: "DESCUENTO",
+        productName: "Descuento",
+        quantity: 1,
+        price: 0,
+        tipoLinea: "descuento",
+      },
+    ])
+  }
+
   const handleSubmit = async () => {
     if (!selectedClientId || orderItems.length === 0 || !vendedor) {
       alert("Por favor selecciona un cliente y agrega al menos un producto")
@@ -158,7 +190,14 @@ function NuevoPedidoContent() {
         isCustom: hasCustomProduct,
         isUrgent,
         total: subtotal,
-        items: orderItems,
+        items: orderItems.map((i) => ({
+          productId: i.tipoLinea === "producto" || !i.tipoLinea ? i.productId : null,
+          productCode: i.productCode,
+          productName: i.productName,
+          quantity: i.quantity,
+          price: i.price,
+          tipoLinea: i.tipoLinea || "producto",
+        })),
         razonSocial,
       })
 
@@ -259,7 +298,13 @@ function NuevoPedidoContent() {
 
           {/* Productos */}
           <Card className="p-4 md:p-6">
-            <h2 className="text-lg font-semibold mb-4">2. Agregar Productos</h2>
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <h2 className="text-lg font-semibold">2. Agregar Productos</h2>
+              <div className="flex gap-2 flex-wrap">
+                <Button variant="outline" size="sm" onClick={addLineaLibre}>+ Línea libre</Button>
+                <Button variant="outline" size="sm" onClick={addDescuento}>+ Descuento</Button>
+              </div>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-[1fr,100px,auto] gap-3 mb-4">
               <div className="space-y-2">
@@ -320,16 +365,48 @@ function NuevoPedidoContent() {
                   <span className="text-right">Subtotal</span>
                   <span></span>
                 </div>
-                {orderItems.map((item) => (
+                {orderItems.map((item) => {
+                  const tipo = item.tipoLinea || "producto"
+                  const esCatalogo = tipo === "producto"
+                  const esDescuento = tipo === "descuento"
+                  const rowBg = esDescuento ? "bg-amber-50" : tipo === "libre" ? "bg-blue-50/60" : ""
+                  return (
                   <div
                     key={item.productId}
-                    className="grid grid-cols-1 md:grid-cols-[1fr,100px,120px,80px] gap-2 md:gap-4 p-3 border-t items-center"
+                    className={`grid grid-cols-1 md:grid-cols-[1fr,100px,120px,80px] gap-2 md:gap-4 p-3 border-t items-center ${rowBg}`}
                   >
                     <div>
-                      <p className="font-medium text-sm">{item.productName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.productCode} • {formatCurrency(item.price)} c/u
-                      </p>
+                      {esCatalogo ? (
+                        <>
+                          <p className="font-medium text-sm">{item.productName}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {item.productCode} • {formatCurrency(item.price)} c/u
+                          </p>
+                        </>
+                      ) : (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-1 mb-1">
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${esDescuento ? "bg-amber-200 text-amber-900" : "bg-blue-200 text-blue-900"}`}>
+                              {esDescuento ? "DESCUENTO" : "LIBRE"}
+                            </span>
+                          </div>
+                          <Input
+                            value={item.productName}
+                            onChange={(e) => setOrderItems(orderItems.map((i) => (i.productId === item.productId ? { ...i, productName: e.target.value } : i)))}
+                            placeholder={esDescuento ? "Ej: Descuento pago contado" : "Descripción del producto"}
+                            className="h-8 text-sm"
+                          />
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min={esDescuento ? undefined : 0}
+                            value={item.price}
+                            onChange={(e) => setOrderItems(orderItems.map((i) => (i.productId === item.productId ? { ...i, price: parseFloat(e.target.value) || 0 } : i)))}
+                            placeholder="Precio unitario"
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 md:justify-center">
                       <span className="md:hidden text-sm text-muted-foreground">Cantidad:</span>
@@ -337,6 +414,7 @@ function NuevoPedidoContent() {
                         type="number"
                         min="1"
                         value={item.quantity}
+                        disabled={esDescuento}
                         onChange={(e) => updateQuantity(item.productId, parseInt(e.target.value) || 0)}
                         className="w-20"
                       />
@@ -356,7 +434,8 @@ function NuevoPedidoContent() {
                       </Button>
                     </div>
                   </div>
-                ))}
+                  )
+                })}
                 <div className="flex justify-between items-center p-3 border-t bg-muted">
                   <span className="font-semibold">Total</span>
                   <span className="text-xl font-bold">{formatCurrency(subtotal)}</span>
