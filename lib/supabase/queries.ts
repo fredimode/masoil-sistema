@@ -1068,6 +1068,46 @@ export async function updateOrdenCompra(id: string, updates: Record<string, any>
   const supabase = createSupabaseClient()
   const { error } = await supabase.from("ordenes_compra").update(updates).eq("id", id)
   if (error) throw error
+
+  // Cerrar circuito OC -> pedido venta (item Excel #61, G2.3): cuando la OC
+  // pasa a "Recibido Completo", buscamos las solicitudes_compra vinculadas
+  // (orden_compra_id = id) y para cada una con order_id, si el pedido
+  // venta esta en ESPERANDO_MERCADERIA lo movemos a INGRESADO.
+  if (updates.estado === "Recibido Completo") {
+    try {
+      const { data: sols } = await supabase
+        .from("solicitudes_compra")
+        .select("order_id")
+        .eq("orden_compra_id", id)
+      const orderIds = Array.from(
+        new Set((sols || []).map((s: any) => s.order_id).filter(Boolean))
+      ) as string[]
+      for (const orderId of orderIds) {
+        const { data: o } = await supabase
+          .from("orders")
+          .select("status")
+          .eq("id", orderId)
+          .maybeSingle()
+        if (o?.status === "ESPERANDO_MERCADERIA") {
+          await supabase.from("orders").update({
+            status: "INGRESADO",
+            updated_at: new Date().toISOString(),
+          }).eq("id", orderId)
+          await supabase.from("order_status_history").insert({
+            order_id: orderId,
+            status: "INGRESADO",
+            changed_by: "sistema",
+            user_name: "Sistema",
+            notes: `Auto: mercadería recibida (OC ${id})`,
+          })
+          console.log(`updateOrdenCompra: pedido ${orderId} ESPERANDO_MERCADERIA -> INGRESADO al recibir OC ${id}`)
+        }
+      }
+    } catch (e) {
+      // No revertimos el cambio de estado de la OC si esto falla — solo log.
+      console.error("updateOrdenCompra: error cerrando circuito OC->pedido:", e)
+    }
+  }
 }
 
 export async function deletePagoProveedor(id: string): Promise<void> {
