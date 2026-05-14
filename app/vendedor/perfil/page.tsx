@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
-import { Mail, Phone, MapPin, LogOut, Loader2, Bell, HelpCircle, MessageCircle } from "lucide-react"
+import { Mail, Phone, MapPin, LogOut, Loader2, Bell, HelpCircle, MessageCircle, History } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
+import Link from "next/link"
 
 interface VendedorProfile {
   name: string
@@ -118,6 +119,17 @@ export default function VendedorPerfilPage() {
               </div>
             )}
           </div>
+        </Card>
+
+        {/* Mi historial — item Excel #75 */}
+        <Card className="p-4">
+          <h3 className="font-semibold mb-3">Mi actividad</h3>
+          <Button asChild variant="outline" className="w-full justify-start bg-transparent">
+            <Link href="/vendedor/historial">
+              <History className="h-4 w-4 mr-2" />
+              Mi historial (cotizaciones, facturas, cobros)
+            </Link>
+          </Button>
         </Card>
 
         {/* Actions */}
