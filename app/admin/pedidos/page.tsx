@@ -164,6 +164,7 @@ export default function AdminPedidosPage() {
             <SelectItem value="FACTURADO_PARCIAL">Facturado Parcial</SelectItem>
             <SelectItem value="FACTURADO">Facturado</SelectItem>
             <SelectItem value="EN_PROCESO_ENTREGA">En Proceso Entrega</SelectItem>
+            <SelectItem value="ENTREGADO_PARCIAL">Entregado Parcial</SelectItem>
             <SelectItem value="ENTREGADO">Entregado</SelectItem>
             <SelectItem value="CANCELADO">Cancelado</SelectItem>
           </SelectContent>
