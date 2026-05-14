@@ -320,23 +320,37 @@ function NuevoPedidoContent() {
                 </div>
                 {productSearch && (
                   <div className="max-h-40 overflow-y-auto border rounded-lg absolute bg-background z-10 w-full shadow-lg">
-                    {filteredProducts.slice(0, 10).map((product) => (
-                      <button
-                        key={product.id}
-                        onClick={() => {
-                          setSelectedProductId(product.id)
-                          setProductSearch(product.name)
-                        }}
-                        className="w-full p-2 text-left hover:bg-muted text-sm border-b last:border-b-0"
-                      >
-                        <span className="font-mono text-xs text-muted-foreground">{product.code}</span>
-                        <span className="ml-2">{product.name}</span>
-                        <span className="ml-2 text-muted-foreground">{formatCurrency(product.price)}</span>
-                        {product.stock === 0 && (
-                          <span className="ml-2 text-destructive text-xs">(Sin stock)</span>
-                        )}
-                      </button>
-                    ))}
+                    {filteredProducts.slice(0, 10).map((product) => {
+                      // Stock numerico con codigo de color (item Excel #72).
+                      const critico = product.criticalStockThreshold ?? 0
+                      const bajo = product.lowStockThreshold ?? 0
+                      let stockCls = "bg-gray-100 text-gray-600"
+                      if (product.stock <= 0) stockCls = "bg-red-100 text-red-700"
+                      else if (product.stock <= critico) stockCls = "bg-red-100 text-red-700"
+                      else if (product.stock <= bajo) stockCls = "bg-amber-100 text-amber-700"
+                      else stockCls = "bg-green-100 text-green-700"
+                      return (
+                        <button
+                          key={product.id}
+                          onClick={() => {
+                            setSelectedProductId(product.id)
+                            setProductSearch(product.name)
+                          }}
+                          className="w-full p-2 text-left hover:bg-muted text-sm border-b last:border-b-0 flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <span className="font-mono text-xs text-muted-foreground">{product.code}</span>
+                            <span className="ml-2">{product.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${stockCls}`}>
+                              Stock: {product.stock}
+                            </span>
+                            <span className="text-xs text-muted-foreground">{formatCurrency(product.price)}</span>
+                          </div>
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
               </div>

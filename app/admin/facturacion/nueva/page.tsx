@@ -30,6 +30,9 @@ interface ProductoDB {
   code: string
   name: string
   price: number
+  stock?: number
+  low_stock_threshold?: number
+  critical_stock_threshold?: number
 }
 
 interface ItemFactura {
@@ -145,7 +148,7 @@ export default function NuevaFacturaPage() {
       try {
         const { data } = await supabase
           .from("products")
-          .select("id, code, name, price")
+          .select("id, code, name, price, stock, low_stock_threshold, critical_stock_threshold")
           .or(`name.ilike.%${productoSearch}%,code.ilike.%${productoSearch}%`)
           .limit(10)
 
@@ -794,19 +797,38 @@ export default function NuevaFacturaPage() {
 
             {showProductoDropdown && productoResults.length > 0 && (
               <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                {productoResults.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => agregarProducto(p)}
-                    className="w-full text-left px-4 py-2 hover:bg-gray-50 border-b last:border-b-0 flex justify-between items-center"
-                  >
-                    <div>
-                      <span className="font-medium text-gray-900">{p.name}</span>
-                      <span className="text-xs text-gray-500 ml-2">{p.code}</span>
-                    </div>
-                    <span className="text-sm font-medium text-gray-700">{formatMoney(Number(p.price))}</span>
-                  </button>
-                ))}
+                {productoResults.map((p) => {
+                  // Indicador visual de stock (item Excel #43). NO bloquea
+                  // facturacion si stock=0 — solo informa.
+                  const stockNum = typeof p.stock === "number" ? p.stock : null
+                  const critico = p.critical_stock_threshold ?? 0
+                  const bajo = p.low_stock_threshold ?? 0
+                  let stockCls = "bg-gray-100 text-gray-600"
+                  let stockLabel = "—"
+                  if (stockNum !== null) {
+                    stockLabel = `Stock: ${stockNum}`
+                    if (stockNum <= 0) stockCls = "bg-red-100 text-red-700"
+                    else if (stockNum <= critico) stockCls = "bg-red-100 text-red-700"
+                    else if (stockNum <= bajo) stockCls = "bg-amber-100 text-amber-700"
+                    else stockCls = "bg-green-100 text-green-700"
+                  }
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => agregarProducto(p)}
+                      className="w-full text-left px-4 py-2 hover:bg-gray-50 border-b last:border-b-0 flex justify-between items-center"
+                    >
+                      <div>
+                        <span className="font-medium text-gray-900">{p.name}</span>
+                        <span className="text-xs text-gray-500 ml-2">{p.code}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded ${stockCls}`}>{stockLabel}</span>
+                        <span className="text-sm font-medium text-gray-700">{formatMoney(Number(p.price))}</span>
+                      </div>
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
