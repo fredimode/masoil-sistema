@@ -21,6 +21,8 @@ import {
   fetchProveedores,
   fetchProducts,
   fetchOrdenCompraItems,
+  fetchPedidosVentaPendientesDeOC,
+  marcarPedidosVentaIngresados,
 } from "@/lib/supabase/queries"
 import { generateOrdenCompraPDF } from "@/lib/pdf/orden-compra-pdf"
 import type { Product } from "@/lib/types"
@@ -97,6 +99,13 @@ export default function ComprasPage() {
   const [editingOrden, setEditingOrden] = useState<any | null>(null)
   const [editOrdenForm, setEditOrdenForm] = useState<any>({})
   const [deletingOrden, setDeletingOrden] = useState<any | null>(null)
+  // G2.3 — dialog para confirmar transicion pedidos vinculados a INGRESADO
+  // cuando una OC pasa a "Recibido Completo".
+  const [marcarIngresadoOC, setMarcarIngresadoOC] = useState<{
+    ocId: string
+    pendientes: { orderId: string; orderNumber: string | null; clientName: string | null }[]
+  } | null>(null)
+  const [confirmandoIngreso, setConfirmandoIngreso] = useState(false)
 
   async function loadData() {
     setLoading(true)
@@ -852,6 +861,18 @@ export default function ComprasPage() {
                               try {
                                 await updateOrdenCompra(o.id, { estado: nuevoEstado })
                                 setOrdenes((prev) => prev.map((x) => x.id === o.id ? { ...x, estado: nuevoEstado } : x))
+                                // G2.3 — al recibir mercaderia, ofrecer marcar
+                                // los pedidos venta vinculados como Ingresado.
+                                if (nuevoEstado === "Recibido Completo") {
+                                  try {
+                                    const pendientes = await fetchPedidosVentaPendientesDeOC(o.id)
+                                    if (pendientes.length > 0) {
+                                      setMarcarIngresadoOC({ ocId: o.id, pendientes })
+                                    }
+                                  } catch (err) {
+                                    console.error("Error buscando pedidos venta vinculados:", err)
+                                  }
+                                }
                               } catch (err) {
                                 console.error("Error actualizando estado:", err)
                               }
@@ -1112,6 +1133,61 @@ export default function ComprasPage() {
           <DialogFooter>
             <button onClick={() => setDeletingOrden(null)} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cancelar</button>
             <button onClick={handleDeleteOrden} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm">Eliminar</button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* G2.3 — Confirmar transicion pedidos vinculados al recibir mercaderia */}
+      <Dialog open={!!marcarIngresadoOC} onOpenChange={(open) => !open && setMarcarIngresadoOC(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Mercadería recibida</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-700">
+            La OC se marcó como <strong>Recibido Completo</strong>. Esto significa que llegó toda la
+            mercadería del proveedor. ¿Marcar el/los pedido(s) vinculado(s) como <strong>Ingresado</strong>?
+          </p>
+          <div className="mt-3 space-y-1 border rounded-lg p-3 bg-amber-50 text-sm">
+            {marcarIngresadoOC?.pendientes.map((p) => (
+              <div key={p.orderId} className="flex justify-between">
+                <span className="font-mono">{p.orderNumber || p.orderId.slice(0, 8)}</span>
+                <span className="text-gray-700 truncate ml-2">{p.clientName || "—"}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Si decís <strong>No</strong>, la OC queda como Recibido Completo igual, pero los pedidos
+            siguen en Esperando Mercadería hasta que los cambies a mano.
+          </p>
+          <DialogFooter>
+            <button
+              onClick={() => setMarcarIngresadoOC(null)}
+              disabled={confirmandoIngreso}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
+            >
+              No, dejarlos en Esperando Mercadería
+            </button>
+            <button
+              disabled={confirmandoIngreso}
+              onClick={async () => {
+                if (!marcarIngresadoOC) return
+                setConfirmandoIngreso(true)
+                try {
+                  await marcarPedidosVentaIngresados(
+                    marcarIngresadoOC.pendientes.map((p) => p.orderId),
+                    marcarIngresadoOC.ocId,
+                  )
+                  setMarcarIngresadoOC(null)
+                } catch (err: any) {
+                  alert("Error: " + (err?.message || ""))
+                } finally {
+                  setConfirmandoIngreso(false)
+                }
+              }}
+              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm"
+            >
+              {confirmandoIngreso ? "Confirmando..." : "Sí, marcar como Ingresado"}
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
