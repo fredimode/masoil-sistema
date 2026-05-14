@@ -51,12 +51,14 @@ export default function FacturacionPage() {
   const [viewingItems, setViewingItems] = useState<any[]>([])
   const [loadingItems, setLoadingItems] = useState(false)
   const [asociadas, setAsociadas] = useState<any[]>([])  // NC/ND que referencian esta factura
+  const [facturaOrigen, setFacturaOrigen] = useState<any | null>(null)  // FC origen si viewingFactura es NC/ND
   const [ccData, setCcData] = useState<any[]>([])  // cuenta corriente for deuda calculation
 
   useEffect(() => {
     if (!viewingFactura) {
       setViewingItems([])
       setAsociadas([])
+      setFacturaOrigen(null)
       return
     }
     const orderId = viewingFactura.order_id
@@ -115,6 +117,28 @@ export default function FacturacionPage() {
           setAsociadas(data || [])
         }
       })
+
+    // Si esta factura es NC/ND y tiene factura_referencia_id, cargar la FC origen
+    // para mostrar el vinculo inverso (item Excel #37 - reciprocidad).
+    const tipoUpper = (viewingFactura.tipo || "").toUpperCase()
+    const esNCND = tipoUpper.startsWith("NOTA DE CREDITO") || tipoUpper.startsWith("NOTA DE DEBITO")
+    if (esNCND && viewingFactura.factura_referencia_id) {
+      supabase
+        .from("facturas")
+        .select("id, numero, tipo, fecha, total, comprobante_nro, punto_venta")
+        .eq("id", viewingFactura.factura_referencia_id)
+        .single()
+        .then(({ data, error }) => {
+          if (error) {
+            console.error("Error cargando factura origen:", error)
+            setFacturaOrigen(null)
+          } else {
+            setFacturaOrigen(data || null)
+          }
+        })
+    } else {
+      setFacturaOrigen(null)
+    }
   }, [viewingFactura])
 
   useEffect(() => {
@@ -681,6 +705,36 @@ export default function FacturacionPage() {
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                   <p className="text-xs text-green-600 font-medium">CAE</p>
                   <p className="font-mono font-semibold text-green-800">{viewingFactura.cae}</p>
+                </div>
+              )}
+
+              {/* Factura origen (cuando esta es NC/ND) — inverso de "asociadas" */}
+              {facturaOrigen && (
+                <div className="border-t pt-3">
+                  <p className="text-xs text-gray-500 font-medium mb-2">
+                    Factura asociada (origen)
+                  </p>
+                  <div className="border rounded-lg p-3 bg-amber-50 border-amber-200 flex items-center justify-between">
+                    <div className="text-sm">
+                      <p className="font-semibold text-gray-900">{facturaOrigen.tipo || "Factura"}</p>
+                      <p className="font-mono text-gray-700">
+                        {facturaOrigen.comprobante_nro || facturaOrigen.numero || "-"}
+                        {facturaOrigen.fecha && (
+                          <span className="text-gray-500 ml-2">{formatDateStr(facturaOrigen.fecha)}</span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">Total</p>
+                      <p className="font-bold text-gray-900">{formatMoney(Number(facturaOrigen.total) || 0)}</p>
+                      <button
+                        onClick={() => setViewingFactura(facturaOrigen)}
+                        className="text-xs text-blue-600 hover:underline mt-1"
+                      >
+                        Ver detalle →
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
