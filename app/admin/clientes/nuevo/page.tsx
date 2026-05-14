@@ -46,6 +46,7 @@ export default function AdminNuevoClientePage() {
     cuit: "",
     condicionIva: "",
     address: "",
+    sucursalEntrega: "",
     whatsapp: "",
     email: "",
     zona: "" as Zona | "",
@@ -105,6 +106,7 @@ export default function AdminNuevoClientePage() {
         zona: formData.zona as string,
         vendedorId: formData.vendedorId,
         address: formData.address,
+        sucursalEntrega: formData.sucursalEntrega,
         paymentTerms: formData.paymentTerms,
         creditLimit: parseInt(formData.creditLimit) || 0,
         notes: formData.notes,
@@ -245,6 +247,16 @@ export default function AdminNuevoClientePage() {
                 className={errors.address ? "border-destructive" : ""}
               />
               {errors.address && <p className="text-sm text-destructive">{errors.address}</p>}
+            </div>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="sucursalEntrega">Sucursal de Entrega</Label>
+              <Input
+                id="sucursalEntrega"
+                value={formData.sucursalEntrega}
+                onChange={(e) => handleChange("sucursalEntrega", e.target.value)}
+                placeholder="Ej: Sucursal Beccar - Av. Centenario 2400"
+              />
             </div>
           </div>
         </Card>

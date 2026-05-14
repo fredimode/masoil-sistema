@@ -576,6 +576,7 @@ export async function createClient(client: {
   email: string; zona: string; vendedorId?: string; address: string;
   paymentTerms: string; creditLimit: number; notes: string;
   domicilioEntrega?: string;
+  sucursalEntrega?: string;
   cuit?: string;
   condicionIva?: string;
 }): Promise<void> {
@@ -593,6 +594,7 @@ export async function createClient(client: {
     credit_limit: client.creditLimit,
     notes: client.notes,
     domicilio_entrega: client.domicilioEntrega || null,
+    sucursal_entrega: client.sucursalEntrega || null,
     cuit: client.cuit || null,
     condicion_iva: client.condicionIva || null,
   })
