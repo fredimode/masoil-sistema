@@ -721,12 +721,14 @@ export default function FacturasProveedorPage() {
           {/* === ETAPA 1: Datos de factura === */}
           {step === 1 && (
           <div className="grid gap-3 py-2">
-            {/* Empresa - primer campo */}
+            {/* Empresa pagadora — la NUESTRA que registra y paga */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Empresa contable *
+              <label
+                className="block text-sm font-medium text-gray-700 mb-1"
+                title="Aquiles o Conancap. Empresa que registra y paga."
+              >
+                Empresa pagadora *
               </label>
-              <p className="text-[11px] text-gray-500 mb-1">Empresa nuestra que registra y paga esta factura.</p>
               <select
                 value={form.empresa}
                 onChange={(e) => setForm((prev) => ({ ...prev, empresa: e.target.value }))}
@@ -853,10 +855,12 @@ export default function FacturasProveedorPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Razón social emitida
+                <label
+                  className="block text-xs font-medium text-gray-700 mb-1"
+                  title="A nombre de quién emitió el proveedor (puede ser Masoil)."
+                >
+                  Razón social facturada
                 </label>
-                <p className="text-[10px] text-gray-500 mb-1">A nombre de quién figura en la factura del proveedor.</p>
                 <select
                   value={form.razon_social}
                   onChange={(e) => setForm((prev) => ({ ...prev, razon_social: e.target.value }))}
