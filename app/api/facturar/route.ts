@@ -145,6 +145,11 @@ export async function POST(request: NextRequest) {
   console.log('Step 2: Cliente OK →', razonSocial, '| provincia final:', cliente.provincia)
 
   // ───────────────── PASO 3: pedido (opcional) ─────────────────
+  // cotizacionId/cotizacionNumero se rellenan si esta factura proviene de
+  // una cotización (vía pedido). Se persisten en facturas.cotizacion_id y
+  // se muestran en Observaciones del PDF (item Excel #89).
+  let cotizacionId: string | null = null
+  let cotizacionNumero: string | null = null
   if (orderId) {
     const { data: order, error: orderError } = await supabase
       .from("orders")
@@ -154,6 +159,20 @@ export async function POST(request: NextRequest) {
 
     if (orderError || !order) {
       return fail("cliente", `Pedido ${orderId} no encontrado`, undefined, undefined, 404)
+    }
+
+    // Lookup automático: si hay cotización con order_id = orderId, asociarla.
+    // cotizaciones_venta.order_id es TEXT; orderId puede ser UUID — comparamos
+    // como strings.
+    const { data: cot } = await supabase
+      .from("cotizaciones_venta")
+      .select("id, numero")
+      .eq("order_id", String(orderId))
+      .maybeSingle()
+    if (cot) {
+      cotizacionId = cot.id as string
+      cotizacionNumero = cot.numero as string
+      console.log("Step 3: Cotización asociada al pedido →", cotizacionNumero)
     }
   } else {
     console.log('Step 3: Sin orderId — facturación manual')
@@ -255,6 +274,13 @@ export async function POST(request: NextRequest) {
   console.log('Step 9: Iniciando generación de PDF...')
   let pdfBytes: Uint8Array
   try {
+    // Si la factura proviene de una cotización, agregamos esa info al final
+    // de observaciones para que aparezca en el PDF (item Excel #89).
+    const observacionesPDF = [
+      observaciones,
+      cotizacionNumero ? `Cotización N° ${cotizacionNumero}` : null,
+    ].filter(Boolean).join(" | ") || undefined
+
     pdfBytes = await generarFacturaPDF({
       empresa,
       modo,
@@ -277,7 +303,7 @@ export async function POST(request: NextRequest) {
       total,
       cae,
       vencimientoCae,
-      observaciones,
+      observaciones: observacionesPDF,
       comprobanteAsociado: comprobanteAsociado
         ? {
             tipo: String(comprobanteAsociado.tipo),
@@ -331,6 +357,7 @@ export async function POST(request: NextRequest) {
       vencimiento_cae: vencimientoCae,
       pdf_url: pdfUrl,
       factura_referencia_id: facturaReferenciaId,
+      cotizacion_id: cotizacionId,
     })
     .select()
     .single()
