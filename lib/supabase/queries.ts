@@ -1070,14 +1070,18 @@ export async function updateOrdenCompra(id: string, updates: Record<string, any>
   if (error) throw error
 }
 
-// G2.3 — Cerrar circuito OC -> pedido venta CON confirmacion explicita.
-// Devuelve la lista de pedidos en ESPERANDO_MERCADERIA vinculados a esta
-// OC para que el caller pueda mostrar un dialog de confirmacion antes de
-// disparar la transicion. NO modifica nada por si mismo.
-export async function fetchPedidosVentaPendientesDeOC(ordenCompraId: string): Promise<{
+// Aviso al recibir mercaderia: devuelve los pedidos venta vinculados a
+// una OC (via solicitudes_compra). Se usa para mostrar al operador, en
+// el dialog que se abre al marcar la OC como "Recibido Completo", la
+// lista de pedidos que ya tienen su mercaderia disponible. NO filtra ni
+// cambia estado — solo informa. Sprint H eliminó ESPERANDO_MERCADERIA,
+// asi que la auto-transicion ya no aplica (los pedidos quedan en
+// INGRESADO desde el principio).
+export async function fetchPedidosVentaVinculadosAOC(ordenCompraId: string): Promise<{
   orderId: string
   orderNumber: string | null
   clientName: string | null
+  status: string | null
 }[]> {
   const supabase = createSupabaseClient()
   const { data: sols } = await supabase
@@ -1092,45 +1096,15 @@ export async function fetchPedidosVentaPendientesDeOC(ordenCompraId: string): Pr
     .from("orders")
     .select("id, order_number_serial, order_number, client_name, status")
     .in("id", orderIds)
-    .eq("status", "ESPERANDO_MERCADERIA")
+    // Solo pedidos no terminales — los CANCELADO/ENTREGADO no aplica
+    // mostrarlos en un aviso de "mercaderia disponible".
+    .not("status", "in", "(CANCELADO,ENTREGADO)")
   return (orders || []).map((o: any) => ({
     orderId: o.id,
     orderNumber: o.order_number_serial || o.order_number || null,
     clientName: o.client_name || null,
+    status: o.status || null,
   }))
-}
-
-// Aplica la transicion ESPERANDO_MERCADERIA -> INGRESADO para los pedidos
-// confirmados por el operador. Idempotente: si el pedido cambio de estado
-// entre la confirmacion y la aplicacion, se ignora.
-export async function marcarPedidosVentaIngresados(
-  orderIds: string[],
-  ordenCompraId: string,
-): Promise<void> {
-  if (orderIds.length === 0) return
-  const supabase = createSupabaseClient()
-  for (const orderId of orderIds) {
-    const { data: o } = await supabase
-      .from("orders")
-      .select("status")
-      .eq("id", orderId)
-      .maybeSingle()
-    if (o?.status !== "ESPERANDO_MERCADERIA") {
-      console.log(`marcarPedidosVentaIngresados: pedido ${orderId} ya no esta en ESPERANDO_MERCADERIA, omitido`)
-      continue
-    }
-    await supabase.from("orders").update({
-      status: "INGRESADO",
-      updated_at: new Date().toISOString(),
-    }).eq("id", orderId)
-    await supabase.from("order_status_history").insert({
-      order_id: orderId,
-      status: "INGRESADO",
-      changed_by: "sistema",
-      user_name: "Sistema",
-      notes: `Mercadería recibida confirmada por operador (OC ${ordenCompraId})`,
-    })
-  }
 }
 
 export async function deletePagoProveedor(id: string): Promise<void> {
