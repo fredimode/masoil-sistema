@@ -805,7 +805,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           )}
 
           {/* Agregar productos */}
-          {["INGRESADO", "EN_PREPARACION", "BORRADOR"].includes(currentStatus) && (
+          {(["INGRESADO", "BORRADOR"] as string[]).includes(currentStatus) && (
             <Button
               variant="outline"
               onClick={async () => {

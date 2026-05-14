@@ -2,15 +2,19 @@
 
 export type Zona = "Norte" | "Capital" | "Sur" | "Oeste" | "GBA"
 
+// 8 estados activos. Los valores legacy "EN_PREPARACION" y
+// "ESPERANDO_MERCADERIA" todavía existen en el enum de Postgres (no se
+// pueden DROP) y pueden aparecer en order_status_history como auditoría
+// de pedidos viejos. statusConfig los soporta como lookup-only para
+// renderizar el badge correctamente; el código nuevo NO los usa.
 export type OrderStatus =
   | "BORRADOR"
   | "INGRESADO"
-  | "EN_PREPARACION"
   | "FACTURADO"
   | "FACTURADO_PARCIAL"
   | "EN_PROCESO_ENTREGA"
-  | "ESPERANDO_MERCADERIA"
   | "ENTREGADO"
+  | "ENTREGADO_PARCIAL"
   | "CANCELADO"
 
 export type ProductCategory = "Limpiadores" | "Lubricantes" | "Selladores" | "Belleza" | "Higiene"

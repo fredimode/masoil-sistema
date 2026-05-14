@@ -52,12 +52,13 @@ export default function AdminDashboard() {
     { name: "GBA", value: orders.filter((o) => o.zona === "GBA").length },
   ]
 
-  // Orders by status
+  // Orders by status (Sprint H: 8 estados activos)
   const ordersByStatus = [
     { name: "Ingresado", value: orders.filter((o) => o.status === "INGRESADO").length, fill: "#14b8a6" },
-    { name: "En preparación", value: orders.filter((o) => o.status === "EN_PREPARACION").length, fill: "#3b82f6" },
+    { name: "Facturado Parcial", value: orders.filter((o) => o.status === "FACTURADO_PARCIAL").length, fill: "#6366f1" },
     { name: "Facturado", value: orders.filter((o) => o.status === "FACTURADO").length, fill: "#a855f7" },
-    { name: "Esp. Mercadería", value: orders.filter((o) => o.status === "ESPERANDO_MERCADERIA").length, fill: "#f59e0b" },
+    { name: "En Proceso Entrega", value: orders.filter((o) => o.status === "EN_PROCESO_ENTREGA").length, fill: "#06b6d4" },
+    { name: "Entregado Parcial", value: orders.filter((o) => o.status === "ENTREGADO_PARCIAL").length, fill: "#84cc16" },
     { name: "Entregado", value: orders.filter((o) => o.status === "ENTREGADO").length, fill: "#10b981" },
     { name: "Cancelado", value: orders.filter((o) => o.status === "CANCELADO").length, fill: "#ef4444" },
   ].filter((s) => s.value > 0)

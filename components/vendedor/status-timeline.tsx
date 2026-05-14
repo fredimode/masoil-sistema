@@ -7,14 +7,25 @@ interface StatusTimelineProps {
   isCustom?: boolean
 }
 
-// Single linear flow for all orders now
-const mainFlow: OrderStatus[] = ["INGRESADO", "EN_PREPARACION", "FACTURADO", "EN_PROCESO_ENTREGA", "ENTREGADO"]
+// Linear flow del pedido (Sprint H: 8 estados). Estados ramificados
+// (FACTURADO_PARCIAL, ENTREGADO_PARCIAL, CANCELADO) y los legacy
+// (EN_PREPARACION, ESPERANDO_MERCADERIA en pedidos viejos) se muestran
+// como badge único en lugar del timeline.
+const mainFlow: OrderStatus[] = ["INGRESADO", "FACTURADO", "EN_PROCESO_ENTREGA", "ENTREGADO"]
 
 export function StatusTimeline({ currentStatus }: StatusTimelineProps) {
   const currentIndex = mainFlow.indexOf(currentStatus)
 
-  // Handle special statuses (not in the main flow)
-  if (currentStatus === "ESPERANDO_MERCADERIA" || currentStatus === "CANCELADO" || currentStatus === "FACTURADO_PARCIAL") {
+  // Handle special statuses (not in the main flow). Incluye estados
+  // legacy por compatibilidad con pedidos viejos.
+  if (
+    currentStatus === "CANCELADO" ||
+    currentStatus === "FACTURADO_PARCIAL" ||
+    currentStatus === "ENTREGADO_PARCIAL" ||
+    // legacy:
+    (currentStatus as string) === "ESPERANDO_MERCADERIA" ||
+    (currentStatus as string) === "EN_PREPARACION"
+  ) {
     const config = getStatusConfig(currentStatus)
     return (
       <div className="flex items-center justify-center p-4 bg-muted/50 rounded-lg">
