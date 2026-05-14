@@ -14,7 +14,6 @@ import { formatCurrency, formatDateStr, normalizeSearch } from "@/lib/utils"
 
 const ESTADO_BADGES: Record<string, { label: string; cls: string }> = {
   pendiente: { label: "Pendiente", cls: "bg-amber-100 text-amber-800 border-amber-200" },
-  aprobada: { label: "Aprobada", cls: "bg-green-100 text-green-800 border-green-200" },
   parcialmente_aprobada: { label: "Aprobada parcial", cls: "bg-blue-100 text-blue-800 border-blue-200" },
   no_aprobada: { label: "No aprobada", cls: "bg-red-100 text-red-800 border-red-200" },
   convertida_pedido: { label: "Convertida a pedido", cls: "bg-indigo-100 text-indigo-800 border-indigo-200" },
@@ -102,7 +101,6 @@ export default function CotizacionesVentaPage() {
             <SelectContent>
               <SelectItem value="todos">Todos los estados</SelectItem>
               <SelectItem value="pendiente">Pendientes</SelectItem>
-              <SelectItem value="aprobada">Aprobadas</SelectItem>
               <SelectItem value="parcialmente_aprobada">Parcialmente aprobadas</SelectItem>
               <SelectItem value="no_aprobada">No aprobadas</SelectItem>
               <SelectItem value="convertida_pedido">Convertidas a pedido</SelectItem>

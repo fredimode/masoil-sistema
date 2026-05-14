@@ -22,7 +22,6 @@ import { formatCurrency, formatDateStr } from "@/lib/utils"
 
 const ESTADO_BADGES: Record<string, { label: string; cls: string }> = {
   pendiente: { label: "Pendiente", cls: "bg-amber-100 text-amber-800 border-amber-200" },
-  aprobada: { label: "Aprobada", cls: "bg-green-100 text-green-800 border-green-200" },
   parcialmente_aprobada: { label: "Aprobada parcial", cls: "bg-blue-100 text-blue-800 border-blue-200" },
   no_aprobada: { label: "No aprobada", cls: "bg-red-100 text-red-800 border-red-200" },
   convertida_pedido: { label: "Convertida a pedido", cls: "bg-indigo-100 text-indigo-800 border-indigo-200" },
@@ -240,11 +239,6 @@ export default function CotizacionVentaDetallePage() {
     }
   }
 
-  async function handleAprobar() {
-    await updateCotizacionVenta(id, { estado: "aprobada" })
-    await loadAll()
-  }
-
   async function handleNoAprobar() {
     await updateCotizacionVenta(id, { estado: "no_aprobada" })
     await loadAll()
@@ -255,10 +249,13 @@ export default function CotizacionVentaDetallePage() {
   }
 
   async function handleGuardarParcial() {
+    // Estado "aprobada" se eliminó (item Excel #88) porque era redundante con
+    // "convertida_pedido". Si todos los items quedan aprobados, dejamos en
+    // "pendiente" — el operador convierte a pedido cuando esté listo.
     const aprobadosCount = items.filter((i) => i.aprobado).length
     const totalCount = items.length
     const estado = aprobadosCount === 0 ? "no_aprobada"
-      : aprobadosCount === totalCount ? "aprobada"
+      : aprobadosCount === totalCount ? "pendiente"
       : "parcialmente_aprobada"
     await updateCotizacionVenta(id, { estado })
     setParcialMode(false)
@@ -460,7 +457,7 @@ export default function CotizacionVentaDetallePage() {
 
   const est = ESTADO_BADGES[cot.estado] || { label: cot.estado, cls: "bg-gray-100 text-gray-700" }
   const puedeAprobar = cot.estado === "pendiente" || cot.estado === "parcialmente_aprobada"
-  const puedeConvertir = (cot.estado === "aprobada" || cot.estado === "parcialmente_aprobada") && !cot.order_id
+  const puedeConvertir = (cot.estado === "pendiente" || cot.estado === "parcialmente_aprobada") && !cot.order_id
 
   return (
     <div className="p-6 md:p-8">
@@ -682,9 +679,6 @@ export default function CotizacionVentaDetallePage() {
           <div className="flex flex-wrap gap-2">
             {puedeAprobar && !parcialMode && (
               <>
-                <Button onClick={handleAprobar} className="bg-green-600 hover:bg-green-700">
-                  <CheckCircle2 className="h-4 w-4 mr-2" /> Aprobar
-                </Button>
                 <Button variant="outline" onClick={handleAprobarParcialmente}>
                   <ListChecks className="h-4 w-4 mr-2" /> Aprobar parcialmente
                 </Button>
