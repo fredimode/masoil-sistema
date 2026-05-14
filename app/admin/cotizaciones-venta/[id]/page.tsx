@@ -281,13 +281,21 @@ export default function CotizacionVentaDetallePage() {
         isCustom: false,
         isUrgent: false,
         total: itemsAConvertir.reduce((s, i) => s + (Number(i.subtotal) || 0), 0),
-        items: itemsAConvertir.map((i) => ({
-          productId: i.product_id || null,
-          productCode: i.producto_codigo || "",
-          productName: i.producto_nombre,
-          quantity: Number(i.cantidad) || 1,
-          price: Number(i.precio_unitario) || 0,
-        })),
+        items: itemsAConvertir.map((i) => {
+          // Propagamos tipo_linea de la cotizacion al pedido. Si el item
+          // de cotizacion es descuento/libre, debe persistirse como tal en
+          // order_items (sino el detalle del pedido lo trata como producto
+          // normal y rompe la consistencia visual + total algebraico).
+          const tipo = (i.tipo_linea as "producto" | "libre" | "descuento") || "producto"
+          return {
+            productId: i.product_id || null,
+            productCode: i.producto_codigo || "",
+            productName: i.producto_nombre,
+            quantity: Number(i.cantidad) || 1,
+            price: Number(i.precio_unitario) || 0,
+            tipoLinea: tipo,
+          }
+        }),
         razonSocial: cot.razon_social || undefined,
       })
       await updateCotizacionVenta(id, { estado: "convertida_pedido", order_id: orderId })
