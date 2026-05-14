@@ -24,7 +24,7 @@ import * as XLSX from "xlsx"
 
 type MedioPago = {
   id: string
-  tipo: "Efectivo" | "Transferencia" | "Cheque" | "Echeq" | "Compensación" | "Depósito Bancario"
+  tipo: "Efectivo" | "Transferencia" | "Cheque" | "Echeq" | "Compensación" | "Depósito Bancario" | "Ajuste"
   importe: number
   referencia: string
   numero: string
@@ -1257,6 +1257,7 @@ function TabRegistrarCobro({
                     <option value="Cheque">Cheque</option>
                     <option value="Echeq">Echeq</option>
                     <option value="Compensación">Compensación</option>
+                    <option value="Ajuste">Ajuste</option>
                   </select>
                   {medios.length > 1 && (
                     <button onClick={() => removeMedio(m.id)} className="text-red-500 hover:text-red-700">
@@ -1717,11 +1718,17 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
   const pag = usePagination(porCliente, 50)
   const currentPage = Math.min(page, pag.totalPages)
 
-  // Búsqueda de clientes para el filtro
+  // Búsqueda de clientes para el filtro: matchea por razón social o por
+  // código gestionpro (item Excel #15 — los operadores referencian al
+  // cliente por código heredado del sistema viejo).
   const clientesFiltrados = useMemo(() => {
     if (!clienteSearch.trim()) return clients.slice(0, 20)
     const q = normalizeSearch(clienteSearch)
-    return clients.filter((c) => normalizeSearch(c.businessName || "").includes(q)).slice(0, 20)
+    return clients.filter((c) => {
+      const nameMatch = normalizeSearch(c.businessName || "").includes(q)
+      const codeMatch = normalizeSearch(c.codigoGestionpro || "").includes(q)
+      return nameMatch || codeMatch
+    }).slice(0, 20)
   }, [clients, clienteSearch])
 
   function toggleExpand(id: string) {
@@ -1849,14 +1856,16 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
                 <option value={clienteFiltro}>{clientMap[clienteFiltro].businessName}</option>
               )}
               {clientesFiltrados.map((c) => (
-                <option key={c.id} value={c.id}>{c.businessName}</option>
+                <option key={c.id} value={c.id}>
+                  {c.codigoGestionpro ? `[${c.codigoGestionpro}] ` : ""}{c.businessName}
+                </option>
               ))}
             </select>
             <input
               type="text"
               value={clienteSearch}
               onChange={(e) => setClienteSearch(e.target.value)}
-              placeholder="Buscar..."
+              placeholder="Buscar por nombre o código..."
               className="border rounded-md px-3 py-2 text-sm w-32"
             />
           </div>

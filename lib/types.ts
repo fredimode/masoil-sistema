@@ -101,6 +101,7 @@ export interface Client {
   numeroDocum?: string | null
   domicilioEntrega?: string | null
   sucursalEntrega?: string | null
+  codigoGestionpro?: string | null
 }
 
 export interface Vendedor {

@@ -98,6 +98,7 @@ function mapClient(row: any): Client {
     numeroDocum: row.numero_docum || null,
     domicilioEntrega: row.domicilio_entrega || null,
     sucursalEntrega: row.sucursal_entrega || null,
+    codigoGestionpro: row.codigo_gestionpro || null,
   }
 }
 
