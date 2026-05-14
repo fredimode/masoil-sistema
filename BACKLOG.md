@@ -3,6 +3,31 @@
 Items conocidos que no entran en sprints actuales pero deben resolverse.
 No es exhaustivo — solo cosas detectadas durante sprints recientes.
 
+## Persistencia de items de factura
+
+### C.3 — Facturas manuales con descuento no persisten detalle
+**Origen:** Sprint C (mayo 2026).
+
+El detalle de items de una factura emitida se reconstruye filtrando
+`order_items` por `factura_id` (post fix A.1). Funciona bien cuando la
+factura proviene de un pedido. Pero `/admin/facturacion/nueva` permite
+emitir facturas manuales SIN pedido — en ese caso no hay `order_items`
+asociados y el detalle interno queda vacío. El PDF de TusFacturas
+contiene los items (incluyendo descuentos) pero la app no puede
+re-mostrarlos.
+
+**A hacer (si el caso se vuelve frecuente):**
+- Crear tabla `factura_items` propia (cantidad, precio, descripcion,
+  tipo_linea, factura_id).
+- Mover lectura del detalle de `order_items` (post-fix A.1) a esa
+  tabla cuando la factura sea manual.
+- Mantener compatibilidad con facturas legacy que sí venían de pedido.
+
+**Workaround actual:** las facturas manuales con descuento muestran
+detalle vacío al abrir desde `/admin/facturacion`. El operador ve el
+PDF generado en `pdf_url` que sí incluye todo. Aceptado porque la
+mayoría de facturas vienen de pedidos.
+
 ## Forms y schema
 
 ### Dialog de editar proveedor en `/admin/proveedores/[id]`

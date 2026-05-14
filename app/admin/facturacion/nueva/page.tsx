@@ -39,6 +39,7 @@ interface ItemFactura {
   cantidad: number
   precioUnitario: number
   esRegalo?: boolean
+  esDescuento?: boolean
 }
 
 interface FacturaResultado {
@@ -222,6 +223,25 @@ export default function NuevaFacturaPage() {
         cantidad: 1,
         precioUnitario: 0,
         esRegalo: true,
+      },
+    ])
+  }
+
+  // Línea de descuento al facturar (item Excel #91). Mismo patrón que C.2
+  // pero a nivel factura. Precio negativo editable, suma algebraica al
+  // total. Si la factura viene de pedido, persiste como order_item con
+  // factura_id; si es manual sin pedido, solo va al PDF (limitacion
+  // documentada en BACKLOG).
+  function agregarItemDescuento() {
+    setItems((prev) => [
+      ...prev,
+      {
+        productId: `desc-${Date.now()}`,
+        codigo: "DESCUENTO",
+        descripcion: "Descuento",
+        cantidad: 1,
+        precioUnitario: 0,
+        esDescuento: true,
       },
     ])
   }
@@ -801,14 +821,21 @@ export default function NuevaFacturaPage() {
             </div>
           )}
 
-          {/* Add regalo button */}
-          <div className="flex gap-2 mb-4">
+          {/* Add regalo + descuento buttons */}
+          <div className="flex gap-2 mb-4 flex-wrap">
             <button
               type="button"
               onClick={agregarItemRegalo}
               className="px-3 py-1.5 text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-100"
             >
               + Item sin precio (regalo/atención)
+            </button>
+            <button
+              type="button"
+              onClick={agregarItemDescuento}
+              className="px-3 py-1.5 text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded-lg hover:bg-purple-100"
+            >
+              + Línea de descuento
             </button>
           </div>
 
@@ -828,12 +855,13 @@ export default function NuevaFacturaPage() {
                 </thead>
                 <tbody>
                   {items.map((it, idx) => (
-                    <tr key={idx} className={`border-t ${it.esRegalo ? "bg-amber-50/50" : ""}`}>
+                    <tr key={idx} className={`border-t ${it.esRegalo ? "bg-amber-50/50" : it.esDescuento ? "bg-purple-50/50" : ""}`}>
                       <td className="px-4 py-2">
                         <input
                           type="number"
                           min={1}
                           value={it.cantidad}
+                          disabled={it.esDescuento}
                           onChange={(e) => actualizarItem(idx, "cantidad", parseInt(e.target.value) || 1)}
                           className="w-16 p-1 border rounded text-center text-sm"
                         />
@@ -844,12 +872,15 @@ export default function NuevaFacturaPage() {
                           value={it.descripcion}
                           onChange={(e) => actualizarItem(idx, "descripcion", e.target.value)}
                           className="w-full p-1 border rounded text-sm text-gray-900"
-                          placeholder={it.esRegalo ? "Descripción del regalo/atención" : ""}
+                          placeholder={it.esRegalo ? "Descripción del regalo/atención" : it.esDescuento ? "Ej: Descuento pago contado" : ""}
                         />
                         {it.esRegalo && (
                           <span className="text-xs text-amber-600 mt-0.5 block">Regalo/Atención - no suma al total</span>
                         )}
-                        {!it.esRegalo && clienteSeleccionado && (
+                        {it.esDescuento && (
+                          <span className="text-xs text-purple-600 mt-0.5 block">Descuento - precio negativo, suma algebraicamente</span>
+                        )}
+                        {!it.esRegalo && !it.esDescuento && clienteSeleccionado && (
                           <button
                             type="button"
                             className="text-xs text-blue-500 hover:text-blue-700 mt-0.5"
@@ -880,7 +911,8 @@ export default function NuevaFacturaPage() {
                         ) : (
                           <input
                             type="number"
-                            min={0}
+                            // Descuento permite precio negativo; el resto sigue >= 0.
+                            min={it.esDescuento ? undefined : 0}
                             step={0.01}
                             value={it.precioUnitario}
                             onChange={(e) => actualizarItem(idx, "precioUnitario", parseFloat(e.target.value) || 0)}
