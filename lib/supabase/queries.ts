@@ -2097,6 +2097,7 @@ export async function createCotizacionVenta(cot: {
     cantidad: number
     precio_unitario: number
     subtotal: number
+    tipo_linea?: "producto" | "descuento"
   }[]
 }): Promise<string> {
   const supabase = createSupabaseClient()
@@ -2134,6 +2135,7 @@ export async function createCotizacionVenta(cot: {
       precio_unitario: i.precio_unitario,
       subtotal: i.subtotal,
       aprobado: true,
+      tipo_linea: i.tipo_linea || "producto",
     }))
     const { error: itemsError } = await supabase.from("cotizacion_venta_items").insert(itemsInsert)
     if (itemsError) throw itemsError

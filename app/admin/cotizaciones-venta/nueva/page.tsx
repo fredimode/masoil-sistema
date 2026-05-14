@@ -26,6 +26,7 @@ interface CotItem {
   productName: string
   quantity: number
   price: number
+  tipoLinea?: "producto" | "descuento"
 }
 
 const PLAZOS = [
@@ -142,10 +143,26 @@ export default function NuevaCotizacionVentaPage() {
         productName: p.name,
         quantity: 1,
         price: p.price,
+        tipoLinea: "producto",
       }])
     }
     setProductSearch("")
     setShowProductResults(false)
+  }
+
+  // Línea de descuento general (item Excel #82). Sin product_id, descripción
+  // editable, cantidad fija en 1, precio editable que debería ser negativo
+  // para descontar (sin validación dura — el operador puede usarlo también
+  // como recargo si quiere).
+  function addDescuento() {
+    setItems([...items, {
+      productId: `desc-${Date.now()}`,
+      productCode: "DESCUENTO",
+      productName: "Descuento",
+      quantity: 1,
+      price: 0,
+      tipoLinea: "descuento",
+    }])
   }
 
   const subtotal = useMemo(() => items.reduce((s, i) => s + i.price * i.quantity, 0), [items])
@@ -193,12 +210,16 @@ export default function NuevaCotizacionVentaPage() {
         observaciones: observaciones || null,
         total: subtotal,
         items: items.map((i) => ({
-          product_id: i.productId,
+          // Líneas descuento usan productId sintético "desc-{timestamp}" en el
+          // form para tracking; al persistir lo enviamos como null para no
+          // romper la FK contra products(id).
+          product_id: i.tipoLinea === "descuento" ? null : i.productId,
           producto_nombre: i.productName,
           producto_codigo: i.productCode,
           cantidad: i.quantity,
           precio_unitario: i.price,
           subtotal: i.price * i.quantity,
+          tipo_linea: i.tipoLinea || "producto",
         })),
       })
       router.push(`/admin/cotizaciones-venta/${id}`)
@@ -310,7 +331,12 @@ export default function NuevaCotizacionVentaPage() {
 
         {/* Productos */}
         <Card className="p-6">
-          <h2 className="text-lg font-semibold mb-4">2. Productos</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">2. Productos</h2>
+            <Button type="button" variant="outline" size="sm" onClick={addDescuento}>
+              + Línea de descuento
+            </Button>
+          </div>
           <div className="relative mb-4">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -355,12 +381,16 @@ export default function NuevaCotizacionVentaPage() {
                 </thead>
                 <tbody>
                   {items.map((item) => (
-                    <tr key={item.productId || item.productCode || item.productName} className="border-t">
+                    <tr
+                      key={item.productId || item.productCode || item.productName}
+                      className={`border-t ${item.tipoLinea === "descuento" ? "bg-amber-50" : ""}`}
+                    >
                       <td className="px-2 py-1.5">
                         <Input
                           type="number"
                           min={1}
                           value={item.quantity}
+                          disabled={item.tipoLinea === "descuento"}
                           onChange={(e) => {
                             const q = parseInt(e.target.value) || 0
                             if (q <= 0) setItems(items.filter((i) => i.productId !== item.productId))
@@ -372,8 +402,17 @@ export default function NuevaCotizacionVentaPage() {
                       <td className="px-2 py-1.5 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-mono text-xs text-muted-foreground">{item.productCode}</span>
-                          <span className="font-medium">{item.productName}</span>
-                          {item.productId && (
+                          {item.tipoLinea === "descuento" ? (
+                            <Input
+                              value={item.productName}
+                              onChange={(e) => setItems(items.map((i) => (i.productId === item.productId ? { ...i, productName: e.target.value } : i)))}
+                              placeholder="Ej: Descuento por pago contado"
+                              className="h-7 text-sm flex-1 min-w-[200px]"
+                            />
+                          ) : (
+                            <span className="font-medium">{item.productName}</span>
+                          )}
+                          {item.productId && item.tipoLinea !== "descuento" && (
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -406,8 +445,10 @@ export default function NuevaCotizacionVentaPage() {
                       <td className="px-2 py-1.5">
                         <Input
                           type="number"
-                          min={0}
                           step={0.01}
+                          // Descuentos permiten negativos (eso es su propósito).
+                          // Productos siguen con min 0.
+                          min={item.tipoLinea === "descuento" ? undefined : 0}
                           value={item.price}
                           onChange={(e) => {
                             const price = parseFloat(e.target.value) || 0
