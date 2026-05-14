@@ -3,6 +3,36 @@
 Items conocidos que no entran en sprints actuales pero deben resolverse.
 No es exhaustivo — solo cosas detectadas durante sprints recientes.
 
+## Seguridad
+
+### Restringir acceso a rutas /admin/* por rol
+**Origen:** Sprint G2 (mayo 2026).
+
+Hoy el sidebar admin se renderiza condicionalmente segun `userRole`
+(`navSections[].roles`), pero **no hay bloqueo técnico real** a nivel
+middleware ni RLS. Un usuario con rol `vendedor` puede escribir
+`/admin/cotizaciones-venta` (u otra ruta admin) en la URL y acceder a
+todos los datos del sistema porque:
+
+  - El middleware `lib/supabase/middleware.ts` solo verifica que haya
+    sesión, no rol.
+  - Las RLS policies actuales son `auth.role() = 'authenticated'`
+    permitiendo ALL — cualquier usuario logueado lee/escribe todo.
+  - El sidebar oculta los items pero la ruta sigue siendo accesible.
+
+**A hacer (sprint dedicado de seguridad):**
+- Middleware: leer `vendedores.role` por `auth_user_id` y bloquear
+  rutas `/admin/*` para roles distintos de `admin` (redirect a
+  `/vendedor` o página 403).
+- RLS: ajustar policies para que `SELECT/UPDATE/DELETE` filtre por
+  rol o vendedor_id según corresponda. Empezar por tablas con datos
+  sensibles (facturas, cuenta_corriente_cliente, recibos_cobranza).
+- Tests manuales con un usuario `vendedor` para confirmar que las
+  rutas admin tiran 403 / redirect.
+
+**Workaround actual:** ocultamiento por sidebar — funciona para
+usuarios bien intencionados, no para amenazas internas o accidentes.
+
 ## Estados de pedido pendientes
 
 ### D.8 — Filtro "Entregado Parcial" en /admin/pedidos
