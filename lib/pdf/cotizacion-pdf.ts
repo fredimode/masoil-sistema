@@ -8,6 +8,15 @@ function fmt(n: number): string {
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return "-"
+  // Las fechas vienen de Postgres como "YYYY-MM-DD" (DATE). Si las pasamos
+  // a `new Date(d)`, JS las interpreta como UTC midnight y en zona Argentina
+  // (UTC-3) muestra el día anterior. Parseamos manualmente como local para
+  // que un comprobante emitido el 12/5 muestre 12/5 en el PDF (bug Excel #86).
+  const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (m) {
+    const [, y, mm, dd] = m
+    return `${dd}/${mm}/${y}`
+  }
   try {
     return new Date(d).toLocaleDateString("es-AR")
   } catch {

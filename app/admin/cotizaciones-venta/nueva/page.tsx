@@ -28,7 +28,13 @@ interface CotItem {
   price: number
 }
 
-const PLAZOS = ["7 días hábiles", "10 días hábiles", "15 días hábiles"]
+const PLAZOS = [
+  "7 días hábiles",
+  "10 días hábiles",
+  "15 días hábiles",
+  "20 días hábiles",
+  "30 días hábiles",
+]
 const FORMAS_PAGO = [
   "Contado",
   "Transferencia",
@@ -40,7 +46,20 @@ const FORMAS_PAGO = [
   "45 días",
   "60 días",
   "Cuenta Corriente",
+  "Ver observación",
 ]
+
+// Default validez = hoy + 3 días, en formato YYYY-MM-DD local.
+// Usamos getFullYear/getMonth/getDate (NO toISOString) para no caer en
+// el bug de timezone que hace que la fecha salga -1 día en zonas UTC-.
+function defaultValidez(): string {
+  const d = new Date()
+  d.setDate(d.getDate() + 3)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const dd = String(d.getDate()).padStart(2, "0")
+  return `${y}-${m}-${dd}`
+}
 
 export default function NuevaCotizacionVentaPage() {
   const router = useRouter()
@@ -59,7 +78,7 @@ export default function NuevaCotizacionVentaPage() {
   const [productSearch, setProductSearch] = useState("")
   const [showProductResults, setShowProductResults] = useState(false)
 
-  const [validezFecha, setValidezFecha] = useState("")
+  const [validezFecha, setValidezFecha] = useState<string>(defaultValidez)
   const [formaPago, setFormaPago] = useState("")
   const [plazoEntrega, setPlazoEntrega] = useState("")
   const [observaciones, setObservaciones] = useState("")
