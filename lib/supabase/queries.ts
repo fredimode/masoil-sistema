@@ -1974,21 +1974,38 @@ export async function updatePlanCuenta(id: string, updates: {
 
 // Borrar cuenta del plan, validando que no esté usada en imputaciones de
 // facturas de proveedor. Imputaciones es JSONB array con shape
-// [{ plan_cuenta_id, monto, ... }]; usamos contains para ver si la cuenta
-// aparece en alguna factura. Si tiene uso, lanzamos error con mensaje claro.
+// [{ cuenta_codigo, cuenta_categoria, cuenta_sub, debe, haber }] — ver
+// app/admin/facturas-proveedor/page.tsx:461. Buscamos por cuenta_codigo
+// porque ese es el identificador estable que se persiste en imputaciones.
 export async function deletePlanCuenta(id: string): Promise<void> {
   const supabase = createSupabaseClient()
+  // 1) Traer el codigo de la cuenta a eliminar (necesario para matchear contra
+  //    imputaciones, que guarda cuenta_codigo no id).
+  const { data: cuenta, error: cErr } = await supabase
+    .from("plan_cuentas")
+    .select("codigo")
+    .eq("id", id)
+    .maybeSingle()
+  if (cErr) {
+    console.error("deletePlanCuenta: error leyendo cuenta", cErr)
+    throw new Error("No se pudo leer la cuenta — abortando borrado por seguridad.")
+  }
+  if (!cuenta?.codigo) {
+    throw new Error("Cuenta no encontrada.")
+  }
+  // 2) Verificar uso en imputaciones via contains: el JSONB debe contener al
+  //    menos un elemento {cuenta_codigo: X}.
   const { data: used, error: usedErr } = await supabase
     .from("facturas_proveedor")
     .select("id")
-    .filter("imputaciones", "cs", JSON.stringify([{ plan_cuenta_id: id }]))
+    .filter("imputaciones", "cs", JSON.stringify([{ cuenta_codigo: cuenta.codigo }]))
     .limit(1)
   if (usedErr) {
     console.error("deletePlanCuenta: error verificando uso", usedErr)
     throw new Error("No se pudo verificar el uso de la cuenta — abortando borrado por seguridad.")
   }
   if (used && used.length > 0) {
-    throw new Error("Esta cuenta está usada en imputaciones de facturas de proveedor. No se puede eliminar.")
+    throw new Error(`La cuenta ${cuenta.codigo} está usada en imputaciones de facturas de proveedor. No se puede eliminar.`)
   }
   const { error } = await supabase.from("plan_cuentas").delete().eq("id", id)
   if (error) throw error
