@@ -329,7 +329,10 @@ export async function generarRemitoPDF(data: RemitoPDFData): Promise<Uint8Array>
     })
   }
 
-  // ════════════════ FIRMAS (2 bloques lado a lado, 5 campos c/u) ════════════════
+  // ════════════════ FIRMAS (solo RECEPTOR centrado) ════════════════
+  // Fix Fila 4 (Excel): se eliminó el bloque ENTREGA. RECEPTOR queda
+  // unico, centrado horizontalmente, manteniendo el ancho original
+  // (mitad de la página) para no perder proporción visual.
   // Posición fija sobre el footer CAI. Si hay muchas observaciones puede
   // pisarse — trade-off conocido (deuda técnica: layout dinámico).
   const firmaBlockTop = MARGIN + FOOTER_H + 130        // top del bloque
@@ -386,8 +389,9 @@ export async function generarRemitoPDF(data: RemitoPDFData): Promise<Uint8Array>
     })
   }
 
-  drawFirmaBlock(LEFT, "RECEPTOR")
-  drawFirmaBlock(LEFT + firmaBlockW + 20, "ENTREGA")
+  // Centrar RECEPTOR: la página util tiene ancho W con margen LEFT.
+  // x = LEFT + (W - firmaBlockW) / 2 lo deja simétrico.
+  drawFirmaBlock(LEFT + (W - firmaBlockW) / 2, "RECEPTOR")
 
   // Watermark "REMITO" (no es factura AFIP)
   page.drawText("REMITO", {
