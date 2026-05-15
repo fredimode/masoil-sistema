@@ -149,12 +149,17 @@ export default function AdminNuevoPedidoPage() {
       ))
     } else {
       const stockInsuficiente = product.stock < 1
+      // J.4: products.price se guarda CON IVA. Mostramos al operador el
+      // precio sin IVA (consistencia con /admin/facturacion/nueva post fix
+      // A.2). Al persistir multiplicamos x1.21 para mantener la convencion
+      // unit_price con IVA en BD — ver handleSubmit.
+      const priceSinIva = Math.round((product.price / 1.21) * 100) / 100
       setOrderItems([...orderItems, {
         productId: product.id,
         productCode: product.code,
         productName: product.name,
         quantity: 1,
-        price: product.price,
+        price: priceSinIva,
         stock: product.stock,
         requiereCotizacion: stockInsuficiente,
       }])
@@ -231,7 +236,15 @@ export default function AdminNuevoPedidoPage() {
     }
   }
 
-  const subtotal = orderItems.reduce((sum, i) => sum + i.price * i.quantity, 0)
+  // J.4: el precio mostrado en el form es SIN IVA. subtotalSinIva es la
+  // suma de items con su signo (descuentos restan). ivaCalculado se asume
+  // 21% (no hay metadata de alicuota por producto). totalConIva es lo que
+  // se persiste en orders.total.
+  const subtotalSinIva = orderItems.reduce((sum, i) => sum + i.price * i.quantity, 0)
+  const ivaCalculado = Math.round(subtotalSinIva * 0.21 * 100) / 100
+  const totalConIva = Math.round((subtotalSinIva + ivaCalculado) * 100) / 100
+  // Alias para compat con codigo viejo que referencia "subtotal".
+  const subtotal = totalConIva
   const hayItemsCotizacion = orderItems.some((i) => i.requiereCotizacion)
 
   // Línea libre: producto no catalogado (item Excel #78). product_id null,
@@ -290,7 +303,7 @@ export default function AdminNuevoPedidoPage() {
         notes,
         isCustom,
         isUrgent,
-        total: subtotal,
+        total: totalConIva,
         items: orderItems.map((i) => ({
           // productId sintético "libre-…"/"desc-…" se filtra en queries.ts
           // (no es UUID válido) y queda como null en BD.
@@ -298,7 +311,10 @@ export default function AdminNuevoPedidoPage() {
           productCode: i.productCode,
           productName: i.productName,
           quantity: i.quantity,
-          price: i.price,
+          // J.4: el form muestra precios sin IVA; al persistir multiplicamos
+          // x1.21 para mantener la convencion unit_price con IVA en BD (compat
+          // con flow de facturacion que divide al emitir FC).
+          price: Math.round(i.price * 1.21 * 100) / 100,
           tipoLinea: i.tipoLinea || "producto",
         })),
         razonSocial,
@@ -490,8 +506,8 @@ export default function AdminNuevoPedidoPage() {
                     <th className="px-2 py-2 text-center w-20">Cant.</th>
                     <th className="px-2 py-2 text-center w-16">Stock</th>
                     <th className="px-2 py-2 text-left">Producto</th>
-                    <th className="px-2 py-2 text-right w-24">Precio</th>
-                    <th className="px-2 py-2 text-right w-28">Subtotal</th>
+                    <th className="px-2 py-2 text-right w-24">Precio s/IVA</th>
+                    <th className="px-2 py-2 text-right w-28">Subtotal s/IVA</th>
                     <th className="w-10" />
                   </tr>
                 </thead>
@@ -642,9 +658,20 @@ export default function AdminNuevoPedidoPage() {
                   })}
                 </tbody>
                 <tfoot>
+                  {/* J.4: discriminacion de impuestos (idem facturacion/nueva) */}
+                  <tr className="bg-muted/50 border-t">
+                    <td colSpan={4} className="px-2 py-1.5 text-right text-sm text-muted-foreground">Subtotal (sin IVA)</td>
+                    <td className="px-2 py-1.5 text-right text-sm">{formatCurrency(subtotalSinIva)}</td>
+                    <td />
+                  </tr>
+                  <tr className="bg-muted/50">
+                    <td colSpan={4} className="px-2 py-1.5 text-right text-sm text-muted-foreground">IVA 21%</td>
+                    <td className="px-2 py-1.5 text-right text-sm">{formatCurrency(ivaCalculado)}</td>
+                    <td />
+                  </tr>
                   <tr className="bg-muted border-t">
                     <td colSpan={4} className="px-2 py-2 text-right font-semibold">Total</td>
-                    <td className="px-2 py-2 text-right text-xl font-bold">{formatCurrency(subtotal)}</td>
+                    <td className="px-2 py-2 text-right text-xl font-bold">{formatCurrency(totalConIva)}</td>
                     <td />
                   </tr>
                 </tfoot>

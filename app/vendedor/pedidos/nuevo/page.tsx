@@ -103,6 +103,9 @@ function NuevoPedidoContent() {
       newItems[existingIndex].quantity += quantity
       setOrderItems(newItems)
     } else {
+      // J.4: products.price viene CON IVA. Mostramos al operador el precio
+      // sin IVA (consistencia con admin/pedidos/nuevo y facturacion/nueva).
+      const priceSinIva = Math.round((product.price / 1.21) * 100) / 100
       setOrderItems([
         ...orderItems,
         {
@@ -110,7 +113,7 @@ function NuevoPedidoContent() {
           productCode: product.code,
           productName: product.name,
           quantity,
-          price: product.price,
+          price: priceSinIva,
         },
       ])
     }
@@ -134,7 +137,13 @@ function NuevoPedidoContent() {
     )
   }
 
-  const subtotal = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  // J.4: precios en el form son SIN IVA. subtotalSinIva = suma items
+  // (descuentos restan); totalConIva = subtotal + IVA 21% (lo que se
+  // persiste en orders.total).
+  const subtotalSinIva = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
+  const ivaCalculado = Math.round(subtotalSinIva * 0.21 * 100) / 100
+  const totalConIva = Math.round((subtotalSinIva + ivaCalculado) * 100) / 100
+  const subtotal = totalConIva
 
   const hasCustomProduct = orderItems.some((item) => {
     const product = products.find((p) => p.id === item.productId)
@@ -189,13 +198,15 @@ function NuevoPedidoContent() {
         notes,
         isCustom: hasCustomProduct,
         isUrgent,
-        total: subtotal,
+        total: totalConIva,
         items: orderItems.map((i) => ({
           productId: i.tipoLinea === "producto" || !i.tipoLinea ? i.productId : null,
           productCode: i.productCode,
           productName: i.productName,
           quantity: i.quantity,
-          price: i.price,
+          // J.4: form muestra sin IVA, persistimos x1.21 para mantener
+          // convencion unit_price con IVA en BD.
+          price: Math.round(i.price * 1.21 * 100) / 100,
           tipoLinea: i.tipoLinea || "producto",
         })),
         razonSocial,
@@ -450,9 +461,20 @@ function NuevoPedidoContent() {
                   </div>
                   )
                 })}
+                {/* J.4: discriminacion de impuestos */}
+                <div className="p-3 border-t bg-muted/50 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Subtotal (sin IVA)</span>
+                    <span>{formatCurrency(subtotalSinIva)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">IVA 21%</span>
+                    <span>{formatCurrency(ivaCalculado)}</span>
+                  </div>
+                </div>
                 <div className="flex justify-between items-center p-3 border-t bg-muted">
                   <span className="font-semibold">Total</span>
-                  <span className="text-xl font-bold">{formatCurrency(subtotal)}</span>
+                  <span className="text-xl font-bold">{formatCurrency(totalConIva)}</span>
                 </div>
               </div>
             ) : (
