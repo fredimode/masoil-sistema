@@ -1114,8 +1114,6 @@ function TabRegistrarCobro({
                       <TableHead>Fecha</TableHead>
                       <TableHead>Tipo</TableHead>
                       <TableHead>Número</TableHead>
-                      <TableHead className="text-right">Debe</TableHead>
-                      <TableHead className="text-right">Haber</TableHead>
                       <TableHead className="text-right">Saldo</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1124,6 +1122,7 @@ function TabRegistrarCobro({
                       const tipo = (c.comprobante || c.tipo_comprobante || "").toUpperCase()
                       const isNC = tipo.startsWith("NC")
                       const monto = c.saldo_pendiente || c.total || 0
+                      const saldo = isNC ? -monto : monto
                       return (
                         <TableRow key={c.id} className={selectedIds.has(c.id) ? "bg-blue-50" : ""}>
                           <TableCell>
@@ -1140,9 +1139,9 @@ function TabRegistrarCobro({
                             </Badge>
                           </TableCell>
                           <TableCell className="text-xs">{c.numero_comprobante || "-"}</TableCell>
-                          <TableCell className="text-right">{!isNC ? formatCurrency(monto) : "-"}</TableCell>
-                          <TableCell className="text-right">{isNC ? formatCurrency(monto) : "-"}</TableCell>
-                          <TableCell className="text-right font-medium">{formatCurrency(isNC ? -monto : monto)}</TableCell>
+                          <TableCell className={`text-right font-semibold ${saldo < 0 ? "text-green-700" : ""}`}>
+                            {formatCurrency(saldo)}
+                          </TableCell>
                         </TableRow>
                       )
                     })}
