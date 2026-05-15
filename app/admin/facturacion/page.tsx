@@ -357,6 +357,7 @@ export default function FacturacionPage() {
                     <thead className="bg-gray-100">
                       <tr>
                         <th className="px-4 py-3 text-left font-semibold text-gray-700">Fecha</th>
+                        <th className="px-4 py-3 text-center font-semibold text-gray-700 w-14">Empresa</th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-700">Tipo y Numero</th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-700">Cliente</th>
                         <th className="px-4 py-3 text-right font-semibold text-gray-700">Total</th>
@@ -384,6 +385,24 @@ export default function FacturacionPage() {
                           <tr key={f.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                             <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                               {f.fecha ? formatDateStr(f.fecha) : "-"}
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              {f.empresa ? (
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${
+                                    f.empresa === "Aquiles"
+                                      ? "bg-blue-100 text-blue-800"
+                                      : f.empresa === "Conancap"
+                                      ? "bg-purple-100 text-purple-800"
+                                      : "bg-gray-100 text-gray-700"
+                                  }`}
+                                  title={f.empresa}
+                                >
+                                  {f.empresa === "Aquiles" ? "AQ" : f.empresa === "Conancap" ? "CO" : f.empresa.slice(0, 2).toUpperCase()}
+                                </span>
+                              ) : (
+                                <span className="text-xs text-gray-400">—</span>
+                              )}
                             </td>
                             <td className="px-4 py-3 font-mono text-gray-900 font-medium">
                               {tipoNumero}

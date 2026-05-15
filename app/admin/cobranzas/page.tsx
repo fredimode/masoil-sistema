@@ -1761,6 +1761,7 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
 
   function exportXLSX() {
     const rows: any[] = []
+    let totalGeneralXlsx = 0
     for (const emp of porEmpresa) {
       for (const grupo of emp.clientes) {
         let acumulado = 0
@@ -1772,9 +1773,14 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
         for (const f of ordenadas) {
           const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
           acumulado += saldo
+          // J.2: columna "Cliente y CUIT" unificada — el operador identifica
+          // al cliente por uno o por el otro segun el caso.
+          const clienteCuit = grupo.client_cuit
+            ? `${grupo.client_name} (CUIT: ${grupo.client_cuit})`
+            : grupo.client_name
           rows.push({
             Empresa: emp.empresa,
-            Cliente: grupo.client_name,
+            "Cliente y CUIT": clienteCuit,
             Fecha: formatDateStr(f.fecha_comprobante || f.fecha || f.created_at),
             Comprobante: [f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero]
               .filter(Boolean).join(" "),
@@ -1782,9 +1788,15 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
             Saldo: saldo,
             Acumulado: acumulado,
           })
+          totalGeneralXlsx += saldo
         }
       }
     }
+    // J.2: total general unico al final (sin subtotales por cliente o empresa
+    // dentro del XLSX — eso ensucia el agregado y el operador puede sumarlo
+    // con pivots si lo necesita).
+    rows.push({})
+    rows.push({ Empresa: "", "Cliente y CUIT": "", Fecha: "", Comprobante: "TOTAL GENERAL", Total: "", Saldo: totalGeneralXlsx, Acumulado: "" })
     const ws = XLSX.utils.json_to_sheet(rows)
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, "Saldos Pendientes")
@@ -1808,9 +1820,12 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
         const filas = ordenadas.map((f) => {
           const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
           acumulado += saldo
+          // J.2: la columna Cliente se removio del sub-header porque el
+          // bloque ya identifica al cliente con su CUIT — repetirlo por
+          // fila es ruido. Saldo total per-cliente eliminado del header
+          // de bloque para cumplir "saldo total solo al final".
           return `
           <tr>
-            <td>${g.client_name}</td>
             <td>${formatDateStr(f.fecha_comprobante || f.fecha || f.created_at)}</td>
             <td>${[f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero].filter(Boolean).join(" ") || "-"}</td>
             <td style="text-align:right">${formatCurrency(Number(f.total) || 0)}</td>
@@ -1818,14 +1833,17 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
             <td style="text-align:right">${formatCurrency(acumulado)}</td>
           </tr>`
         }).join("")
+        const clienteHeader = g.client_cuit
+          ? `${g.client_name} — CUIT ${g.client_cuit}`
+          : g.client_name
         return `
-          <tr class="cliente"><td colspan="6">${g.client_name} — <strong>${formatCurrency(g.total)}</strong></td></tr>
-          <tr class="sub-header"><th>Cliente</th><th>Fecha</th><th>Comprobante</th><th style="text-align:right">Total</th><th style="text-align:right">Saldo</th><th style="text-align:right">Acumulado</th></tr>
+          <tr class="cliente"><td colspan="5">${clienteHeader}</td></tr>
+          <tr class="sub-header"><th>Fecha</th><th>Comprobante</th><th style="text-align:right">Total</th><th style="text-align:right">Saldo</th><th style="text-align:right">Acumulado</th></tr>
           ${filas}
         `
       }).join("")
       return `
-        <tr class="empresa"><td colspan="6">${emp.empresa} — Total: <strong>${formatCurrency(emp.total)}</strong></td></tr>
+        <tr class="empresa"><td colspan="5">${emp.empresa}</td></tr>
         ${clientes}
       `
     }).join("")
@@ -1836,7 +1854,7 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
       <table>
         <tbody>
           ${bloques}
-          <tr class="totals"><td colspan="4" style="text-align:right">TOTAL GENERAL</td><td style="text-align:right">${formatCurrency(totalGeneral)}</td><td></td></tr>
+          <tr class="totals"><td colspan="3" style="text-align:right">TOTAL GENERAL</td><td style="text-align:right">${formatCurrency(totalGeneral)}</td><td></td></tr>
         </tbody>
       </table>
       <script>window.print()<\/script></body></html>`)

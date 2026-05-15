@@ -121,10 +121,12 @@ export default function LogisticaPage() {
       s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
     const truncate = (s: string, n = 60) => s.length > n ? s.slice(0, n - 1) + "…" : s
     const rowsHtml = visibles.map((i) => {
-      // Nº Pedido: para pedidos toma order_number_serial; para manuales queda "-"
+      // J.3: Nº Pedido puro (sin "(extra)") y Descripción separada para
+      // destinos manuales.
       const nroPedido = i.order_id
         ? (i.orders?.order_number_serial || i.orders?.order_number || i.order_id.slice(0, 8))
         : "-"
+      const descripcion = i.es_destino_extra ? (i.descripcion_extra || "(sin descripción)") : "-"
       // Observaciones: para pedidos toma orders.notes; para manuales toma reparto_items.observaciones
       const obsRaw = i.order_id ? (i.orders?.notes || "") : (i.observaciones || "")
       const obs = obsRaw ? escapeHtml(truncate(String(obsRaw))) : "-"
@@ -140,7 +142,8 @@ export default function LogisticaPage() {
       <tr>
         <td>${i.orden_reparto || "-"}</td>
         <td class="mono">${escapeHtml(String(nroPedido))}</td>
-        <td>${escapeHtml(i.client_name || i.descripcion_extra || "-")}</td>
+        <td>${escapeHtml(descripcion)}</td>
+        <td>${escapeHtml(i.client_name || "-")}</td>
         <td>${escapeHtml(sucursalTxt)}</td>
         <td class="obs">${obs}</td>
       </tr>`
@@ -154,9 +157,10 @@ export default function LogisticaPage() {
         th{background:#f5f5f5;text-align:left;font-size:11px}
         .col-orden{width:50px}
         .col-pedido{width:110px}
+        .col-desc{width:160px}
         .col-cliente{width:auto}
         .col-sucursal{width:200px}
-        .col-obs{width:240px}
+        .col-obs{width:200px}
         td.mono{font-family:monospace;font-size:11px}
         td.obs{font-size:11px;color:#444}
       </style></head><body>
@@ -164,11 +168,11 @@ export default function LogisticaPage() {
       <p>Fecha: ${formatDateStr(selectedFecha)} — Destinos: ${visibles.length}</p>
       <table>
         <colgroup>
-          <col class="col-orden"/><col class="col-pedido"/><col class="col-cliente"/>
+          <col class="col-orden"/><col class="col-pedido"/><col class="col-desc"/><col class="col-cliente"/>
           <col class="col-sucursal"/><col class="col-obs"/>
         </colgroup>
         <thead><tr>
-          <th>Orden</th><th>Nº Pedido</th><th>Cliente</th><th>Sucursal Entrega</th><th>Observaciones</th>
+          <th>Orden</th><th>Nº Pedido</th><th>Descripción</th><th>Cliente</th><th>Sucursal Entrega</th><th>Observaciones</th>
         </tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>
@@ -178,9 +182,11 @@ export default function LogisticaPage() {
   function exportXLSX() {
     const ws = XLSX.utils.json_to_sheet(visibles.map((i) => ({
       Orden: i.orden_reparto || "",
+      // J.3: N° Pedido y Descripción separados
       "N° Pedido": i.order_id || "",
+      "Descripción": i.es_destino_extra ? (i.descripcion_extra || "") : "",
       Factura: i.factura_numero || "",
-      Cliente: i.client_name || i.descripcion_extra || "",
+      Cliente: i.client_name || "",
       Zona: i.zona || "",
       Repartidor: i.repartidor || "",
       "Sucursal Entrega": i.sucursal_entrega || "",
@@ -252,6 +258,7 @@ export default function LogisticaPage() {
                 <TableRow>
                   <TableHead className="w-20">Orden</TableHead>
                   <TableHead>N° Pedido</TableHead>
+                  <TableHead>Descripción</TableHead>
                   <TableHead>Factura</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Zona</TableHead>
@@ -278,8 +285,13 @@ export default function LogisticaPage() {
                             <CheckCircle2 className="h-3 w-3" /> Completado
                           </span>
                         )}
-                        <span>{i.order_id || (i.es_destino_extra ? "(extra)" : "-")}</span>
+                        {/* J.3: N° Pedido puro — vacio si es destino manual */}
+                        <span>{i.order_id || "-"}</span>
                       </div>
+                    </TableCell>
+                    <TableCell className="text-xs text-gray-700">
+                      {/* J.3: Descripción para destinos manuales — vacia si es pedido */}
+                      {i.es_destino_extra ? (i.descripcion_extra || "(sin descripción)") : "-"}
                     </TableCell>
                     <TableCell className="text-xs">{i.factura_numero || "-"}</TableCell>
                     <TableCell>
