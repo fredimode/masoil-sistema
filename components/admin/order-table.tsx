@@ -104,7 +104,7 @@ export function OrderTable({ orders: initialOrders }: OrderTableProps) {
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button asChild size="sm" variant="ghost">
-                      <Link href={`/admin/pedidos/${order.id}`}>
+                      <Link href={`/admin/pedidos/${order.id}`} prefetch={false}>
                         <Eye className="h-4 w-4" />
                       </Link>
                     </Button>

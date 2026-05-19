@@ -110,7 +110,7 @@ export default function AdminDashboard() {
         <h3 className="text-lg font-semibold mb-4">Pedidos Recientes</h3>
         <div className="space-y-3">
           {recentOrders.map((order) => (
-            <Link key={order.id} href={`/admin/pedidos/${order.id}`} className="block">
+            <Link key={order.id} href={`/admin/pedidos/${order.id}`} className="block" prefetch={false}>
               <div className="flex flex-col md:flex-row md:items-center justify-between p-3 md:p-4 border rounded-lg gap-3 hover:shadow-md hover:border-primary/30 transition-all cursor-pointer">
                 <div className="flex items-center gap-3 md:gap-4">
                   <div className="min-w-0">

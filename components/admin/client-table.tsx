@@ -95,10 +95,10 @@ export function ClientTable({ clients, allClients, selectedIds, onToggleSelect, 
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button asChild size="sm" variant="ghost">
-                      <Link href={`/admin/clientes/${client.id}`}><Eye className="h-4 w-4" /></Link>
+                      <Link href={`/admin/clientes/${client.id}`} prefetch={false}><Eye className="h-4 w-4" /></Link>
                     </Button>
                     <Button asChild size="sm" variant="ghost">
-                      <Link href={`/admin/clientes/${client.id}`}><Edit className="h-4 w-4" /></Link>
+                      <Link href={`/admin/clientes/${client.id}`} prefetch={false}><Edit className="h-4 w-4" /></Link>
                     </Button>
                     <Button asChild size="sm" variant="ghost">
                       <a href={`https://wa.me/${(client.whatsapp || "").replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer">

@@ -121,7 +121,7 @@ export function ProductTable({ products, onEdit, onDelete, selectedIds, onSelect
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button asChild size="sm" variant="ghost">
-                      <Link href={`/admin/stock/${product.id}`} title="Ver detalle">
+                      <Link href={`/admin/stock/${product.id}`} title="Ver detalle" prefetch={false}>
                         <Eye className="h-4 w-4" />
                       </Link>
                     </Button>
