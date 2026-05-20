@@ -757,7 +757,7 @@ export default function FacturasProveedorPage() {
 
           {/* === ETAPA 1: Datos de factura === */}
           {step === 1 && (
-          <div className="grid gap-3 py-2">
+          <div className="grid gap-5 py-4">
             {/* Empresa pagadora — la NUESTRA que registra y paga */}
             <div>
               <label
@@ -769,7 +769,7 @@ export default function FacturasProveedorPage() {
               <select
                 value={form.empresa}
                 onChange={(e) => setForm((prev) => ({ ...prev, empresa: e.target.value }))}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 required
               >
                 <option value="">Seleccionar empresa...</option>
@@ -794,7 +794,7 @@ export default function FacturasProveedorPage() {
                   }
                 }}
                 onFocus={() => proveedorSearch && setShowProveedorList(true)}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
               />
               {showProveedorList && proveedoresFiltrados.length > 0 && (
                 <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
@@ -816,11 +816,11 @@ export default function FacturasProveedorPage() {
             {/* Fila 2: Tipo | Letra | Punto Venta | Número | CUIT */}
             <div className="grid grid-cols-5 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Tipo</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Tipo</label>
                 <select
                   value={form.tipo}
                   onChange={(e) => setForm((prev) => ({ ...prev, tipo: e.target.value }))}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 >
                   <option value="FACTURA">Factura</option>
                   <option value="NOTA_CREDITO">Nota de Credito</option>
@@ -828,11 +828,11 @@ export default function FacturasProveedorPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Letra</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Letra</label>
                 <select
                   value={form.letra}
                   onChange={(e) => setForm((prev) => ({ ...prev, letra: e.target.value }))}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 >
                   <option value="A">A</option>
                   <option value="B">B</option>
@@ -840,27 +840,27 @@ export default function FacturasProveedorPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Punto de Venta</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Punto de Venta</label>
                 <input
                   type="text"
                   value={form.punto_venta}
                   onChange={(e) => setForm((prev) => ({ ...prev, punto_venta: e.target.value }))}
                   placeholder="0001"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Número</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Número</label>
                 <input
                   type="text"
                   value={form.numero}
                   onChange={(e) => setForm((prev) => ({ ...prev, numero: e.target.value }))}
                   placeholder="00000001"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">CUIT</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">CUIT</label>
                 <input
                   type="text"
                   value={form.cuit}
@@ -874,26 +874,26 @@ export default function FacturasProveedorPage() {
             {/* Fila 3: Fecha | Vencimiento | Razón Social */}
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Fecha *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha *</label>
                 <input
                   type="date"
                   value={form.fecha}
                   onChange={(e) => setForm((prev) => ({ ...prev, fecha: e.target.value }))}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Fecha Vencimiento</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Fecha Vencimiento</label>
                 <input
                   type="date"
                   value={form.fecha_vencimiento}
                   onChange={(e) => setForm((prev) => ({ ...prev, fecha_vencimiento: e.target.value }))}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
               <div>
                 <label
-                  className="block text-xs font-medium text-gray-700 mb-1"
+                  className="block text-sm font-medium text-gray-700 mb-1.5"
                   title="A nombre de quién emitió el proveedor (puede ser Masoil)."
                 >
                   Razón social facturada
@@ -901,7 +901,7 @@ export default function FacturasProveedorPage() {
                 <select
                   value={form.razon_social}
                   onChange={(e) => setForm((prev) => ({ ...prev, razon_social: e.target.value }))}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 >
                   <option value="">Seleccionar...</option>
                   <option value="Masoil">Masoil</option>
@@ -914,47 +914,47 @@ export default function FacturasProveedorPage() {
             {/* Fila 4: Neto | IVA 21% | IVA 10.5% | IVA 27% */}
             <div className="grid grid-cols-4 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Neto *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Neto *</label>
                 <input
                   type="number"
                   step="0.01"
                   value={form.neto}
                   onChange={(e) => handleNetoChange(e.target.value)}
                   placeholder="0.00"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">IVA 21% (auto)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">IVA 21% (auto)</label>
                 <input
                   type="number"
                   step="0.01"
                   value={form.iva}
                   onChange={(e) => handleIvaChange(e.target.value)}
                   placeholder="0.00"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">IVA 10.5%</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">IVA 10.5%</label>
                 <input
                   type="number"
                   step="0.01"
                   value={form.iva_105}
                   onChange={(e) => handleImpuestoChange("iva_105", e.target.value)}
                   placeholder="0.00"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">IVA 27%</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">IVA 27%</label>
                 <input
                   type="number"
                   step="0.01"
                   value={form.iva_27}
                   onChange={(e) => handleImpuestoChange("iva_27", e.target.value)}
                   placeholder="0.00"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
             </div>
@@ -962,34 +962,34 @@ export default function FacturasProveedorPage() {
             {/* Fila 5: Perc. IVA | Perc. IIBB | Jurisdicción | Imp. Internos | Exentos */}
             <div className="grid grid-cols-5 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Perc. IVA</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Perc. IVA</label>
                 <input
                   type="number"
                   step="0.01"
                   value={form.percepciones_iva}
                   onChange={(e) => handleImpuestoChange("percepciones_iva", e.target.value)}
                   placeholder="0.00"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Perc. IIBB</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Perc. IIBB</label>
                 <input
                   type="number"
                   step="0.01"
                   value={form.percepciones_iibb}
                   onChange={(e) => handleImpuestoChange("percepciones_iibb", e.target.value)}
                   placeholder="0.00"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Jurisdicción IIBB</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Jurisdicción IIBB</label>
                 <select
                   value={form.jurisdiccion_iibb}
                   onChange={(e) => setForm((prev) => ({ ...prev, jurisdiccion_iibb: e.target.value }))}
                   disabled={(parseFloat(form.percepciones_iibb) || 0) <= 0}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm disabled:bg-gray-50"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm disabled:bg-gray-50"
                 >
                   <option value="">—</option>
                   {PROVINCIAS_ARGENTINA.map((p) => (
@@ -998,25 +998,25 @@ export default function FacturasProveedorPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Imp. Internos</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Imp. Internos</label>
                 <input
                   type="number"
                   step="0.01"
                   value={form.impuestos_internos}
                   onChange={(e) => handleImpuestoChange("impuestos_internos", e.target.value)}
                   placeholder="0.00"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Exentos / No Grav.</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Exentos / No Grav.</label>
                 <input
                   type="number"
                   step="0.01"
                   value={form.exentos_no_gravados}
                   onChange={(e) => handleImpuestoChange("exentos_no_gravados", e.target.value)}
                   placeholder="0.00"
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
             </div>
@@ -1032,7 +1032,7 @@ export default function FacturasProveedorPage() {
             {/* Adjuntar + Vincular OC en una línea */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Adjuntar Factura</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Adjuntar Factura</label>
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png"
@@ -1042,11 +1042,11 @@ export default function FacturasProveedorPage() {
                 {archivo && <p className="text-xs text-gray-500 mt-1">{archivo.name}</p>}
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Vincular con Orden de Compra</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Vincular con Orden de Compra</label>
                 <select
                   value={form.orden_compra_id}
                   onChange={(e) => handleVincularOC(e.target.value)}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 >
                   <option value="">Sin vincular</option>
                   {ordenesProveedor.map((o) => (
@@ -1067,7 +1067,7 @@ export default function FacturasProveedorPage() {
 
           {/* === ETAPA 2: Items + imputación + observaciones === */}
           {step === 2 && (
-          <div className="grid gap-3 py-2">
+          <div className="grid gap-5 py-4">
             {/* Detalle de productos/items */}
             <div className="border rounded-lg p-4 bg-gray-50">
               <div className="flex items-center justify-between mb-3">
@@ -1231,7 +1231,7 @@ export default function FacturasProveedorPage() {
                   }}
                   onFocus={() => setShowCuentaList(true)}
                   onBlur={() => setTimeout(() => setShowCuentaList(false), 150)}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
                 {showCuentaList && cuentasFiltradas.length > 0 && (
                   <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg mt-1 max-h-56 overflow-y-auto">
@@ -1286,7 +1286,7 @@ export default function FacturasProveedorPage() {
                 value={form.observaciones}
                 onChange={(e) => setForm((prev) => ({ ...prev, observaciones: e.target.value }))}
                 rows={3}
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 placeholder="Notas adicionales..."
               />
             </div>
@@ -1394,22 +1394,22 @@ export default function FacturasProveedorPage() {
           <DialogHeader>
             <DialogTitle>Nueva imputación contable</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-3 py-2">
+          <div className="grid gap-5 py-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Código *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Código *</label>
               <input
                 type="text"
                 value={nuevaCuentaForm.codigo}
                 onChange={(e) => setNuevaCuentaForm((prev) => ({ ...prev, codigo: e.target.value }))}
                 placeholder="Ej: 20020"
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm font-mono"
+                className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm font-mono"
               />
               <p className="text-[11px] text-gray-500 mt-1">
                 Sugerido en base al máximo actual + 10. Editable.
               </p>
             </div>
             <div className="relative">
-              <label className="block text-xs font-medium text-gray-700 mb-1">Categoría *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Categoría *</label>
               <input
                 type="text"
                 value={nuevaCuentaForm.categoria}
@@ -1420,7 +1420,7 @@ export default function FacturasProveedorPage() {
                 onFocus={() => setShowCategoriaList(true)}
                 onBlur={() => setTimeout(() => setShowCategoriaList(false), 150)}
                 placeholder="Ej: ALMACEN"
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
               />
               {showCategoriaList && categoriasFiltradas.length > 0 && (
                 <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg mt-1 max-h-48 overflow-y-auto">
@@ -1445,13 +1445,13 @@ export default function FacturasProveedorPage() {
               </p>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Sub-categoría</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Sub-categoría</label>
               <input
                 type="text"
                 value={nuevaCuentaForm.sub_categoria}
                 onChange={(e) => setNuevaCuentaForm((prev) => ({ ...prev, sub_categoria: e.target.value }))}
                 placeholder="Opcional"
-                className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+                className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
               />
             </div>
           </div>
