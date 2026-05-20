@@ -14,6 +14,18 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
+// K1.4: variante con 2 decimales para cobranzas, donde los saldos vienen
+// de NUMERIC(14,2) y los empleados necesitan ver los centavos exactos. Se
+// usa en cta cte, registrar cobro, informe saldos y cobros realizados.
+export function formatCurrencyExact(amount: number): string {
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount)
+}
+
 export function formatDate(date: Date): string {
   return new Intl.DateTimeFormat("es-AR", {
     day: "2-digit",

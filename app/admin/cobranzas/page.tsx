@@ -13,7 +13,7 @@ import {
   deleteCobranzaPendiente, fetchVendedores, getNextReciboNumero,
   createReciboCobranza, createChequesRecibidos, fetchRecibosCobranza,
 } from "@/lib/supabase/queries"
-import { formatCurrency, normalizeSearch, formatDateStr } from "@/lib/utils"
+import { formatCurrencyExact, normalizeSearch, formatDateStr } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { Search, Download, Plus, Trash2, Eye, Printer, FileText } from "lucide-react"
 import { generateReciboPDF } from "@/lib/pdf/recibo-pdf"
@@ -399,9 +399,9 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
         <td>${formatDateStr(m.fecha)}</td>
         <td>${normalizeTipoComp(m.tipo_comprobante)}</td>
         <td>${formatNumeroComprobante(m) || "-"}</td>
-        <td style="text-align:right">${m.debe ? formatCurrency(m.debe) : "-"}</td>
-        <td style="text-align:right">${m.haber ? formatCurrency(m.haber) : "-"}</td>
-        <td style="text-align:right">${formatCurrency(sld)}</td>
+        <td style="text-align:right">${m.debe ? formatCurrencyExact(m.debe) : "-"}</td>
+        <td style="text-align:right">${m.haber ? formatCurrencyExact(m.haber) : "-"}</td>
+        <td style="text-align:right">${formatCurrencyExact(sld)}</td>
       </tr>`
     }).join("")
     w.document.write(`<html><head><title>Cuenta Corriente - ${clientName}</title>
@@ -411,9 +411,9 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
       <p><strong>Cantidad de comprobantes:</strong> ${filtered.length}</p>
       <table><thead><tr><th>Fecha</th><th>Comprob.</th><th>Número</th><th style="text-align:right">Debe</th><th style="text-align:right">Haber</th><th style="text-align:right">Saldo</th></tr></thead>
       <tbody>${rows}
-      <tr class="totals"><td colspan="3">TOTALES</td><td style="text-align:right">${formatCurrency(totalDebe)}</td><td style="text-align:right">${formatCurrency(totalHaber)}</td><td></td></tr>
+      <tr class="totals"><td colspan="3">TOTALES</td><td style="text-align:right">${formatCurrencyExact(totalDebe)}</td><td style="text-align:right">${formatCurrencyExact(totalHaber)}</td><td></td></tr>
       </tbody></table>
-      <div class="total-deudor">TOTAL DEUDOR: ${formatCurrency(saldoTotal)}</div>
+      <div class="total-deudor">TOTAL DEUDOR: ${formatCurrencyExact(saldoTotal)}</div>
       <script>window.print()<\/script></body></html>`)
   }
 
@@ -543,10 +543,10 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
                         <span className="ml-2 text-gray-600">{formatNumeroComprobante(m)}</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right">{m.debe ? formatCurrency(m.debe) : "-"}</TableCell>
-                    <TableCell className="text-right">{m.haber ? formatCurrency(m.haber) : "-"}</TableCell>
+                    <TableCell className="text-right">{m.debe ? formatCurrencyExact(m.debe) : "-"}</TableCell>
+                    <TableCell className="text-right">{m.haber ? formatCurrencyExact(m.haber) : "-"}</TableCell>
                     <TableCell className={`text-right font-medium ${saldoRow > 0 ? "text-red-600" : saldoRow < 0 ? "text-green-600" : ""}`}>
-                      {formatCurrency(saldoRow)}
+                      {formatCurrencyExact(saldoRow)}
                     </TableCell>
                     <TableCell className="text-center">
                       <button onClick={() => setVerCompOpen(m)} className="text-blue-600 hover:text-blue-800" title="Ver comprobante">
@@ -574,16 +574,16 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
             <div className="bg-gray-50 border rounded-md p-3 text-center">
               <div className="text-xs text-gray-500 uppercase">Total Debe</div>
-              <div className="text-lg font-bold">{formatCurrency(totalDebe)}</div>
+              <div className="text-lg font-bold">{formatCurrencyExact(totalDebe)}</div>
             </div>
             <div className="bg-gray-50 border rounded-md p-3 text-center">
               <div className="text-xs text-gray-500 uppercase">Total Haber</div>
-              <div className="text-lg font-bold">{formatCurrency(totalHaber)}</div>
+              <div className="text-lg font-bold">{formatCurrencyExact(totalHaber)}</div>
             </div>
             <div className={`border rounded-md p-3 text-center ${saldoTotal > 0 ? "bg-red-50 border-red-200" : "bg-green-50 border-green-200"}`}>
               <div className="text-xs text-gray-600 uppercase font-semibold">TOTAL DEUDOR</div>
               <div className={`text-2xl font-bold ${saldoTotal > 0 ? "text-red-700" : "text-green-700"}`}>
-                {formatCurrency(saldoTotal)}
+                {formatCurrencyExact(saldoTotal)}
               </div>
             </div>
           </div>
@@ -643,8 +643,8 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
               <p><strong>Fecha:</strong> {formatDateStr(verCompOpen.fecha)}</p>
               <p><strong>Tipo:</strong> {normalizeTipoComp(verCompOpen.tipo_comprobante)}</p>
               <p><strong>Número:</strong> {formatNumeroComprobante(verCompOpen) || "-"}</p>
-              <p><strong>Debe:</strong> {formatCurrency(verCompOpen.debe || 0)}</p>
-              <p><strong>Haber:</strong> {formatCurrency(verCompOpen.haber || 0)}</p>
+              <p><strong>Debe:</strong> {formatCurrencyExact(verCompOpen.debe || 0)}</p>
+              <p><strong>Haber:</strong> {formatCurrencyExact(verCompOpen.haber || 0)}</p>
               {verCompOpen.observaciones && (
                 <p><strong>Observaciones:</strong> <span className="text-gray-600">{verCompOpen.observaciones}</span></p>
               )}
@@ -1140,7 +1140,7 @@ function TabRegistrarCobro({
                           </TableCell>
                           <TableCell className="text-xs">{c.numero_comprobante || "-"}</TableCell>
                           <TableCell className={`text-right font-semibold ${saldo < 0 ? "text-green-700" : ""}`}>
-                            {formatCurrency(saldo)}
+                            {formatCurrencyExact(saldo)}
                           </TableCell>
                         </TableRow>
                       )
@@ -1215,19 +1215,19 @@ function TabRegistrarCobro({
               <div className="border-t pt-3 space-y-1">
                 <div className="flex justify-between text-sm">
                   <span>Total Debe:</span>
-                  <span className="font-medium">{formatCurrency(totalDebe)}</span>
+                  <span className="font-medium">{formatCurrencyExact(totalDebe)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Total Haber (NC + Retenciones):</span>
-                  <span className="font-medium">{formatCurrency(totalHaber + totalRets)}</span>
+                  <span className="font-medium">{formatCurrencyExact(totalHaber + totalRets)}</span>
                 </div>
                 <div className="flex justify-between text-sm font-bold border-t pt-1">
                   <span>Saldo deudor:</span>
-                  <span>{formatCurrency(totalDebe - totalHaber - totalRets)}</span>
+                  <span>{formatCurrencyExact(totalDebe - totalHaber - totalRets)}</span>
                 </div>
                 <div className="flex justify-between text-sm font-bold text-blue-700">
                   <span>Total seleccionado:</span>
-                  <span>{formatCurrency(totalSeleccionado)}</span>
+                  <span>{formatCurrencyExact(totalSeleccionado)}</span>
                 </div>
               </div>
             </>
@@ -1362,24 +1362,24 @@ function TabRegistrarCobro({
           <div className="border-t pt-3 space-y-2">
             <div className="flex justify-between text-sm">
               <span>Total medios de pago:</span>
-              <span className="font-medium">{formatCurrency(totalMedios)}</span>
+              <span className="font-medium">{formatCurrencyExact(totalMedios)}</span>
             </div>
             {totalRets > 0 && (
               <div className="flex justify-between text-sm">
                 <span>Total retenciones:</span>
-                <span className="font-medium">{formatCurrency(totalRets)}</span>
+                <span className="font-medium">{formatCurrencyExact(totalRets)}</span>
               </div>
             )}
             <div className="flex justify-between text-sm font-bold">
               <span>Total valores:</span>
-              <span>{formatCurrency(totalValores)}</span>
+              <span>{formatCurrencyExact(totalValores)}</span>
             </div>
           </div>
 
           {/* Validation messages */}
           {selectedIds.size > 0 && totalValores > 0 && diff > 0 && (
             <div className="bg-green-50 border border-green-200 rounded-md px-3 py-2 text-sm text-green-700">
-              Saldo a favor: {formatCurrency(diff)} — se registrará como pago a cuenta
+              Saldo a favor: {formatCurrencyExact(diff)} — se registrará como pago a cuenta
             </div>
           )}
           {selectedIds.size > 0 && totalValores > 0 && diff < 0 && (
@@ -1645,7 +1645,7 @@ function TabRetenciones({ retenciones, clients }: { retenciones: any[]; clients:
                   <TableCell>{clientMap[r.client_id] || "-"}</TableCell>
                   <TableCell><Badge variant="outline">{r.tipo}</Badge></TableCell>
                   <TableCell>{r.nro_comprobante || r.numero_comprobante || "-"}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(r.importe || 0)}</TableCell>
+                  <TableCell className="text-right font-medium">{formatCurrencyExact(r.importe || 0)}</TableCell>
                 </TableRow>
               ))
             )}
@@ -1843,9 +1843,9 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
           <tr>
             <td>${formatDateStr(f.fecha_comprobante || f.fecha || f.created_at)}</td>
             <td>${[f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero].filter(Boolean).join(" ") || "-"}</td>
-            <td style="text-align:right">${formatCurrency(Number(f.total) || 0)}</td>
-            <td style="text-align:right;font-weight:bold">${formatCurrency(saldo)}</td>
-            <td style="text-align:right">${formatCurrency(acumulado)}</td>
+            <td style="text-align:right">${formatCurrencyExact(Number(f.total) || 0)}</td>
+            <td style="text-align:right;font-weight:bold">${formatCurrencyExact(saldo)}</td>
+            <td style="text-align:right">${formatCurrencyExact(acumulado)}</td>
           </tr>`
         }).join("")
         const clienteHeader = g.client_cuit
@@ -1869,7 +1869,7 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
       <table>
         <tbody>
           ${bloques}
-          <tr class="totals"><td colspan="3" style="text-align:right">TOTAL GENERAL</td><td style="text-align:right">${formatCurrency(totalGeneral)}</td><td></td></tr>
+          <tr class="totals"><td colspan="3" style="text-align:right">TOTAL GENERAL</td><td style="text-align:right">${formatCurrencyExact(totalGeneral)}</td><td></td></tr>
         </tbody>
       </table>
       <script>window.print()<\/script></body></html>`)
@@ -1928,7 +1928,7 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
           <span className="text-muted-foreground">Total clientes con deuda: </span>
           <span className="font-semibold">{porCliente.length}</span>
           <span className="ml-4 text-muted-foreground">Saldo total: </span>
-          <span className="font-semibold text-red-600">{formatCurrency(totalGeneral)}</span>
+          <span className="font-semibold text-red-600">{formatCurrencyExact(totalGeneral)}</span>
         </div>
         <div className="flex gap-2">
           <button onClick={expandAll} className="text-xs text-blue-600 hover:underline">Expandir todo</button>
@@ -1945,7 +1945,7 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
             <div key={emp.empresa} className="border rounded-md overflow-hidden">
               <div className="bg-slate-100 px-4 py-2 flex items-center justify-between">
                 <h3 className="font-semibold text-slate-800">{emp.empresa}</h3>
-                <span className="text-sm font-bold text-red-600">{formatCurrency(emp.total)}</span>
+                <span className="text-sm font-bold text-red-600">{formatCurrencyExact(emp.total)}</span>
               </div>
               <div className="divide-y">
                 {emp.clientes.map((g) => (
@@ -1963,7 +1963,7 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
         {porEmpresa.length > 0 && (
           <div className="bg-gray-100 rounded-md px-4 py-3 flex items-center justify-between font-bold">
             <span>TOTAL GENERAL</span>
-            <span className="text-red-600">{formatCurrency(totalGeneral)}</span>
+            <span className="text-red-600">{formatCurrencyExact(totalGeneral)}</span>
           </div>
         )}
       </div>
@@ -1993,7 +1993,7 @@ function GrupoCliente({ grupo, expanded, onToggle }: { grupo: { client_id: strin
           )}
         </span>
         <span className="text-right text-sm text-gray-600 w-28">{grupo.facturas.length} facturas</span>
-        <span className="text-right font-semibold text-red-600 w-32">{formatCurrency(grupo.total)}</span>
+        <span className="text-right font-semibold text-red-600 w-32">{formatCurrencyExact(grupo.total)}</span>
       </button>
       {expanded && (
         <div className="bg-gray-50 px-4 py-3 border-t">
@@ -2018,9 +2018,9 @@ function GrupoCliente({ grupo, expanded, onToggle }: { grupo: { client_id: strin
                     <tr key={f.id || i} className="border-t border-gray-200">
                       <td className="px-2 py-1">{formatDateStr(f.fecha_comprobante || f.fecha || f.created_at)}</td>
                       <td className="px-2 py-1 font-mono">{num || "-"}</td>
-                      <td className="px-2 py-1 text-right">{formatCurrency(Number(f.total) || 0)}</td>
-                      <td className="px-2 py-1 text-right font-medium">{formatCurrency(saldo)}</td>
-                      <td className="px-2 py-1 text-right">{formatCurrency(acum)}</td>
+                      <td className="px-2 py-1 text-right">{formatCurrencyExact(Number(f.total) || 0)}</td>
+                      <td className="px-2 py-1 text-right font-medium">{formatCurrencyExact(saldo)}</td>
+                      <td className="px-2 py-1 text-right">{formatCurrencyExact(acum)}</td>
                     </tr>
                   )
                 })
@@ -2213,7 +2213,7 @@ function TabCobrosRealizados({ recibos, recibosCobranza }: { recibos: any[]; rec
                   <TableCell>{formatDateStr(r.fecha)}</TableCell>
                   <TableCell className="font-medium">{r.nro_comprobante || "-"}</TableCell>
                   <TableCell>{r.razon_social || "-"}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(Number(r.importe) || 0)}</TableCell>
+                  <TableCell className="text-right font-medium">{formatCurrencyExact(Number(r.importe) || 0)}</TableCell>
                   <TableCell>
                     <div className="flex items-center justify-center gap-1">
                       <button onClick={() => setViewing(r)} className="p-1.5 rounded hover:bg-gray-100" title="Ver Recibo">
@@ -2251,10 +2251,10 @@ function TabCobrosRealizados({ recibos, recibosCobranza }: { recibos: any[]; rec
                 <div><span className="text-muted-foreground">Vendedor:</span> <span className="font-medium">{viewing.vendedor || "-"}</span></div>
                 {viewing.tipo === "nuevo" && viewing.detalle && (
                   <>
-                    <div><span className="text-muted-foreground">Total Facturas:</span> <span className="font-medium">{formatCurrency(viewing.detalle.total_facturas || 0)}</span></div>
-                    <div><span className="text-muted-foreground">Total Retenciones:</span> <span className="font-medium">{formatCurrency(viewing.detalle.total_retenciones || 0)}</span></div>
+                    <div><span className="text-muted-foreground">Total Facturas:</span> <span className="font-medium">{formatCurrencyExact(viewing.detalle.total_facturas || 0)}</span></div>
+                    <div><span className="text-muted-foreground">Total Retenciones:</span> <span className="font-medium">{formatCurrencyExact(viewing.detalle.total_retenciones || 0)}</span></div>
                     {viewing.detalle.saldo_a_favor > 0 && (
-                      <div className="col-span-2"><span className="text-muted-foreground">Saldo a favor:</span> <span className="font-medium text-green-600">{formatCurrency(viewing.detalle.saldo_a_favor)}</span></div>
+                      <div className="col-span-2"><span className="text-muted-foreground">Saldo a favor:</span> <span className="font-medium text-green-600">{formatCurrencyExact(viewing.detalle.saldo_a_favor)}</span></div>
                     )}
                   </>
                 )}
@@ -2266,7 +2266,7 @@ function TabCobrosRealizados({ recibos, recibosCobranza }: { recibos: any[]; rec
                 )}
                 <div className="col-span-2 border-t pt-2">
                   <span className="text-muted-foreground">Importe:</span>{" "}
-                  <span className="font-bold text-lg">{formatCurrency(Number(viewing.importe) || 0)}</span>
+                  <span className="font-bold text-lg">{formatCurrencyExact(Number(viewing.importe) || 0)}</span>
                 </div>
               </div>
             </div>
