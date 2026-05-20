@@ -48,7 +48,7 @@ interface BodyInput {
   cantidadesFacturadas?: number[]
 }
 
-type Paso = "parse" | "cliente" | "tusfacturas" | "pdf" | "storage" | "db" | "email"
+type Paso = "parse" | "cliente" | "tusfacturas" | "pdf" | "storage" | "db" | "cta_cte" | "email"
 
 function fail(
   paso: Paso,
@@ -417,11 +417,13 @@ export async function POST(request: NextRequest) {
   }
 
   // ───────────────── PASO 11b: Cta cte cliente ─────────────────
-  // Antes hacía esto el frontend después del response, lo cual era frágil:
-  // si fallaba storage/db acá pero AFIP ya tenía el CAE, la factura quedaba
-  // sin entrar a cta cte. Ahora se hace junto al insert de la factura.
   // FC y ND → debe (suma deuda); NC → haber (resta deuda).
-  try {
+  // La factura YA tiene CAE en AFIP. Si este insert falla, devolvemos
+  // success:false con facturaId/numero/cae/pdfUrl para que el frontend
+  // muestre el error claramente y NO reintente la emisión (eso duplicaría
+  // facturas en AFIP). El operador debe insertar el movimiento manualmente
+  // o reconciliar con scripts/reconciliar_facturas_cta_cte.sql.
+  {
     const [pvCC, nroCC] = String(numero).split("-")
     const tipoCC = esNC ? "NC" : esND ? "ND" : "FC"
     const debe = esNC ? 0 : total
@@ -440,8 +442,6 @@ export async function POST(request: NextRequest) {
       observaciones: `${tipoFactura} generada desde el sistema`,
     })
     if (ccErr) {
-      // No revierto la factura — ya tiene CAE en AFIP. Loggeo claro para
-      // auditoría manual: hay que insertar el movimiento a mano si esto falla.
       console.error('Step 11b: ERROR cta cte (factura YA emitida en AFIP):', {
         facturaId: factura.id,
         numero,
@@ -449,17 +449,14 @@ export async function POST(request: NextRequest) {
         cae,
         error: ccErr,
       })
-    } else {
-      console.log('Step 11b: Cta cte OK →', tipoCC, debe || -haber)
+      return fail(
+        "cta_cte",
+        "Factura emitida en AFIP pero no se pudo registrar en cuenta corriente: " + (ccErr.message || "unknown"),
+        undefined,
+        { facturaId: factura.id, numero, cae, pdfUrl, facturaEmitida: true }
+      )
     }
-  } catch (e) {
-    console.error('Step 11b: EXCEPTION cta cte (factura YA emitida en AFIP):', {
-      facturaId: factura.id,
-      numero,
-      clientId,
-      cae,
-      error: e,
-    })
+    console.log('Step 11b: Cta cte OK →', tipoCC, debe || -haber)
   }
 
   // ───────────────── PASO 12: Email (deshabilitado temporalmente para testing) ─────────────────
