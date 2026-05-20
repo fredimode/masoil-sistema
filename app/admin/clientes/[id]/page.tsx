@@ -262,6 +262,18 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
               <span>{client.address}</span>
             </div>
           )}
+          {(client as any).sucursalEntrega && (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5" />
+              <span><span className="text-xs">Sucursal entrega:</span> {(client as any).sucursalEntrega}</span>
+            </div>
+          )}
+          {(client as any).domicilioEntrega && (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <MapPin className="h-3.5 w-3.5" />
+              <span><span className="text-xs">Domicilio entrega:</span> {(client as any).domicilioEntrega}</span>
+            </div>
+          )}
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={openEditDialog}>

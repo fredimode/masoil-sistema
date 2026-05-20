@@ -292,6 +292,10 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     doc.text(`Cliente: ${o.clientName}`, margin, y); y += 6
     if (client) {
       doc.text(`Dirección: ${client.address || "-"}`, margin, y); y += 6
+      const sucEntrega = (client as any).sucursalEntrega
+      const domEntrega = (client as any).domicilioEntrega
+      if (sucEntrega) { doc.text(`Sucursal entrega: ${sucEntrega}`, margin, y); y += 6 }
+      if (domEntrega) { doc.text(`Domicilio entrega: ${domEntrega}`, margin, y); y += 6 }
       doc.text(`Contacto: ${client.contactName || "-"}`, margin, y); y += 6
       doc.text(`Teléfono: ${client.whatsapp || "-"}`, margin, y); y += 6
     }
@@ -1073,6 +1077,12 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Dirección</p>
                   <p className="text-sm">{client.address}</p>
+                  {(client as any).sucursalEntrega && (
+                    <p className="text-sm mt-1"><span className="text-xs text-muted-foreground">Sucursal entrega:</span> {(client as any).sucursalEntrega}</p>
+                  )}
+                  {(client as any).domicilioEntrega && (
+                    <p className="text-sm mt-1"><span className="text-xs text-muted-foreground">Domicilio entrega:</span> {(client as any).domicilioEntrega}</p>
+                  )}
                 </div>
                 <Separator />
                 <div className="flex items-center gap-2">
