@@ -1686,10 +1686,25 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
     if (desde) rows = rows.filter((c) => fechaCampo(c) >= desde)
     if (hasta) rows = rows.filter((c) => fechaCampo(c) <= hasta)
     if (clienteFiltro !== "todos") {
-      rows = rows.filter((c) => c.client_id === clienteFiltro)
+      // K1.5: agrupar sucursales por CUIT. Si el cliente seleccionado tiene
+      // CUIT, incluir todos los client_id que comparten ese CUIT (cada sucursal
+      // sigue como bloque separado en porCliente). Si no hay CUIT, fallback al
+      // filter directo por client_id.
+      const target = clientMap[clienteFiltro]
+      const targetCuit = target?.cuit || target?.numeroDocum
+      if (targetCuit) {
+        const idSet = new Set(
+          clients
+            .filter((c) => (c.cuit || c.numeroDocum) === targetCuit)
+            .map((c) => c.id)
+        )
+        rows = rows.filter((c) => idSet.has(c.client_id))
+      } else {
+        rows = rows.filter((c) => c.client_id === clienteFiltro)
+      }
     }
     return rows
-  }, [cobranzas, empresaFilter, desde, hasta, clienteFiltro])
+  }, [cobranzas, empresaFilter, desde, hasta, clienteFiltro, clientMap, clients])
 
   // Agrupar por cliente (alfabético)
   const porCliente = useMemo(() => {
