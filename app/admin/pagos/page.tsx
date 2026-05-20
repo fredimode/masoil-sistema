@@ -44,7 +44,7 @@ import {
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog"
-import { Eye, Pencil, Trash2, Paperclip, Mail, RefreshCw, ChevronDown, ChevronUp, Plus } from "lucide-react"
+import { Eye, Pencil, Trash2, Paperclip, Mail, RefreshCw, ChevronDown, ChevronUp, Plus, Printer, Download } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
 // ─── Vencimiento color helpers ──────────────────────────────────────────────
@@ -234,6 +234,58 @@ export default function PagosPage() {
     } finally {
       setLoadingCC(false)
     }
+  }
+
+  // K2A.5: exportar cta cte del proveedor expandido a XLSX. Patrón heredado
+  // del export de cta cte cliente (cobranzas/page.tsx). Incluye totales al pie.
+  function exportXLSXCtaCteProveedor(prov: any) {
+    const totalDebe = expandedCC.reduce((s, m) => s + (Number(m.debe) || 0), 0)
+    const totalHaber = expandedCC.reduce((s, m) => s + (Number(m.haber) || 0), 0)
+    const saldoTotal = totalDebe - totalHaber
+    const rows: Record<string, any>[] = expandedCC.map((m: any) => ({
+      Fecha: m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "-",
+      Tipo: m.tipo_comprobante || "-",
+      Comprobante: m.numero_comprobante || "-",
+      Debe: Number(m.debe) || 0,
+      Haber: Number(m.haber) || 0,
+      Saldo: Number(m.saldo) || 0,
+    }))
+    rows.push({ Fecha: "", Tipo: "", Comprobante: "", Debe: "", Haber: "", Saldo: "" })
+    rows.push({ Fecha: "", Tipo: "", Comprobante: "TOTALES", Debe: totalDebe, Haber: totalHaber, Saldo: "" })
+    rows.push({ Fecha: "", Tipo: "", Comprobante: "SALDO", Debe: "", Haber: "", Saldo: saldoTotal })
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, "Cta Cte Proveedor")
+    const fileName = `cta_cte_${(prov.nombre || "proveedor").toLowerCase().replace(/\s+/g, "_")}.xlsx`
+    XLSX.writeFile(wb, fileName)
+  }
+
+  function printCtaCteProveedor(prov: any) {
+    const w = window.open("", "_blank")
+    if (!w) return
+    const totalDebe = expandedCC.reduce((s, m) => s + (Number(m.debe) || 0), 0)
+    const totalHaber = expandedCC.reduce((s, m) => s + (Number(m.haber) || 0), 0)
+    const saldoTotal = totalDebe - totalHaber
+    const rows = expandedCC.map((m: any) => `
+      <tr>
+        <td>${m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "-"}</td>
+        <td>${m.tipo_comprobante || "-"}</td>
+        <td>${m.numero_comprobante || "-"}</td>
+        <td style="text-align:right">${m.debe ? formatCurrency(Number(m.debe)) : "-"}</td>
+        <td style="text-align:right">${m.haber ? formatCurrency(Number(m.haber)) : "-"}</td>
+        <td style="text-align:right">${formatCurrency(Number(m.saldo) || 0)}</td>
+      </tr>`).join("")
+    w.document.write(`<html><head><title>Cta Cte - ${prov.nombre || "Proveedor"}</title>
+      <style>body{font-family:sans-serif;max-width:1000px;margin:30px auto}h2{margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #ddd;padding:6px 8px;font-size:12px}th{background:#f5f5f5;text-align:left}.totals td{font-weight:bold;background:#f0f0f0}.saldo{margin-top:16px;padding:12px;background:#fef3c7;font-size:18px;font-weight:bold;text-align:right}</style></head><body>
+      <h2>Cuenta Corriente Proveedor</h2>
+      <p><strong>Proveedor:</strong> ${prov.nombre || "-"}${prov.cuit ? " — CUIT: " + prov.cuit : ""}</p>
+      <p><strong>Movimientos:</strong> ${expandedCC.length}</p>
+      <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Comprobante</th><th style="text-align:right">Debe</th><th style="text-align:right">Haber</th><th style="text-align:right">Saldo</th></tr></thead>
+      <tbody>${rows}
+      <tr class="totals"><td colspan="3">TOTALES</td><td style="text-align:right">${formatCurrency(totalDebe)}</td><td style="text-align:right">${formatCurrency(totalHaber)}</td><td></td></tr>
+      </tbody></table>
+      <div class="saldo">SALDO: ${formatCurrency(saldoTotal)}</div>
+      <script>window.print()<\/script></body></html>`)
   }
 
   // Facturas pendientes por proveedor (for Proveedores/CtaCte tab with vencimiento colors)
@@ -730,7 +782,23 @@ export default function PagosPage() {
                           </div>
                         ) : expandedCC.length > 0 ? (
                           <div className="overflow-x-auto">
-                            <h4 className="text-sm font-semibold text-gray-700 mb-2">Cuenta corriente</h4>
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="text-sm font-semibold text-gray-700">Cuenta corriente</h4>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => printCtaCteProveedor(prov)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-600 text-white rounded text-xs hover:bg-gray-700"
+                                >
+                                  <Printer className="h-3.5 w-3.5" /> Imprimir PDF
+                                </button>
+                                <button
+                                  onClick={() => exportXLSXCtaCteProveedor(prov)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded text-xs hover:bg-green-700"
+                                >
+                                  <Download className="h-3.5 w-3.5" /> XLSX
+                                </button>
+                              </div>
+                            </div>
                             <table className="w-full text-sm">
                               <thead className="bg-gray-50">
                                 <tr>
