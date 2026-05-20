@@ -813,6 +813,10 @@ function TabRegistrarCobro({
   const totalMedios = useMemo(() => medios.reduce((s, m) => s + (m.importe || 0), 0), [medios])
   const totalRets = useMemo(() => rets.reduce((s, r) => s + (r.importe || 0), 0), [rets])
   const totalValores = totalMedios + totalRets
+  // K1.3: saldo neto a cubrir con medios de pago una vez aplicadas las
+  // retenciones. Es la cifra que el operador debe igualar con efectivo,
+  // transferencia, cheque, etc. para confirmar el cobro.
+  const saldoAAbonar = totalSeleccionado - totalRets
 
   // Total Debe/Haber for CC display
   const totalDebe = useMemo(() => {
@@ -887,7 +891,7 @@ function TabRegistrarCobro({
   }
 
   async function handleConfirmar() {
-    if (!selectedClient || totalValores < totalSeleccionado) return
+    if (!selectedClient || totalMedios < saldoAAbonar) return
     if (!empresaValida || !nextRecibo) {
       alert("Seleccioná una empresa específica (Aquiles/Conancap) para registrar el cobro")
       return
@@ -1020,8 +1024,6 @@ function TabRegistrarCobro({
       setConfirmando(false)
     }
   }
-
-  const diff = totalValores - totalSeleccionado
 
   return (
     <div className="space-y-4">
@@ -1358,33 +1360,36 @@ function TabRegistrarCobro({
             ))}
           </div>
 
-          {/* Totals */}
+          {/* Totals (K1.3): desglose claro de qué falta abonar con medios de pago */}
           <div className="border-t pt-3 space-y-2">
             <div className="flex justify-between text-sm">
-              <span>Total medios de pago:</span>
-              <span className="font-medium">{formatCurrencyExact(totalMedios)}</span>
+              <span>Total facturas seleccionadas:</span>
+              <span className="font-medium">{formatCurrencyExact(totalSeleccionado)}</span>
             </div>
-            {totalRets > 0 && (
-              <div className="flex justify-between text-sm">
-                <span>Total retenciones:</span>
-                <span className="font-medium">{formatCurrencyExact(totalRets)}</span>
-              </div>
-            )}
-            <div className="flex justify-between text-sm font-bold">
-              <span>Total valores:</span>
-              <span>{formatCurrencyExact(totalValores)}</span>
+            <div className="flex justify-between text-sm">
+              <span>(−) Retenciones cargadas:</span>
+              <span className="font-medium">{formatCurrencyExact(totalRets)}</span>
+            </div>
+            <div className="flex justify-between text-sm font-bold border-t pt-1 text-blue-900">
+              <span>Saldo a abonar (medios de pago):</span>
+              <span>{formatCurrencyExact(saldoAAbonar)}</span>
+            </div>
+            <div className="flex justify-between text-sm pt-1">
+              <span>Total medios cargados:</span>
+              <span className="font-medium">{formatCurrencyExact(totalMedios)}</span>
             </div>
           </div>
 
-          {/* Validation messages */}
-          {selectedIds.size > 0 && totalValores > 0 && diff > 0 && (
+          {/* Validation messages: la diferencia que importa ahora es
+              totalMedios vs saldoAAbonar (no totalValores vs totalSeleccionado). */}
+          {selectedIds.size > 0 && totalMedios > 0 && totalMedios > saldoAAbonar && (
             <div className="bg-green-50 border border-green-200 rounded-md px-3 py-2 text-sm text-green-700">
-              Saldo a favor: {formatCurrencyExact(diff)} — se registrará como pago a cuenta
+              Saldo a favor: {formatCurrencyExact(totalMedios - saldoAAbonar)} — se registrará como pago a cuenta
             </div>
           )}
-          {selectedIds.size > 0 && totalValores > 0 && diff < 0 && (
+          {selectedIds.size > 0 && totalMedios > 0 && totalMedios < saldoAAbonar && (
             <div className="bg-red-50 border border-red-200 rounded-md px-3 py-2 text-sm text-red-600">
-              El total de valores no cubre las facturas seleccionadas
+              Los medios de pago no alcanzan a cubrir el saldo a abonar ({formatCurrencyExact(saldoAAbonar - totalMedios)} faltante)
             </div>
           )}
 
@@ -1406,7 +1411,7 @@ function TabRegistrarCobro({
             </button>
             <button
               onClick={handleConfirmar}
-              disabled={confirmando || !selectedClient || selectedIds.size === 0 || totalValores < totalSeleccionado || !empresaValida || !nextRecibo}
+              disabled={confirmando || !selectedClient || selectedIds.size === 0 || totalMedios < saldoAAbonar || !empresaValida || !nextRecibo}
               className="flex-1 py-2.5 bg-primary text-white rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
               title={!empresaValida ? "Seleccioná una empresa específica para registrar el cobro" : undefined}
             >
