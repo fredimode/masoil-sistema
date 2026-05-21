@@ -38,6 +38,7 @@ export interface CotizacionPDFData {
     cuit: string
     domicilio: string
     contacto: string
+    sucursal_entrega?: string | null
   }
   items: {
     cantidad: number
@@ -102,6 +103,7 @@ export function generateCotizacionPDF(data: CotizacionPDFData): Blob {
     `Razón social: ${data.cliente.razon_social}`,
     data.cliente.cuit ? `CUIT: ${data.cliente.cuit}` : null,
     data.cliente.domicilio ? `Domicilio: ${data.cliente.domicilio}` : null,
+    data.cliente.sucursal_entrega ? `Sucursal de Entrega: ${data.cliente.sucursal_entrega}` : null,
     data.cliente.contacto ? `Contacto: ${data.cliente.contacto}` : null,
   ].filter(Boolean) as string[]
   for (const l of clienteLines) {
