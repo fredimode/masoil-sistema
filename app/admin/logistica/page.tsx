@@ -120,7 +120,9 @@ export default function LogisticaPage() {
     const escapeHtml = (s: string) =>
       s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
     const truncate = (s: string, n = 60) => s.length > n ? s.slice(0, n - 1) + "…" : s
-    const rowsHtml = visibles.map((i) => {
+    // K2B.2(a): filtrar pedidos excluidos del PDF sin borrarlos.
+    const candidatos = visibles.filter((i) => i.incluir_en_reparto !== false)
+    const rowsHtml = candidatos.map((i) => {
       // J.3: Nº Pedido puro (sin "(extra)") y Descripción separada para
       // destinos manuales.
       const nroPedido = i.order_id
@@ -142,8 +144,8 @@ export default function LogisticaPage() {
       <tr>
         <td>${i.orden_reparto || "-"}</td>
         <td class="mono">${escapeHtml(String(nroPedido))}</td>
-        <td>${escapeHtml(descripcion)}</td>
         <td>${escapeHtml(i.client_name || "-")}</td>
+        <td>${escapeHtml(descripcion)}</td>
         <td>${escapeHtml(sucursalTxt)}</td>
         <td class="obs">${obs}</td>
       </tr>`
@@ -165,14 +167,14 @@ export default function LogisticaPage() {
         td.obs{font-size:11px;color:#444}
       </style></head><body>
       <h2>Reparto N° ${numeroActual || "-"}</h2>
-      <p>Fecha: ${formatDateStr(selectedFecha)} — Destinos: ${visibles.length}</p>
+      <p>Fecha: ${formatDateStr(selectedFecha)} — Destinos: ${candidatos.length}</p>
       <table>
         <colgroup>
-          <col class="col-orden"/><col class="col-pedido"/><col class="col-desc"/><col class="col-cliente"/>
+          <col class="col-orden"/><col class="col-pedido"/><col class="col-cliente"/><col class="col-desc"/>
           <col class="col-sucursal"/><col class="col-obs"/>
         </colgroup>
         <thead><tr>
-          <th>Orden</th><th>Nº Pedido</th><th>Descripción</th><th>Cliente</th><th>Sucursal Entrega</th><th>Observaciones</th>
+          <th>Orden</th><th>Nº Pedido</th><th>Cliente</th><th>Descripción</th><th>Sucursal Entrega</th><th>Observaciones</th>
         </tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>
@@ -256,14 +258,16 @@ export default function LogisticaPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-16 text-center">Incluir</TableHead>
                   <TableHead className="w-20">Orden</TableHead>
                   <TableHead>N° Pedido</TableHead>
-                  <TableHead>Descripción</TableHead>
-                  <TableHead>Factura</TableHead>
                   <TableHead>Cliente</TableHead>
+                  <TableHead>Descripción</TableHead>
+                  <TableHead>Sucursal Entrega</TableHead>
+                  <TableHead>Observaciones</TableHead>
+                  <TableHead>Factura</TableHead>
                   <TableHead>Zona</TableHead>
                   <TableHead>Repartidor</TableHead>
-                  <TableHead>Sucursal Entrega</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="w-16"></TableHead>
                 </TableRow>
@@ -271,8 +275,17 @@ export default function LogisticaPage() {
               <TableBody>
                 {visibles.map((i) => {
                   const completado = isCompletado(i.estado_entrega)
+                  const incluir = i.incluir_en_reparto !== false
+                  const obsRaw = i.order_id ? (i.orders?.notes || "") : (i.observaciones || "")
                   return (
                   <TableRow key={i.id} className={completado ? "bg-green-50/50" : ""}>
+                    <TableCell className="text-center">
+                      <input type="checkbox"
+                        checked={incluir}
+                        onChange={(e) => handleUpdateItem(i.id, "incluir_en_reparto", e.target.checked)}
+                        className="h-4 w-4 cursor-pointer"
+                        title="Incluir en PDF de reparto" />
+                    </TableCell>
                     <TableCell>
                       <input type="number" value={i.orden_reparto || ""}
                         onChange={(e) => handleReorden(i.id, parseInt(e.target.value, 10) || 0)}
@@ -289,11 +302,6 @@ export default function LogisticaPage() {
                         <span>{i.order_id || "-"}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs text-gray-700">
-                      {/* J.3: Descripción para destinos manuales — vacia si es pedido */}
-                      {i.es_destino_extra ? (i.descripcion_extra || "(sin descripción)") : "-"}
-                    </TableCell>
-                    <TableCell className="text-xs">{i.factura_numero || "-"}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
                         <span>{i.client_name || i.descripcion_extra || "-"}</span>
@@ -305,6 +313,19 @@ export default function LogisticaPage() {
                         )}
                       </div>
                     </TableCell>
+                    <TableCell className="text-xs text-gray-700">
+                      {/* J.3: Descripción para destinos manuales — vacia si es pedido */}
+                      {i.es_destino_extra ? (i.descripcion_extra || "(sin descripción)") : "-"}
+                    </TableCell>
+                    <TableCell>
+                      <input value={i.sucursal_entrega || ""}
+                        onChange={(e) => handleUpdateItem(i.id, "sucursal_entrega", e.target.value)}
+                        className="w-full border rounded px-2 py-1 text-sm" />
+                    </TableCell>
+                    <TableCell className="text-xs text-gray-600 max-w-[200px] truncate" title={obsRaw}>
+                      {obsRaw || "-"}
+                    </TableCell>
+                    <TableCell className="text-xs">{i.factura_numero || "-"}</TableCell>
                     <TableCell className="text-xs">{i.zona || "-"}</TableCell>
                     <TableCell>
                       <Select value={i.repartidor || ""} onValueChange={(v) => handleUpdateItem(i.id, "repartidor", v)}>
@@ -313,11 +334,6 @@ export default function LogisticaPage() {
                           {REPARTIDORES.map((r) => <SelectItem key={r} value={r}>{r}</SelectItem>)}
                         </SelectContent>
                       </Select>
-                    </TableCell>
-                    <TableCell>
-                      <input value={i.sucursal_entrega || ""}
-                        onChange={(e) => handleUpdateItem(i.id, "sucursal_entrega", e.target.value)}
-                        className="w-full border rounded px-2 py-1 text-sm" />
                     </TableCell>
                     <TableCell>
                       <Select value={i.estado_entrega || "pendiente"} onValueChange={(v) => handleUpdateItem(i.id, "estado_entrega", v)}>
