@@ -730,6 +730,52 @@ export async function deleteOrdenCompraArchivo(id: string): Promise<void> {
   if (error) throw error
 }
 
+// ───── Orden de pago a proveedor: archivos adjuntos ─────
+
+export interface OrdenPagoArchivo {
+  id: string
+  pago_id: string
+  url: string
+  storage_path: string | null
+  filename: string | null
+  content_type: string | null
+  uploaded_at: string
+}
+
+export async function fetchOrdenesPagoArchivos(pagoId: string): Promise<OrdenPagoArchivo[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("ordenes_pago_archivos")
+    .select("*")
+    .eq("pago_id", pagoId)
+    .order("uploaded_at", { ascending: true })
+  if (error) throw error
+  return (data || []) as OrdenPagoArchivo[]
+}
+
+export async function createOrdenPagoArchivo(input: {
+  pago_id: string
+  url: string
+  storage_path?: string | null
+  filename?: string | null
+  content_type?: string | null
+}): Promise<string> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("ordenes_pago_archivos")
+    .insert(input)
+    .select("id")
+    .single()
+  if (error) throw error
+  return data.id
+}
+
+export async function deleteOrdenPagoArchivo(id: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { error } = await supabase.from("ordenes_pago_archivos").delete().eq("id", id)
+  if (error) throw error
+}
+
 export async function fetchProveedorSucursales(proveedorId: string): Promise<any[]> {
   const supabase = createSupabaseClient()
   const { data, error } = await supabase

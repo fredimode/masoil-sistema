@@ -32,6 +32,10 @@ import {
   createPagoEnProceso,
   updatePagoEnProceso,
   deletePagoEnProceso,
+  fetchOrdenesPagoArchivos,
+  createOrdenPagoArchivo,
+  deleteOrdenPagoArchivo,
+  type OrdenPagoArchivo,
 } from "@/lib/supabase/queries"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -1739,8 +1743,111 @@ function TabOrdenesDePago({ pagos }: { pagos: any[] }) {
   const [filtroProv, setFiltroProv] = useState("")
   const [page, setPage] = useState(1)
 
+  // K2A.4: adjuntos múltiples por OP (comprobantes PDF/JPG/PNG).
+  const [adjuntosCount, setAdjuntosCount] = useState<Record<string, number>>({})
+  const [adjuntosOpen, setAdjuntosOpen] = useState<string | null>(null)
+  const [adjuntosLista, setAdjuntosLista] = useState<OrdenPagoArchivo[]>([])
+  const [adjuntosLoading, setAdjuntosLoading] = useState(false)
+  const [adjuntosUploading, setAdjuntosUploading] = useState(false)
+
+  async function refreshCount(pagoId: string) {
+    try {
+      const list = await fetchOrdenesPagoArchivos(pagoId)
+      setAdjuntosCount((c) => ({ ...c, [pagoId]: list.length }))
+      return list
+    } catch {
+      return [] as OrdenPagoArchivo[]
+    }
+  }
+
+  async function openAdjuntos(pagoId: string) {
+    setAdjuntosOpen(pagoId)
+    setAdjuntosLoading(true)
+    try {
+      const list = await fetchOrdenesPagoArchivos(pagoId)
+      setAdjuntosLista(list)
+      setAdjuntosCount((c) => ({ ...c, [pagoId]: list.length }))
+    } catch (e: any) {
+      alert("Error al cargar adjuntos: " + (e?.message || ""))
+      setAdjuntosLista([])
+    } finally {
+      setAdjuntosLoading(false)
+    }
+  }
+
+  async function handleUploadAdjuntos(pagoId: string, files: FileList | null) {
+    if (!files || files.length === 0) return
+    setAdjuntosUploading(true)
+    const supabase = createClient()
+    try {
+      for (const file of Array.from(files)) {
+        const ext = file.name.split(".").pop() || "bin"
+        const storagePath = `ordenes-pago/${pagoId}/${crypto.randomUUID()}.${ext}`
+        const { error: upErr } = await supabase.storage
+          .from("comprobantes")
+          .upload(storagePath, file, { contentType: file.type, upsert: false })
+        if (upErr) throw upErr
+        await createOrdenPagoArchivo({
+          pago_id: pagoId,
+          url: storagePath,
+          storage_path: storagePath,
+          filename: file.name,
+          content_type: file.type || null,
+        })
+      }
+      const fresh = await refreshCount(pagoId)
+      setAdjuntosLista(fresh)
+    } catch (e: any) {
+      alert("Error al subir adjuntos: " + (e?.message || ""))
+    } finally {
+      setAdjuntosUploading(false)
+    }
+  }
+
+  async function handleDescargarAdjunto(a: OrdenPagoArchivo) {
+    const supabase = createClient()
+    const { data } = await supabase.storage
+      .from("comprobantes")
+      .createSignedUrl(a.storage_path || a.url, 60)
+    if (data?.signedUrl) window.open(data.signedUrl, "_blank")
+    else alert("No se pudo generar el link")
+  }
+
+  async function handleEliminarAdjunto(a: OrdenPagoArchivo) {
+    if (!confirm(`¿Eliminar "${a.filename || "adjunto"}"?`)) return
+    const supabase = createClient()
+    try {
+      if (a.storage_path) {
+        await supabase.storage.from("comprobantes").remove([a.storage_path])
+      }
+      await deleteOrdenPagoArchivo(a.id)
+      const fresh = await refreshCount(a.pago_id)
+      setAdjuntosLista(fresh)
+    } catch (e: any) {
+      alert("Error al eliminar: " + (e?.message || ""))
+    }
+  }
+
   // Solo pagos con OP generada
   const ops = useMemo(() => pagos.filter((p) => !!p.orden_pago_numero), [pagos])
+
+  // K2A.4: cargar count de adjuntos por OP visible (1 sola query).
+  useEffect(() => {
+    if (ops.length === 0) return
+    const ids = ops.map((p) => p.id)
+    const supabase = createClient()
+    supabase
+      .from("ordenes_pago_archivos")
+      .select("pago_id")
+      .in("pago_id", ids)
+      .then(({ data }) => {
+        const counts: Record<string, number> = {}
+        for (const row of data || []) {
+          counts[row.pago_id] = (counts[row.pago_id] || 0) + 1
+        }
+        setAdjuntosCount(counts)
+      })
+  }, [ops])
 
   const empresasUnicas = useMemo(() => {
     const set = new Set<string>()
@@ -1819,10 +1926,13 @@ function TabOrdenesDePago({ pagos }: { pagos: any[] }) {
                   <th className="px-3 py-3 text-left font-semibold text-gray-700">Empresa</th>
                   <th className="px-3 py-3 text-right font-semibold text-gray-700">Total</th>
                   <th className="px-3 py-3 text-center font-semibold text-gray-700 w-24">Acciones</th>
+                  <th className="px-3 py-3 text-center font-semibold text-gray-700 w-32">Comprobante</th>
                 </tr>
               </thead>
               <tbody>
-                {paged.map((p, idx) => (
+                {paged.map((p, idx) => {
+                  const count = adjuntosCount[p.id] || 0
+                  return (
                   <tr key={p.id} className={idx % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                     <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{p.created_at ? formatDateStr(p.created_at) : "-"}</td>
                     <td className="px-3 py-2 font-mono text-xs font-semibold">{p.orden_pago_numero}</td>
@@ -1839,14 +1949,90 @@ function TabOrdenesDePago({ pagos }: { pagos: any[] }) {
                         <Eye className="h-3 w-3" /> Ver
                       </button>
                     </td>
+                    <td className="px-3 py-2 text-center">
+                      <button
+                        onClick={() => openAdjuntos(p.id)}
+                        className={`px-2 py-1 text-xs rounded inline-flex items-center gap-1 ${count > 0 ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                        title={count > 0 ? `${count} adjunto${count > 1 ? "s" : ""}` : "Adjuntar comprobante"}
+                      >
+                        <Paperclip className="h-3 w-3" />
+                        {count > 0 ? count : "+"}
+                      </button>
+                    </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
       <TablePagination currentPage={currentPage} totalPages={pag.totalPages} totalItems={pag.totalItems} pageSize={pag.pageSize} onPageChange={setPage} />
+
+      <Dialog open={!!adjuntosOpen} onOpenChange={(o) => { if (!o) { setAdjuntosOpen(null); setAdjuntosLista([]) } }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Comprobantes de Orden de Pago</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="text-sm text-gray-600 block mb-2">Subir nuevos archivos (PDF, JPG, PNG)</label>
+              <input
+                type="file"
+                multiple
+                accept="application/pdf,image/jpeg,image/png"
+                disabled={adjuntosUploading || !adjuntosOpen}
+                onChange={(e) => {
+                  if (adjuntosOpen) handleUploadAdjuntos(adjuntosOpen, e.target.files)
+                  e.target.value = ""
+                }}
+                className="block w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-medium file:bg-primary file:text-white hover:file:bg-primary/90 disabled:opacity-50"
+              />
+              {adjuntosUploading && <p className="text-xs text-gray-500 mt-1">Subiendo…</p>}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-2">Archivos cargados ({adjuntosLista.length})</p>
+              {adjuntosLoading ? (
+                <div className="text-center py-4 text-gray-500 text-sm">Cargando…</div>
+              ) : adjuntosLista.length === 0 ? (
+                <div className="text-center py-4 text-gray-500 text-sm">Sin archivos</div>
+              ) : (
+                <ul className="divide-y border rounded">
+                  {adjuntosLista.map((a) => (
+                    <li key={a.id} className="flex items-center justify-between px-3 py-2 text-sm">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Paperclip className="h-4 w-4 text-gray-500 shrink-0" />
+                        <span className="truncate">{a.filename || "archivo"}</span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => handleDescargarAdjunto(a)}
+                          className="p-1 hover:bg-gray-100 rounded"
+                          title="Ver/descargar"
+                        >
+                          <Eye className="h-4 w-4 text-blue-600" />
+                        </button>
+                        <button
+                          onClick={() => handleEliminarAdjunto(a)}
+                          className="p-1 hover:bg-gray-100 rounded"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <button className="px-4 py-2 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300">Cerrar</button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
