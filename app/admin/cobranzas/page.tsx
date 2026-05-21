@@ -1675,8 +1675,52 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
   }
 
   function exportXLSX() {
-    const rows: any[] = []
+    const empresaTxt = empresaFilter === "Todas" ? "Todas las empresas" : empresaFilter
+    const rangoTxt = desde || hasta ? ` — Período: ${desde || "..."} a ${hasta || "..."}` : ""
+
+    // ─── Hoja 1: "Saldos Pendientes" — réplica del PDF con banners ──────────
+    // Usamos aoa_to_sheet para poder armar banners (filas con texto en col A
+    // y resto vacío) sub-headers por bloque y un total general al final con
+    // el monto en la columna Acumulado.
+    const aoa: (string | number)[][] = []
+    aoa.push([`Informe de Saldos Pendientes — ${empresaTxt}${rangoTxt}`])
+    aoa.push([])
+
     let totalGeneralXlsx = 0
+    for (const emp of porEmpresa) {
+      aoa.push([emp.empresa])
+      for (const grupo of emp.clientes) {
+        const clienteHeader = grupo.client_cuit
+          ? `${grupo.client_name} — CUIT ${grupo.client_cuit}`
+          : grupo.client_name
+        aoa.push([clienteHeader])
+        aoa.push(["Fecha", "Comprobante", "Total", "Saldo", "Acumulado"])
+        let acumulado = 0
+        const ordenadas = [...grupo.facturas].sort((a, b) => {
+          const fa = a.fecha_comprobante || a.fecha || a.created_at || ""
+          const fb = b.fecha_comprobante || b.fecha || b.created_at || ""
+          return String(fa).localeCompare(String(fb))
+        })
+        for (const f of ordenadas) {
+          const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
+          acumulado += saldo
+          totalGeneralXlsx += saldo
+          aoa.push([
+            formatDateStr(f.fecha_comprobante || f.fecha || f.created_at),
+            [f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero].filter(Boolean).join(" "),
+            Number(f.total) || 0,
+            saldo,
+            acumulado,
+          ])
+        }
+      }
+    }
+    aoa.push([])
+    aoa.push(["", "", "", "TOTAL GENERAL", totalGeneralXlsx])
+    const wsPdf = XLSX.utils.aoa_to_sheet(aoa)
+
+    // ─── Hoja 2: "Plano" — tabla de 7 columnas para filtros y pivots ────────
+    const planoRows: any[] = []
     for (const emp of porEmpresa) {
       for (const grupo of emp.clientes) {
         let acumulado = 0
@@ -1688,12 +1732,10 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
         for (const f of ordenadas) {
           const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
           acumulado += saldo
-          // J.2: columna "Cliente y CUIT" unificada — el operador identifica
-          // al cliente por uno o por el otro segun el caso.
           const clienteCuit = grupo.client_cuit
             ? `${grupo.client_name} (CUIT: ${grupo.client_cuit})`
             : grupo.client_name
-          rows.push({
+          planoRows.push({
             Empresa: emp.empresa,
             "Cliente y CUIT": clienteCuit,
             Fecha: formatDateStr(f.fecha_comprobante || f.fecha || f.created_at),
@@ -1703,20 +1745,18 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
             Saldo: saldo,
             Acumulado: acumulado,
           })
-          totalGeneralXlsx += saldo
         }
       }
     }
-    // J.2: total general unico al final (sin subtotales por cliente o empresa
-    // dentro del XLSX — eso ensucia el agregado y el operador puede sumarlo
-    // con pivots si lo necesita).
-    rows.push({})
-    rows.push({ Empresa: "", "Cliente y CUIT": "", Fecha: "", Comprobante: "TOTAL GENERAL", Total: "", Saldo: totalGeneralXlsx, Acumulado: "" })
-    const ws = XLSX.utils.json_to_sheet(rows)
+    planoRows.push({})
+    planoRows.push({ Empresa: "", "Cliente y CUIT": "", Fecha: "", Comprobante: "TOTAL GENERAL", Total: "", Saldo: "", Acumulado: totalGeneralXlsx })
+    const wsPlano = XLSX.utils.json_to_sheet(planoRows)
+
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "Saldos Pendientes")
-    const empresaTxt = empresaFilter === "Todas" ? "todas" : empresaFilter.toLowerCase()
-    XLSX.writeFile(wb, `saldos_pendientes_${empresaTxt}.xlsx`)
+    XLSX.utils.book_append_sheet(wb, wsPdf, "Saldos Pendientes")
+    XLSX.utils.book_append_sheet(wb, wsPlano, "Plano")
+    const empresaFile = empresaFilter === "Todas" ? "todas" : empresaFilter.toLowerCase()
+    XLSX.writeFile(wb, `saldos_pendientes_${empresaFile}.xlsx`)
   }
 
   function handlePrint() {
@@ -1769,7 +1809,7 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
       <table>
         <tbody>
           ${bloques}
-          <tr class="totals"><td colspan="3" style="text-align:right">TOTAL GENERAL</td><td style="text-align:right">${formatCurrencyExact(totalGeneral)}</td><td></td></tr>
+          <tr class="totals"><td colspan="4" style="text-align:right">TOTAL GENERAL</td><td style="text-align:right">${formatCurrencyExact(totalGeneral)}</td></tr>
         </tbody>
       </table>
       <script>window.print()<\/script></body></html>`)
