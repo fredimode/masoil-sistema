@@ -367,6 +367,7 @@ export default function NuevoPagoPage() {
             numero_comprobante: null,
             debe: 0,
             haber: importeTotal,
+            empresa: form.empresa || null,
             referencia_id: pagoId,
             observaciones: `Pago a cuenta - ${form.observaciones || "anticipo"}`,
           })

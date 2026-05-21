@@ -239,10 +239,10 @@ export default function PagosPage() {
   // K2A.5: exportar cta cte del proveedor expandido a XLSX. Patrón heredado
   // del export de cta cte cliente (cobranzas/page.tsx). Incluye totales al pie.
   function exportXLSXCtaCteProveedor(prov: any) {
-    const totalDebe = expandedCC.reduce((s, m) => s + (Number(m.debe) || 0), 0)
-    const totalHaber = expandedCC.reduce((s, m) => s + (Number(m.haber) || 0), 0)
+    const totalDebe = expandedCCFiltrado.reduce((s, m) => s + (Number(m.debe) || 0), 0)
+    const totalHaber = expandedCCFiltrado.reduce((s, m) => s + (Number(m.haber) || 0), 0)
     const saldoTotal = totalDebe - totalHaber
-    const rows: Record<string, any>[] = expandedCC.map((m: any) => ({
+    const rows: Record<string, any>[] = expandedCCFiltrado.map((m: any) => ({
       Fecha: m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "-",
       Tipo: m.tipo_comprobante || "-",
       Comprobante: m.numero_comprobante || "-",
@@ -263,10 +263,10 @@ export default function PagosPage() {
   function printCtaCteProveedor(prov: any) {
     const w = window.open("", "_blank")
     if (!w) return
-    const totalDebe = expandedCC.reduce((s, m) => s + (Number(m.debe) || 0), 0)
-    const totalHaber = expandedCC.reduce((s, m) => s + (Number(m.haber) || 0), 0)
+    const totalDebe = expandedCCFiltrado.reduce((s, m) => s + (Number(m.debe) || 0), 0)
+    const totalHaber = expandedCCFiltrado.reduce((s, m) => s + (Number(m.haber) || 0), 0)
     const saldoTotal = totalDebe - totalHaber
-    const rows = expandedCC.map((m: any) => `
+    const rows = expandedCCFiltrado.map((m: any) => `
       <tr>
         <td>${m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "-"}</td>
         <td>${m.tipo_comprobante || "-"}</td>
@@ -279,7 +279,7 @@ export default function PagosPage() {
       <style>body{font-family:sans-serif;max-width:1000px;margin:30px auto}h2{margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #ddd;padding:6px 8px;font-size:12px}th{background:#f5f5f5;text-align:left}.totals td{font-weight:bold;background:#f0f0f0}.saldo{margin-top:16px;padding:12px;background:#fef3c7;font-size:18px;font-weight:bold;text-align:right}</style></head><body>
       <h2>Cuenta Corriente Proveedor</h2>
       <p><strong>Proveedor:</strong> ${prov.nombre || "-"}${prov.cuit ? " — CUIT: " + prov.cuit : ""}</p>
-      <p><strong>Movimientos:</strong> ${expandedCC.length}</p>
+      <p><strong>Movimientos:</strong> ${expandedCCFiltrado.length}</p>
       <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Comprobante</th><th style="text-align:right">Debe</th><th style="text-align:right">Haber</th><th style="text-align:right">Saldo</th></tr></thead>
       <tbody>${rows}
       <tr class="totals"><td colspan="3">TOTALES</td><td style="text-align:right">${formatCurrency(totalDebe)}</td><td style="text-align:right">${formatCurrency(totalHaber)}</td><td></td></tr>
@@ -303,9 +303,6 @@ export default function PagosPage() {
 
   const proveedoresFiltrados = useMemo(() => {
     let list = proveedoresList
-    if (empresaGlobal !== "Todos") {
-      list = list.filter((p) => p.empresa === empresaGlobal || !p.empresa)
-    }
     if (provSearch.trim()) {
       const q = normalizeSearch(provSearch)
       list = list.filter((p) => normalizeSearch(p.nombre || "").includes(q))
@@ -325,7 +322,15 @@ export default function PagosPage() {
       })
     }
     return list
-  }, [proveedoresList, empresaGlobal, provSearch, filtroVencimiento, facturasPendientesByProv])
+  }, [proveedoresList, provSearch, filtroVencimiento, facturasPendientesByProv])
+
+  // K2A.3: filtrar movimientos de cta cte por empresa nuestra (no proveedor).
+  // Un proveedor le puede facturar a Aquiles, Conancap y Masoil; el filtro
+  // empresa segmenta los movimientos, no oculta proveedores.
+  const expandedCCFiltrado = useMemo(() => {
+    if (empresaGlobal === "Todos") return expandedCC
+    return expandedCC.filter((m: any) => m.empresa === empresaGlobal || !m.empresa)
+  }, [expandedCC, empresaGlobal])
 
   async function marcarPagado(id: string) {
     try {
@@ -645,21 +650,6 @@ export default function PagosPage() {
         </Link>
       </div>
 
-      {/* Empresa filter */}
-      <div className="flex items-center gap-3 mb-4">
-        <label className="text-sm font-medium text-gray-600">Empresa:</label>
-        <select
-          value={empresaGlobal}
-          onChange={(e) => setEmpresaGlobal(e.target.value)}
-          className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
-        >
-          <option value="Todos">Todas</option>
-          <option value="Aquiles">Aquiles</option>
-          <option value="Conancap">Conancap</option>
-          <option value="Masoil">Masoil</option>
-        </select>
-      </div>
-
       <Tabs defaultValue="proveedores">
         <TabsList>
           <TabsTrigger value="proveedores">Proveedores / Cta Cte</TabsTrigger>
@@ -669,6 +659,21 @@ export default function PagosPage() {
           <TabsTrigger value="servicios-admin">Servicios Administración</TabsTrigger>
           <TabsTrigger value="reclamos">Reclamos</TabsTrigger>
         </TabsList>
+
+        {/* Empresa filter — filtra movimientos de cta cte por empresa nuestra */}
+        <div className="flex items-center gap-3 mt-4 mb-4">
+          <label className="text-sm font-medium text-gray-600">Empresa:</label>
+          <select
+            value={empresaGlobal}
+            onChange={(e) => setEmpresaGlobal(e.target.value)}
+            className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+          >
+            <option value="Todos">Todas</option>
+            <option value="Aquiles">Aquiles</option>
+            <option value="Conancap">Conancap</option>
+            <option value="Masoil">Masoil</option>
+          </select>
+        </div>
 
         {/* ============ TAB PROVEEDORES / CTA CTE ============ */}
         <TabsContent value="proveedores">
@@ -780,7 +785,7 @@ export default function PagosPage() {
                           <div className="flex justify-center py-4">
                             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" />
                           </div>
-                        ) : expandedCC.length > 0 ? (
+                        ) : expandedCCFiltrado.length > 0 ? (
                           <div className="overflow-x-auto">
                             <div className="flex items-center justify-between mb-2">
                               <h4 className="text-sm font-semibold text-gray-700">Cuenta corriente</h4>
@@ -811,7 +816,7 @@ export default function PagosPage() {
                                 </tr>
                               </thead>
                               <tbody>
-                                {expandedCC.map((m: any, i: number) => (
+                                {expandedCCFiltrado.map((m: any, i: number) => (
                                   <tr key={m.id || i} className={i % 2 ? "bg-gray-50" : ""}>
                                     <td className="px-3 py-2">{m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "-"}</td>
                                     <td className="px-3 py-2">{m.tipo_comprobante || "-"}</td>
