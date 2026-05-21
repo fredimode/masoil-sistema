@@ -363,7 +363,7 @@ export default function NuevoPagoPage() {
           await createMovimientoCuentaCorrienteProveedor({
             proveedor_id: form.proveedor_id,
             fecha: new Date().toISOString().slice(0, 10),
-            tipo_comprobante: "PC",
+            tipo_comprobante: "OP",
             numero_comprobante: null,
             debe: 0,
             haber: importeTotal,
