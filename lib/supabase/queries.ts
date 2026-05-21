@@ -1021,9 +1021,12 @@ export async function fetchCobranzasPendientes(): Promise<any[]> {
     )
   }
 
+  // K2C.1: incluimos NC junto con FC/ND. Las NC aparecen como filas de la
+  // tabla de comprobantes a cobrar para que el operador pueda tildarlas y
+  // restarlas al saldo a abonar (totalSeleccionado descuenta su importe).
   const facturasFCND = ((facturasRes.data || []) as FactRow[]).filter((f) => {
     const t = (f.tipo || "").toUpperCase()
-    return t.startsWith("FACTURA ") || t.startsWith("NOTA DE DEBITO")
+    return t.startsWith("FACTURA ") || t.startsWith("NOTA DE DEBITO") || t.startsWith("NOTA DE CREDITO")
   })
 
   const porCliente = new Map<string, FactRow[]>()
@@ -1044,11 +1047,20 @@ export async function fetchCobranzasPendientes(): Promise<any[]> {
       return da - db
     })
     for (const f of fcs) {
-      if (restante <= 0) break
       const total = Number(f.total) || 0
       if (total <= 0) continue
-      const saldoFactura = Math.min(restante, total)
-      restante -= saldoFactura
+      const t = (f.tipo || "").toUpperCase()
+      const esNC = t.startsWith("NOTA DE CREDITO")
+      let saldoFactura: number
+      if (esNC) {
+        // NC: aparecen con su total entero. No consumen `restante` porque
+        // representan un crédito (haber) que ya está descontado en saldoCliente.
+        saldoFactura = total
+      } else {
+        if (restante <= 0) continue
+        saldoFactura = Math.min(restante, total)
+        restante -= saldoFactura
+      }
       nuevas.push({
         id: `f-${f.id}`,
         client_id: f.client_id,
