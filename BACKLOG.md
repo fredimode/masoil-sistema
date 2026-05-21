@@ -238,6 +238,28 @@ sprint 7) y se popula automáticamente desde `orders.factura_id` cuando se
 emite un remito desde pedido facturado. El backfill cubrió 6 de 8 remitos
 existentes (2 quedan en NULL porque sus pedidos no estaban facturados).
 
+## Hallazgos de auditoría sin acción inmediata
+
+### K2B.4 — Warning de CUIT duplicado al cargar cliente/proveedor
+**Origen:** sprint K2 (mayo 2026).
+
+Reportado como "tira warning al cargar un cliente/proveedor con CUIT
+existente". Query de auditoría al 2026-05-20 devolvió **0 duplicados
+reales de CUIT** en `clients` y en `proveedores`. La percepción del
+operador venía de sucursales del mismo grupo cargadas con CUITs
+distintos (cada sucursal con su número fiscal real).
+
+**Estado:** sin acción. No se implementa el warning preventivo.
+
+**Si aparece la necesidad real (sprint futuro):**
+- Validar al `INSERT/UPDATE` en `/admin/clientes/nuevo` y `/admin/proveedores/nuevo`
+  buscando `cuit` existente.
+- Mostrar dialog que liste el/los clientes/proveedores existentes con
+  ese CUIT y permita: (a) abrir la ficha existente, (b) confirmar y
+  continuar (caso sucursal legítima).
+- Considerar índice único parcial `WHERE cuit IS NOT NULL` solo si
+  el negocio confirma que cada CUIT debe ser único en el sistema.
+
 ## Hallazgos de auditoría corregidos
 
 ### Auditoría #19 — botón "Cargar NC" supuestamente en TabCuentaCorriente
