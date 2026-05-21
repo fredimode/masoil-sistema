@@ -357,7 +357,7 @@ export default function NuevoPagoPage() {
         console.error("Error generando orden de pago:", err)
       }
 
-      // Si es pago a cuenta, registrar movimiento DEBE en cuenta corriente del proveedor
+      // Si es pago a cuenta, registrar movimiento HABER en cuenta corriente del proveedor
       if (esPagoACuenta && form.proveedor_id) {
         try {
           await createMovimientoCuentaCorrienteProveedor({
@@ -365,8 +365,8 @@ export default function NuevoPagoPage() {
             fecha: new Date().toISOString().slice(0, 10),
             tipo_comprobante: "PC",
             numero_comprobante: null,
-            debe: importeTotal,
-            haber: 0,
+            debe: 0,
+            haber: importeTotal,
             referencia_id: pagoId,
             observaciones: `Pago a cuenta - ${form.observaciones || "anticipo"}`,
           })
