@@ -1,20 +1,25 @@
 import { createServerClient } from "@supabase/ssr"
 import { NextResponse, type NextRequest } from "next/server"
 
-// Route permissions by role
-// usuario can access everything EXCEPT Finanzas and Sistema
-const ROUTE_PERMISSIONS: Record<string, string[]> = {
-  "/admin/finanzas": ["admin"],
-  "/admin/configuracion": ["admin"],
-  "/admin/facturacion/logs": ["admin"],
-  // Everything else (pedidos, clientes, stock, compras, proveedores, pagos, cobranzas, facturacion, estadisticas) → all roles
+// Route permissions: por role y/o permisos granulares (permisos_extra).
+// Cada ruta declara qué roles entran sí o sí (roles) y qué permisos
+// extra otorgan acceso adicional (permisos). Usuario pasa si tiene
+// alguno: role en roles[] OR cualquiera de sus permisos en permisos[].
+type RouteRule = { roles?: string[]; permisos?: string[] }
+const ROUTE_PERMISSIONS: Record<string, RouteRule> = {
+  "/admin/finanzas":         { roles: ["admin"] },
+  "/admin/configuracion":    { roles: ["admin"] },
+  "/admin/facturacion/logs": { roles: ["admin"] },
+  "/admin/contabilidad":     { roles: ["admin"], permisos: ["contabilidad"] },
+  "/admin/plan-cuentas":     { roles: ["admin"], permisos: ["contabilidad"] },
 }
 
-function checkRoutePermission(pathname: string, role: string): boolean {
-  // Check from most specific to least specific
-  for (const [route, allowedRoles] of Object.entries(ROUTE_PERMISSIONS)) {
+function checkRoutePermission(pathname: string, role: string, permisos: string[]): boolean {
+  for (const [route, rule] of Object.entries(ROUTE_PERMISSIONS)) {
     if (pathname.startsWith(route)) {
-      return allowedRoles.includes(role)
+      const okRole = rule.roles?.includes(role) ?? false
+      const okPerm = rule.permisos?.some((p) => permisos.includes(p)) ?? false
+      return okRole || okPerm
     }
   }
   // If no specific rule, allow all authenticated admin users
@@ -64,7 +69,7 @@ export async function middleware(request: NextRequest) {
   if (user && (pathname.startsWith("/admin") || pathname.startsWith("/vendedor"))) {
     const { data: vendedor } = await supabase
       .from("vendedores")
-      .select("role")
+      .select("role, permisos_extra")
       .eq("auth_user_id", user.id)
       .single()
 
@@ -76,10 +81,12 @@ export async function middleware(request: NextRequest) {
     }
 
     const role = vendedor.role
+    const permisos = (vendedor.permisos_extra as string[] | null) || []
 
-    // Check specific admin route permissions (Finanzas/Sistema → admin only)
+    // Check specific admin route permissions (Finanzas/Sistema → admin only,
+    // Contabilidad/Plan-Cuentas → admin OR permiso 'contabilidad').
     if (pathname.startsWith("/admin") && pathname !== "/admin") {
-      if (!checkRoutePermission(pathname, role)) {
+      if (!checkRoutePermission(pathname, role, permisos)) {
         const url = request.nextUrl.clone()
         url.pathname = "/admin"
         url.searchParams.set("error", "No tenés permisos para acceder a esa sección")

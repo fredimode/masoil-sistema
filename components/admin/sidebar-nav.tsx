@@ -43,6 +43,7 @@ interface NavSection {
   label: string
   items: NavItem[]
   roles: UserRole[] // roles that can see this section
+  permiso?: string // optional granular permission that also grants access
 }
 
 const navSections: NavSection[] = [
@@ -105,6 +106,7 @@ const navSections: NavSection[] = [
   {
     label: "Contabilidad",
     roles: ["admin"],
+    permiso: "contabilidad",
     items: [
       { href: "/admin/contabilidad", label: "Informes Contables", icon: Calculator },
       { href: "/admin/plan-cuentas", label: "Plan de Cuentas", icon: FileText },
@@ -124,12 +126,15 @@ interface AdminSidebarContentProps {
   onNavigate?: () => void
   userRole?: UserRole
   userName?: string
+  userPermisos?: string[]
 }
 
-export function AdminSidebarContent({ onNavigate, userRole = "usuario", userName }: AdminSidebarContentProps) {
+export function AdminSidebarContent({ onNavigate, userRole = "usuario", userName, userPermisos = [] }: AdminSidebarContentProps) {
   const pathname = usePathname()
 
-  const visibleSections = navSections.filter((s) => s.roles.includes(userRole))
+  const visibleSections = navSections.filter(
+    (s) => s.roles.includes(userRole) || (s.permiso != null && userPermisos.includes(s.permiso))
+  )
 
   const initials = userName
     ? userName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)

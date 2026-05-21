@@ -18,6 +18,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [loggingOut, setLoggingOut] = useState(false)
   const [userRole, setUserRole] = useState<UserRole>("usuario")
   const [userName, setUserName] = useState<string>("")
+  const [userPermisos, setUserPermisos] = useState<string[]>([])
 
   useEffect(() => {
     async function loadRole() {
@@ -26,12 +27,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       if (user) {
         const { data: vendedor } = await supabase
           .from("vendedores")
-          .select("role, name")
+          .select("role, name, permisos_extra")
           .eq("auth_user_id", user.id)
           .single()
         if (vendedor) {
           setUserRole(vendedor.role as UserRole)
           setUserName(vendedor.name || "")
+          setUserPermisos((vendedor.permisos_extra as string[] | null) || [])
         }
       }
     }
@@ -50,7 +52,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="flex min-h-screen bg-background">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex w-64 bg-sidebar border-r border-sidebar-border flex-col">
-        <AdminSidebarContent userRole={userRole} userName={userName} />
+        <AdminSidebarContent userRole={userRole} userName={userName} userPermisos={userPermisos} />
       </aside>
 
       {/* Main Content */}
@@ -65,7 +67,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {sidebarOpen && (
             <Sheet open onOpenChange={setSidebarOpen}>
               <SheetContent side="left" className="p-0 w-64">
-                <AdminSidebarContent onNavigate={() => setSidebarOpen(false)} userRole={userRole} userName={userName} />
+                <AdminSidebarContent onNavigate={() => setSidebarOpen(false)} userRole={userRole} userName={userName} userPermisos={userPermisos} />
               </SheetContent>
             </Sheet>
           )}
