@@ -516,6 +516,33 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
             </div>
           </Card>
 
+          {/* Domicilio y Entrega — siempre visible para que sea evidente
+              dónde se carga la sucursal/domicilio de entrega del cliente. */}
+          <Card className="p-6">
+            <h3 className="text-lg font-semibold mb-4">Domicilio y Entrega</h3>
+            <div className="space-y-3 text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Dirección fiscal</p>
+                <p className="font-medium">{client.address || <span className="text-muted-foreground italic">—</span>}</p>
+              </div>
+              <Separator />
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Sucursal</p>
+                <p className="font-medium">{(client as any).sucursal || <span className="text-muted-foreground italic">—</span>}</p>
+              </div>
+              <Separator />
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Sucursal de Entrega</p>
+                <p className="font-medium">{(client as any).sucursalEntrega || <span className="text-muted-foreground italic">— (sin definir)</span>}</p>
+              </div>
+              <Separator />
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Domicilio de Entrega</p>
+                <p className="font-medium">{(client as any).domicilioEntrega || <span className="text-muted-foreground italic">— (sin definir)</span>}</p>
+              </div>
+            </div>
+          </Card>
+
           {/* Payment Terms */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">Términos Comerciales</h3>
