@@ -119,7 +119,7 @@ export default function LogisticaPage() {
     if (!w) return
     const escapeHtml = (s: string) =>
       s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
-    const truncate = (s: string, n = 60) => s.length > n ? s.slice(0, n - 1) + "…" : s
+    const truncate = (s: string, n: number) => s.length > n ? s.slice(0, n - 1) + "…" : s
     // K2B.2(a): filtrar pedidos excluidos del PDF sin borrarlos.
     const candidatos = visibles.filter((i) => i.incluir_en_reparto !== false)
     const rowsHtml = candidatos.map((i) => {
@@ -128,10 +128,10 @@ export default function LogisticaPage() {
       const nroPedido = i.order_id
         ? (i.orders?.order_number_serial || i.orders?.order_number || i.order_id.slice(0, 8))
         : "-"
-      const descripcion = i.es_destino_extra ? (i.descripcion_extra || "(sin descripción)") : "-"
+      const descripcion = i.es_destino_extra ? truncate(i.descripcion_extra || "(sin descripción)", 50) : "-"
       // Observaciones: para pedidos toma orders.notes; para manuales toma reparto_items.observaciones
       const obsRaw = i.order_id ? (i.orders?.notes || "") : (i.observaciones || "")
-      const obs = obsRaw ? escapeHtml(truncate(String(obsRaw))) : "-"
+      const obs = obsRaw ? escapeHtml(truncate(String(obsRaw), 50)) : "-"
       // Sucursal: si hay proveedor_sucursal_id, mostrar nombre + dirección (override).
       let sucursalTxt: string
       if (i.proveedor_sucursal_id && i.proveedor_sucursales) {
@@ -140,31 +140,38 @@ export default function LogisticaPage() {
       } else {
         sucursalTxt = i.sucursal_entrega || "-"
       }
+      sucursalTxt = truncate(sucursalTxt, 55)
+      const cliente = truncate(i.client_name || "-", 40)
       return `
       <tr>
         <td>${i.orden_reparto || "-"}</td>
         <td class="mono">${escapeHtml(String(nroPedido))}</td>
-        <td>${escapeHtml(i.client_name || "-")}</td>
+        <td>${escapeHtml(cliente)}</td>
         <td>${escapeHtml(descripcion)}</td>
         <td>${escapeHtml(sucursalTxt)}</td>
         <td class="obs">${obs}</td>
       </tr>`
     }).join("")
+    // L.2: compactar PDF — padding, font, line-height reducidos para que
+    // los renglones no salgan espaciados.
     w.document.write(`<html><head><title>Reparto ${numeroActual}</title>
       <style>
-        body{font-family:sans-serif;max-width:1100px;margin:30px auto}
-        h2{margin-bottom:4px}
-        table{width:100%;border-collapse:collapse;margin-top:12px;table-layout:fixed}
-        th,td{border:1px solid #ccc;padding:6px 8px;font-size:12px;vertical-align:top;word-wrap:break-word}
-        th{background:#f5f5f5;text-align:left;font-size:11px}
-        .col-orden{width:50px}
-        .col-pedido{width:110px}
-        .col-desc{width:160px}
+        @page{margin:1cm}
+        body{font-family:sans-serif;max-width:1100px;margin:15px auto;line-height:1.2}
+        h2{margin:0 0 4px 0;font-size:16px}
+        p{margin:2px 0;font-size:11px}
+        table{width:100%;border-collapse:collapse;margin-top:8px;table-layout:fixed}
+        th,td{border:1px solid #999;padding:3px 5px;font-size:10.5px;vertical-align:middle;line-height:1.2;overflow:hidden;text-overflow:ellipsis}
+        th{background:#f0f0f0;text-align:left;font-size:10px;font-weight:bold;padding:4px 5px}
+        .col-orden{width:38px}
+        .col-pedido{width:95px}
         .col-cliente{width:auto}
-        .col-sucursal{width:200px}
-        .col-obs{width:200px}
-        td.mono{font-family:monospace;font-size:11px}
-        td.obs{font-size:11px;color:#444}
+        .col-desc{width:120px}
+        .col-sucursal{width:160px}
+        .col-obs{width:160px}
+        td.mono{font-family:monospace;font-size:10px}
+        td.obs{font-size:10px;color:#444}
+        tr{page-break-inside:avoid}
       </style></head><body>
       <h2>Reparto N° ${numeroActual || "-"}</h2>
       <p>Fecha: ${formatDateStr(selectedFecha)} — Destinos: ${candidatos.length}</p>
@@ -231,13 +238,15 @@ export default function LogisticaPage() {
               </button>
             )
           })()}
+          {/* L.2: "Exportar PDF" como principal (hoja de ruta para repartidor),
+              Excel como opción secundaria. */}
           <button onClick={handlePrint} disabled={visibles.length === 0}
-            className="flex items-center gap-1.5 px-3 py-2 bg-gray-600 text-white rounded-md text-sm hover:bg-gray-700 disabled:opacity-50">
-            <Printer className="h-4 w-4" /> Imprimir
+            className="flex items-center gap-1.5 px-3 py-2 bg-primary text-white rounded-md text-sm hover:bg-primary/90 disabled:opacity-50">
+            <Printer className="h-4 w-4" /> Exportar PDF
           </button>
           <button onClick={exportXLSX} disabled={visibles.length === 0}
-            className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-md text-sm hover:bg-green-700 disabled:opacity-50">
-            <Download className="h-4 w-4" /> Exportar
+            className="flex items-center gap-1.5 px-3 py-2 bg-gray-200 text-gray-700 rounded-md text-sm hover:bg-gray-300 disabled:opacity-50">
+            <Download className="h-4 w-4" /> Exportar Excel
           </button>
           <label className="flex items-center gap-2 text-sm select-none cursor-pointer">
             <input type="checkbox" checked={mostrarCompletados}
