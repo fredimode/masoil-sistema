@@ -709,7 +709,9 @@ export default function FacturasProveedorPage() {
 
       {/* ==================== DIALOG: Cargar Factura ==================== */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-7xl max-h-[95vh] overflow-y-auto">
+        {/* L.3: dialog a casi pantalla completa para que sea evidente.
+            sm:max-w-none override del max-width default de shadcn Dialog. */}
+        <DialogContent className="!max-w-[97vw] sm:!max-w-[97vw] w-[97vw] h-[95vh] max-h-[95vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Cargar Factura de Proveedor</DialogTitle>
           </DialogHeader>
