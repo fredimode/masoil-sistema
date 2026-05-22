@@ -96,7 +96,6 @@ export default function PagosPage() {
   const [loadingLoteItems, setLoadingLoteItems] = useState(false)
   const [filtroLoteFecha, setFiltroLoteFecha] = useState("")
   const [filtroLoteEstado, setFiltroLoteEstado] = useState("Todos")
-  const [filtroLoteEmpresa, setFiltroLoteEmpresa] = useState("Todos")
   const [nuevoLoteOpen, setNuevoLoteOpen] = useState(false)
   const [nuevoLoteFecha, setNuevoLoteFecha] = useState(new Date().toISOString().slice(0, 10))
   const [nuevoLoteEmpresa, setNuevoLoteEmpresa] = useState("")
@@ -107,16 +106,15 @@ export default function PagosPage() {
   const [reclamosPage, setReclamosPage] = useState(1)
 
   // Filtros pagos (programación reemplazada por lotes)
+  // L.4 v2: filtros locales de Empresa eliminados — todos usan empresaGlobal.
   const [busquedaPagos, setBusquedaPagos] = useState("")
   const [filtroEstado, setFiltroEstado] = useState("Todos")
-  const [filtroEmpresaPagos, setFiltroEmpresaPagos] = useState("Todos")
   const [filtroFormaPago, setFiltroFormaPago] = useState("Todos")
   const [filtroFechaDesde, setFiltroFechaDesde] = useState("")
   const [filtroFechaHasta, setFiltroFechaHasta] = useState("")
 
   // Filtros reclamos
   const [busquedaReclamos, setBusquedaReclamos] = useState("")
-  const [filtroEmpresaReclamos, setFiltroEmpresaReclamos] = useState("Todos")
 
   // Nuevo reclamo
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -526,12 +524,10 @@ export default function PagosPage() {
   // Lotes borrador for "enviar a lote"
   const lotesBorrador = useMemo(() => lotes.filter((l) => l.estado === "borrador"), [lotes])
 
-  // Valores unicos para filtros
-  const empresasPagos = useMemo(() => [...new Set(pagos.map((p) => p.empresa).filter(Boolean))], [pagos])
+  // Valores unicos para filtros (forma_pago se sigue derivando porque varía)
   const formasPago = useMemo(() => [...new Set(pagos.map((p) => p.forma_pago).filter(Boolean))], [pagos])
-  const empresasReclamos = useMemo(() => [...new Set(reclamos.map((r) => r.empresa).filter(Boolean))], [reclamos])
 
-  // Filtrado pagos
+  // L.4 v2: filtrado pagos usa empresaGlobal (filtro unificado de las 3 pestañas)
   const pagosFiltrados = useMemo(() => {
     return pagos.filter((p) => {
       const matchBusqueda =
@@ -540,36 +536,36 @@ export default function PagosPage() {
         normalizeSearch(p.cuit || "").includes(normalizeSearch(busquedaPagos)) ||
         normalizeSearch(p.numero_fc || "").includes(normalizeSearch(busquedaPagos))
       const matchEstado = filtroEstado === "Todos" || p.estado_pago === filtroEstado
-      const matchEmpresa = filtroEmpresaPagos === "Todos" || p.empresa === filtroEmpresaPagos
+      const matchEmpresa = empresaGlobal === "Todos" || p.empresa === empresaGlobal
       const matchForma = filtroFormaPago === "Todos" || p.forma_pago === filtroFormaPago
       const fechaPago = p.created_at ? p.created_at.slice(0, 10) : ""
       const matchFechaDesde = !filtroFechaDesde || fechaPago >= filtroFechaDesde
       const matchFechaHasta = !filtroFechaHasta || fechaPago <= filtroFechaHasta
       return matchBusqueda && matchEstado && matchEmpresa && matchForma && matchFechaDesde && matchFechaHasta
     })
-  }, [pagos, busquedaPagos, filtroEstado, filtroEmpresaPagos, filtroFormaPago, filtroFechaDesde, filtroFechaHasta])
+  }, [pagos, busquedaPagos, filtroEstado, empresaGlobal, filtroFormaPago, filtroFechaDesde, filtroFechaHasta])
 
-  // Filtrado reclamos
+  // L.4 v2: filtrado reclamos usa empresaGlobal
   const reclamosFiltrados = useMemo(() => {
     return reclamos.filter((r) => {
       const matchBusqueda =
         !busquedaReclamos ||
         normalizeSearch(r.proveedor_nombre || "").includes(normalizeSearch(busquedaReclamos)) ||
         normalizeSearch(r.observaciones || "").includes(normalizeSearch(busquedaReclamos))
-      const matchEmpresa = filtroEmpresaReclamos === "Todos" || r.empresa === filtroEmpresaReclamos
+      const matchEmpresa = empresaGlobal === "Todos" || r.empresa === empresaGlobal
       return matchBusqueda && matchEmpresa
     })
-  }, [reclamos, busquedaReclamos, filtroEmpresaReclamos])
+  }, [reclamos, busquedaReclamos, empresaGlobal])
 
-  // Filtrado lotes
+  // L.4 v2: filtrado lotes usa empresaGlobal
   const lotesFiltrados = useMemo(() => {
     return lotes.filter((l) => {
       const matchFecha = !filtroLoteFecha || l.fecha_lote === filtroLoteFecha
       const matchEstado = filtroLoteEstado === "Todos" || l.estado === filtroLoteEstado
-      const matchEmpresa = filtroLoteEmpresa === "Todos" || l.empresa === filtroLoteEmpresa
+      const matchEmpresa = empresaGlobal === "Todos" || l.empresa === empresaGlobal
       return matchFecha && matchEstado && matchEmpresa
     })
-  }, [lotes, filtroLoteFecha, filtroLoteEstado, filtroLoteEmpresa])
+  }, [lotes, filtroLoteFecha, filtroLoteEstado, empresaGlobal])
 
   // Pagination
   const { totalPages: pagosTotalPages, totalItems: pagosTotalItems, pageSize: pagosPageSize, getPage: getPagosPage } = usePagination(pagosFiltrados, 50)
@@ -664,19 +660,22 @@ export default function PagosPage() {
           <TabsTrigger value="reclamos">Reclamos</TabsTrigger>
         </TabsList>
 
-        {/* Empresa filter — filtra movimientos de cta cte por empresa nuestra */}
-        <div className="flex items-center gap-3 mt-4 mb-4">
-          <label className="text-sm font-medium text-gray-600">Empresa:</label>
+        {/* L.4 v2: selector Empresa GLOBAL — afecta todas las pestañas
+            (Cta Cte, Órdenes de Pago, Lote, Reclamos). Las 3 empresas
+            son las que integran Masoil: Masoil + Aquiles + Conancap. */}
+        <div className="flex items-center gap-3 mt-4 mb-4 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+          <label className="text-sm font-semibold text-amber-900">Filtro global Empresa:</label>
           <select
             value={empresaGlobal}
             onChange={(e) => setEmpresaGlobal(e.target.value)}
-            className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+            className="p-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-400 text-sm font-medium"
           >
-            <option value="Todos">Todas</option>
+            <option value="Todos">Todas (las 3)</option>
+            <option value="Masoil">Masoil</option>
             <option value="Aquiles">Aquiles</option>
             <option value="Conancap">Conancap</option>
-            <option value="Masoil">Masoil</option>
           </select>
+          <span className="text-xs text-amber-800">Aplica a todas las pestañas</span>
         </div>
 
         {/* ============ TAB PROVEEDORES / CTA CTE ============ */}
@@ -873,15 +872,7 @@ export default function PagosPage() {
                   <option value="pagado">Pagado</option>
                 </select>
               </div>
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Empresa</label>
-                <select value={filtroLoteEmpresa} onChange={(e) => setFiltroLoteEmpresa(e.target.value)} className="p-2 border rounded-lg text-sm">
-                  <option value="Todos">Todas</option>
-                  <option value="Masoil">Masoil</option>
-                  <option value="Aquiles">Aquiles</option>
-                  <option value="Conancap">Conancap</option>
-                </select>
-              </div>
+              {/* L.4 v2: filtro empresa unificado en el selector global arriba de TabsList */}
               <div className="ml-auto flex gap-2">
                 <Dialog open={nuevoLoteOpen} onOpenChange={setNuevoLoteOpen}>
                   <DialogTrigger asChild>
@@ -1067,7 +1058,7 @@ export default function PagosPage() {
 
         {/* ============ TAB ÓRDENES DE PAGO ============ */}
         <TabsContent value="ordenes-pago">
-          <TabOrdenesDePago pagos={pagos} />
+          <TabOrdenesDePago pagos={pagos} empresaGlobal={empresaGlobal} />
         </TabsContent>
 
         {/* ============ TAB PAGOS EN PROCESO ============ */}
@@ -1178,12 +1169,7 @@ export default function PagosPage() {
                 onChange={(e) => { setBusquedaReclamos(e.target.value); setReclamosPage(1) }}
                 className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm flex-1 min-w-[200px]"
               />
-              <select value={filtroEmpresaReclamos} onChange={(e) => { setFiltroEmpresaReclamos(e.target.value); setReclamosPage(1) }} className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm">
-                <option value="Todos">Empresa: Todas</option>
-                {empresasReclamos.map((e) => (
-                  <option key={e} value={e}>{e}</option>
-                ))}
-              </select>
+              {/* L.4 v2: filtro empresa unificado en el selector global */}
               <button onClick={exportarReclamosXLSX} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">Exportar XLSX</button>
               <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogTrigger asChild>
@@ -1736,10 +1722,9 @@ function TabPagosEnProcesoIsla() {
 
 // ─── Tab: Órdenes de Pago ────────────────────────────────────────────────────
 
-function TabOrdenesDePago({ pagos }: { pagos: any[] }) {
+function TabOrdenesDePago({ pagos, empresaGlobal }: { pagos: any[]; empresaGlobal: string }) {
   const [filtroDesde, setFiltroDesde] = useState("")
   const [filtroHasta, setFiltroHasta] = useState("")
-  const [filtroEmpresa, setFiltroEmpresa] = useState("Todos")
   const [filtroProv, setFiltroProv] = useState("")
   const [page, setPage] = useState(1)
 
@@ -1849,22 +1834,17 @@ function TabOrdenesDePago({ pagos }: { pagos: any[] }) {
       })
   }, [ops])
 
-  const empresasUnicas = useMemo(() => {
-    const set = new Set<string>()
-    ops.forEach((p) => { if (p.empresa) set.add(p.empresa) })
-    return ["Todos", ...Array.from(set).sort()]
-  }, [ops])
-
+  // L.4 v2: filtra por empresaGlobal (selector unificado arriba de TabsList)
   const filtradas = useMemo(() => {
     return ops.filter((p) => {
       const fecha = p.created_at ? new Date(p.created_at).toISOString().slice(0, 10) : ""
       if (filtroDesde && fecha < filtroDesde) return false
       if (filtroHasta && fecha > filtroHasta) return false
-      if (filtroEmpresa !== "Todos" && p.empresa !== filtroEmpresa) return false
+      if (empresaGlobal !== "Todos" && p.empresa !== empresaGlobal) return false
       if (filtroProv && !normalizeSearch(p.proveedor_nombre || "").includes(normalizeSearch(filtroProv))) return false
       return true
     })
-  }, [ops, filtroDesde, filtroHasta, filtroEmpresa, filtroProv])
+  }, [ops, filtroDesde, filtroHasta, empresaGlobal, filtroProv])
 
   const pag = usePagination(filtradas, 50)
   const currentPage = Math.min(page, pag.totalPages)
@@ -1895,12 +1875,7 @@ function TabOrdenesDePago({ pagos }: { pagos: any[] }) {
             <label className="text-xs text-gray-600 block mb-1">Hasta</label>
             <input type="date" value={filtroHasta} onChange={(e) => { setFiltroHasta(e.target.value); setPage(1) }} className="border rounded-md px-3 py-2 text-sm" />
           </div>
-          <div>
-            <label className="text-xs text-gray-600 block mb-1">Empresa</label>
-            <select value={filtroEmpresa} onChange={(e) => { setFiltroEmpresa(e.target.value); setPage(1) }} className="border rounded-md px-3 py-2 text-sm">
-              {empresasUnicas.map((e) => (<option key={e} value={e}>{e}</option>))}
-            </select>
-          </div>
+          {/* L.4 v2: filtro empresa unificado en el selector global arriba de TabsList */}
           <div className="flex-1 min-w-[200px]">
             <label className="text-xs text-gray-600 block mb-1">Proveedor</label>
             <input type="text" value={filtroProv} onChange={(e) => { setFiltroProv(e.target.value); setPage(1) }} placeholder="Buscar por proveedor..." className="w-full border rounded-md px-3 py-2 text-sm" />
