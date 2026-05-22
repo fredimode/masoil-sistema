@@ -328,12 +328,12 @@ export default function PagosPage() {
     return list
   }, [proveedoresList, provSearch, filtroVencimiento, facturasPendientesByProv])
 
-  // K2A.3: filtrar movimientos de cta cte por empresa nuestra (no proveedor).
-  // Un proveedor le puede facturar a Aquiles, Conancap y Masoil; el filtro
-  // empresa segmenta los movimientos, no oculta proveedores.
+  // K2A.3 + L.4: filtrar movimientos de cta cte por empresa nuestra.
+  // L.4 bugfix: al filtrar por empresa específica, NO incluir registros con
+  // empresa=NULL (antes los incluía y eso hacía parecer que el filtro no funcionaba).
   const expandedCCFiltrado = useMemo(() => {
     if (empresaGlobal === "Todos") return expandedCC
-    return expandedCC.filter((m: any) => m.empresa === empresaGlobal || !m.empresa)
+    return expandedCC.filter((m: any) => m.empresa === empresaGlobal)
   }, [expandedCC, empresaGlobal])
 
   async function marcarPagado(id: string) {

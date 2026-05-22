@@ -357,8 +357,9 @@ export default function NuevoPagoPage() {
         console.error("Error generando orden de pago:", err)
       }
 
-      // Si es pago a cuenta, registrar movimiento HABER en cuenta corriente del proveedor
-      if (esPagoACuenta && form.proveedor_id) {
+      // L.4: registrar movimiento HABER en cta cte proveedor, ya sea pago a
+      // cuenta o pago contra facturas (antes solo se registraba pago a cuenta).
+      if (form.proveedor_id && importeTotal > 0) {
         try {
           await createMovimientoCuentaCorrienteProveedor({
             proveedor_id: form.proveedor_id,
@@ -369,10 +370,12 @@ export default function NuevoPagoPage() {
             haber: importeTotal,
             empresa: form.empresa || null,
             referencia_id: pagoId,
-            observaciones: `Pago a cuenta - ${form.observaciones || "anticipo"}`,
+            observaciones: esPagoACuenta
+              ? `Pago a cuenta - ${form.observaciones || "anticipo"}`
+              : `Pago FC - ${form.observaciones || ""}`.trim().replace(/-\s*$/, ""),
           })
         } catch (err) {
-          console.error("Error registrando pago a cuenta en cta cte:", err)
+          console.error("Error registrando pago en cta cte:", err)
         }
       }
 

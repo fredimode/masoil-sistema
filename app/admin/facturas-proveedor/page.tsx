@@ -14,6 +14,7 @@ import {
   createPlanCuenta,
   updateOrdenCompra,
   deleteFacturaProveedor,
+  createMovimientoCuentaCorrienteProveedor,
 } from "@/lib/supabase/queries"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -468,6 +469,32 @@ export default function FacturasProveedorPage() {
       }
 
       const id = await createFacturaProveedor(facturaData)
+
+      // L.4: persistir movimiento DEBE en cuenta_corriente_proveedor con empresa.
+      // FC y ND suman al saldo (DEBE); NC resta (HABER).
+      if (form.proveedor_id && totalNum > 0) {
+        try {
+          const tipoUpper = (form.tipo || "").toUpperCase()
+          const esNC = tipoUpper.includes("CRED")
+          const numeroComp = form.punto_venta && form.numero
+            ? `${String(form.punto_venta).padStart(4, "0")}-${String(form.numero).padStart(8, "0")}`
+            : (form.numero || null)
+          await createMovimientoCuentaCorrienteProveedor({
+            proveedor_id: form.proveedor_id,
+            fecha: form.fecha,
+            tipo_comprobante: esNC ? "NC" : (tipoUpper.includes("DEBITO") || tipoUpper.includes("DÉBITO") ? "ND" : "FC"),
+            punto_venta: form.punto_venta || null,
+            numero_comprobante: numeroComp,
+            debe: esNC ? 0 : totalNum,
+            haber: esNC ? totalNum : 0,
+            empresa: form.empresa || null,
+            referencia_id: id,
+            observaciones: form.observaciones || null,
+          })
+        } catch (err) {
+          console.error("Error registrando FC en cta cte proveedor:", err)
+        }
+      }
 
       // Save items if any
       const validItems = formItems.filter((it) => it.nombre.trim())
