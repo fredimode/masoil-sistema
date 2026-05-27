@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import { fetchClientsByVendedor, fetchProducts, createOrder } from "@/lib/supabase/queries"
 import type { Client, Product } from "@/lib/types"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency, formatCurrencyExact } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, Plus, Trash2, Search, AlertTriangle } from "lucide-react"
 import Link from "next/link"
@@ -357,7 +357,7 @@ function NuevoPedidoContent() {
                             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${stockCls}`}>
                               Stock: {product.stock}
                             </span>
-                            <span className="text-xs text-muted-foreground">{formatCurrency(product.price)}</span>
+                            <span className="text-xs text-muted-foreground">{formatCurrencyExact(product.price)}</span>
                           </div>
                         </button>
                       )
@@ -405,7 +405,7 @@ function NuevoPedidoContent() {
                         <>
                           <p className="font-medium text-sm">{item.productName}</p>
                           <p className="text-xs text-muted-foreground">
-                            {item.productCode} • {formatCurrency(item.price)} c/u
+                            {item.productCode} • {formatCurrencyExact(item.price)} c/u
                           </p>
                         </>
                       ) : (
@@ -446,7 +446,7 @@ function NuevoPedidoContent() {
                     </div>
                     <div className="flex items-center justify-between md:justify-end">
                       <span className="md:hidden text-sm text-muted-foreground">Subtotal:</span>
-                      <p className="font-semibold">{formatCurrency(item.price * item.quantity)}</p>
+                      <p className="font-semibold">{formatCurrencyExact(item.price * item.quantity)}</p>
                     </div>
                     <div className="flex justify-end">
                       <Button
@@ -465,16 +465,16 @@ function NuevoPedidoContent() {
                 <div className="p-3 border-t bg-muted/50 space-y-1 text-sm">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Subtotal (sin IVA)</span>
-                    <span>{formatCurrency(subtotalSinIva)}</span>
+                    <span>{formatCurrencyExact(subtotalSinIva)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">IVA 21%</span>
-                    <span>{formatCurrency(ivaCalculado)}</span>
+                    <span>{formatCurrencyExact(ivaCalculado)}</span>
                   </div>
                 </div>
                 <div className="flex justify-between items-center p-3 border-t bg-muted">
                   <span className="font-semibold">Total</span>
-                  <span className="text-xl font-bold">{formatCurrency(totalConIva)}</span>
+                  <span className="text-xl font-bold">{formatCurrencyExact(totalConIva)}</span>
                 </div>
               </div>
             ) : (
