@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,7 @@ interface OrderTableProps {
 
 export function OrderTable({ orders: initialOrders }: OrderTableProps) {
   const [orders, setOrders] = useState(initialOrders)
+  useEffect(() => { setOrders(initialOrders) }, [initialOrders])
 
   async function handleStatusChange(order: Order, newStatus: string) {
     if (newStatus === order.status) return
