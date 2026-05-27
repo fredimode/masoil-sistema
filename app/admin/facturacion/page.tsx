@@ -47,6 +47,8 @@ export default function FacturacionPage() {
   const [gpPage, setGpPage] = useState(1)
   const [emPage, setEmPage] = useState(1)
   const [emSearch, setEmSearch] = useState("")
+  const [emProductCode, setEmProductCode] = useState("")
+  const [emProductFacturaIds, setEmProductFacturaIds] = useState<Set<number> | null>(null)
   const [viewingFactura, setViewingFactura] = useState<any | null>(null)
   const [viewingItems, setViewingItems] = useState<any[]>([])
   const [loadingItems, setLoadingItems] = useState(false)
@@ -234,14 +236,37 @@ export default function FacturacionPage() {
   }, [emitidas, ccData])
 
   // Emitidas filtering (must be before early return to maintain hook order)
+  useEffect(() => {
+    const code = emProductCode.trim()
+    if (!code) { setEmProductFacturaIds(null); return }
+    const timer = setTimeout(async () => {
+      const supabase = createClient()
+      const { data } = await supabase
+        .from("order_items")
+        .select("factura_id, products!inner(code)")
+        .ilike("products.code", `%${code}%`)
+        .not("factura_id", "is", null)
+      const ids = new Set((data || []).map((d: any) => d.factura_id as number).filter(Boolean))
+      setEmProductFacturaIds(ids)
+      setEmPage(1)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [emProductCode])
+
   const emitidasFiltered = useMemo(() => {
-    if (!emSearch) return emitidas
-    const q = normalizeSearch(emSearch)
-    return emitidas.filter((f: any) =>
-      normalizeSearch(f.razon_social || "").includes(q) ||
-      normalizeSearch(f.numero || "").includes(q)
-    )
-  }, [emitidas, emSearch])
+    let result = emitidas
+    if (emSearch) {
+      const q = normalizeSearch(emSearch)
+      result = result.filter((f: any) =>
+        normalizeSearch(f.razon_social || "").includes(q) ||
+        normalizeSearch(f.numero || "").includes(q)
+      )
+    }
+    if (emProductFacturaIds !== null) {
+      result = result.filter((f: any) => emProductFacturaIds.has(f.id))
+    }
+    return result
+  }, [emitidas, emSearch, emProductFacturaIds])
 
   const emPagination = usePagination(emitidasFiltered, 50)
   const emPageData = emPagination.getPage(emPage)
@@ -339,6 +364,13 @@ export default function FacturacionPage() {
               placeholder="Buscar por razon social o numero..."
               value={emSearch}
               onChange={(e) => { setEmSearch(e.target.value); setEmPage(1) }}
+              className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm w-64"
+            />
+            <input
+              type="text"
+              placeholder="Buscar por código de producto..."
+              value={emProductCode}
+              onChange={(e) => setEmProductCode(e.target.value)}
               className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm w-64"
             />
           </div>
@@ -630,6 +662,16 @@ export default function FacturacionPage() {
                   <p className="font-medium">{viewingFactura.vencimiento_cae ? formatDateStr(viewingFactura.vencimiento_cae) : "-"}</p>
                 </div>
               </div>
+
+              {/* Pedido asociado */}
+              {viewingFactura.order_id && (
+                <div className="border-t pt-3">
+                  <p className="text-xs text-gray-500 font-medium mb-1">Pedido asociado</p>
+                  <a href={`/admin/pedidos/${viewingFactura.order_id}`} className="text-sm text-blue-600 hover:underline font-medium">
+                    Ver pedido →
+                  </a>
+                </div>
+              )}
 
               {/* Detalle productos */}
               <div className="border-t pt-3">
