@@ -51,6 +51,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [facturarOpen, setFacturarOpen] = useState(false)
   const [facturarItems, setFacturarItems] = useState<Record<string, boolean>>({})
   const [facturarOverrides, setFacturarOverrides] = useState<Record<string, { nombre: string; precio: number }>>({})
+  const [facturarCantidades, setFacturarCantidades] = useState<Record<string, number>>({})
   const [facturando, setFacturando] = useState(false)
   const [facturarEmpresa, setFacturarEmpresa] = useState<"Aquiles" | "Conancap">("Aquiles")
   const [facturarModo, setFacturarModo] = useState<"testing" | "produccion">("testing")
@@ -91,6 +92,8 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     vendedor_id: "",
     observaciones_incompleto: "",
   })
+  const [facturasOrder, setFacturasOrder] = useState<any[]>([])
+  const [notasAsociadas, setNotasAsociadas] = useState<Record<number, any[]>>({})
 
   const { vendedor: currentUser } = useCurrentVendedor()
 
@@ -126,6 +129,33 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         if (orderData.clientId) {
           const clientData = await fetchClientById(orderData.clientId)
           setClient(clientData)
+        }
+
+        // Load facturas for this order + NC/ND asociadas
+        const { data: facturas } = await supabaseExtra
+          .from("facturas")
+          .select("id, numero, comprobante_nro, tipo, fecha, total, punto_venta, empresa")
+          .eq("order_id", id)
+          .order("fecha", { ascending: true })
+        if (facturas && facturas.length > 0) {
+          setFacturasOrder(facturas)
+          const fcIds = facturas.filter((f: any) => !f.tipo.toLowerCase().includes("nota")).map((f: any) => f.id)
+          if (fcIds.length > 0) {
+            const { data: notas } = await supabaseExtra
+              .from("facturas")
+              .select("id, numero, comprobante_nro, tipo, fecha, total, punto_venta, factura_referencia_id")
+              .in("factura_referencia_id", fcIds)
+              .order("fecha", { ascending: true })
+            if (notas) {
+              const grouped: Record<number, any[]> = {}
+              for (const n of notas) {
+                const refId = n.factura_referencia_id as number
+                if (!grouped[refId]) grouped[refId] = []
+                grouped[refId].push(n)
+              }
+              setNotasAsociadas(grouped)
+            }
+          }
         }
       } catch (err) {
         console.error("Error fetching order:", err)
@@ -270,6 +300,84 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     }
   }
 
+  function handlePrintPedido() {
+    const doc = new jsPDF()
+    const margin = 20
+    let y = margin
+
+    doc.setFontSize(18)
+    doc.text("PEDIDO", 105, y, { align: "center" })
+    y += 10
+
+    doc.setFontSize(10)
+    doc.text(`Pedido: ${o.orderNumber}`, margin, y)
+    doc.text(`Fecha: ${formatDate(o.createdAt)}`, 140, y)
+    y += 6
+    doc.text(`Estado: ${getStatusConfig(currentStatus).label}`, margin, y)
+    if (o.zona) { doc.text(`Zona: ${o.zona}`, 140, y) }
+    y += 6
+    if (o.vendedorName) { doc.text(`Vendedor: ${o.vendedorName}`, margin, y); y += 6 }
+
+    y += 4
+    doc.setFontSize(12)
+    doc.text("Datos del Cliente", margin, y)
+    y += 7
+    doc.setFontSize(10)
+    doc.text(`Cliente: ${o.clientName}`, margin, y); y += 6
+    if (o.razonSocial) { doc.text(`Razón Social: ${o.razonSocial}`, margin, y); y += 6 }
+    if (client) {
+      if (client.address) { doc.text(`Dirección: ${client.address}`, margin, y); y += 6 }
+      if (client.contactName) { doc.text(`Contacto: ${client.contactName}`, margin, y); y += 6 }
+      if (client.whatsapp) { doc.text(`Teléfono: ${client.whatsapp}`, margin, y); y += 6 }
+    }
+
+    y += 4
+    doc.setFontSize(12)
+    doc.text("Productos", margin, y)
+    y += 8
+    doc.setFontSize(9)
+
+    doc.setFont("helvetica", "bold")
+    doc.text("Código", margin, y)
+    doc.text("Producto", margin + 25, y)
+    doc.text("Cant.", 130, y, { align: "right" })
+    doc.text("P. Unit.", 155, y, { align: "right" })
+    doc.text("Subtotal", 185, y, { align: "right" })
+    y += 2
+    doc.line(margin, y, 190, y)
+    y += 5
+    doc.setFont("helvetica", "normal")
+
+    let totalPedido = 0
+    for (const p of o.products) {
+      const sub = p.price * p.quantity
+      totalPedido += sub
+      doc.text(p.productCode, margin, y)
+      doc.text(p.productName.substring(0, 40), margin + 25, y)
+      doc.text(String(p.quantity), 130, y, { align: "right" })
+      doc.text(p.price.toFixed(2), 155, y, { align: "right" })
+      doc.text(sub.toFixed(2), 185, y, { align: "right" })
+      y += 6
+      if (y > 270) { doc.addPage(); y = margin }
+    }
+
+    y += 2
+    doc.line(margin, y, 190, y)
+    y += 6
+    doc.setFont("helvetica", "bold")
+    doc.text("TOTAL:", 155, y, { align: "right" })
+    doc.text(`$ ${totalPedido.toFixed(2)}`, 185, y, { align: "right" })
+
+    if (o.notes) {
+      y += 10
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(9)
+      doc.text(`Notas: ${o.notes.substring(0, 120)}`, margin, y)
+    }
+
+    doc.save(`Pedido-${o.orderNumber}.pdf`)
+  }
+
   async function generateHojaDeRuta() {
     const doc = new jsPDF()
     const margin = 20
@@ -381,12 +489,16 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   function openFacturarDialog() {
     const initial: Record<string, boolean> = {}
     const overrides: Record<string, { nombre: string; precio: number }> = {}
+    const cantidades: Record<string, number> = {}
     itemsPendientesFactura.forEach((p) => {
+      const pendiente = p.quantity - (p.cantidadFacturada || 0)
       initial[p.productId] = true
       overrides[p.productId] = { nombre: p.productName, precio: p.price }
+      cantidades[p.productId] = pendiente > 0 ? pendiente : p.quantity
     })
     setFacturarItems(initial)
     setFacturarOverrides(overrides)
+    setFacturarCantidades(cantidades)
     // Default empresa según razonSocial del pedido
     const rs = (o.razonSocial || "").toLowerCase()
     setFacturarEmpresa(rs.includes("conancap") ? "Conancap" : "Aquiles")
@@ -438,9 +550,10 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         const ov = facturarOverrides[p.productId]
         const nombre = ov?.nombre || p.productName
         const precio = ov?.precio ?? p.price
+        const cant = facturarCantidades[p.productId] ?? p.quantity
         return {
           descripcion: `${p.productCode} - ${nombre}`,
-          cantidad: p.quantity,
+          cantidad: cant,
           precioUnitarioSinIva: Math.round((precio / 1.21) * 100) / 100,
           alicuota: 21 as const,
         }
@@ -462,7 +575,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           // response y el UPDATE, los items quedaban sin tracking y la próxima
           // parcial los repetía.
           productIdsFacturados: selectedProducts.map((p) => p.productId),
-          cantidadesFacturadas: selectedProducts.map((p) => p.quantity),
+          cantidadesFacturadas: selectedProducts.map((p) => facturarCantidades[p.productId] ?? p.quantity),
         }),
       })
       const data = await res.json()
@@ -482,11 +595,11 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         const facturadosIds = new Set(selectedProducts.map((sp) => sp.productId))
         setOrder((prev) => prev ? {
           ...prev,
-          products: prev.products.map((p) =>
-            facturadosIds.has(p.productId)
-              ? { ...p, facturado: true, cantidadFacturada: p.quantity, facturaId: data.facturaId }
-              : p
-          ),
+          products: prev.products.map((p) => {
+            if (!facturadosIds.has(p.productId)) return p
+            const cantFacturada = (p.cantidadFacturada || 0) + (facturarCantidades[p.productId] ?? p.quantity)
+            return { ...p, facturado: cantFacturada >= p.quantity, cantidadFacturada: cantFacturada, facturaId: data.facturaId }
+          }),
         } : prev)
 
         // El endpoint /api/facturar ya hace UPDATE orders.factura_id
@@ -787,9 +900,9 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           )}
         </div>
         <div className="flex gap-2">
-          <Button variant="outline">
+          <Button variant="outline" onClick={handlePrintPedido}>
             <Printer className="h-4 w-4 mr-2" />
-            Imprimir Remito
+            Imprimir Pedido
           </Button>
 
           {/* Facturar (TusFacturas/AFIP — usa /api/facturar) */}
@@ -1017,6 +1130,62 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             </div>
           </Card>
 
+          {/* Facturación + NC/ND asociadas (M.4) */}
+          {facturasOrder.length > 0 && (
+            <Card className="p-6">
+              <h3 className="font-semibold mb-4">Facturación</h3>
+              <div className="space-y-3">
+                {facturasOrder.filter((f) => !f.tipo.toLowerCase().includes("nota")).map((fc: any) => {
+                  const nro = fc.comprobante_nro || fc.numero || "-"
+                  const pv = fc.punto_venta ? String(fc.punto_venta).padStart(5, "0") : ""
+                  const num = nro ? String(nro).padStart(8, "0") : ""
+                  const display = pv ? `${pv}-${num}` : num
+                  const notas = notasAsociadas[fc.id] || []
+                  return (
+                    <div key={fc.id} className="border rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">{fc.tipo}</Badge>
+                          <Link href={`/admin/facturacion?ver=${fc.id}`} className="font-mono text-sm font-medium hover:underline text-blue-700">{display}</Link>
+                        </div>
+                        <div className="flex items-center gap-3 text-sm">
+                          {fc.empresa && <Badge variant="outline" className="text-xs">{fc.empresa}</Badge>}
+                          <span className="text-muted-foreground">{fc.fecha}</span>
+                          <span className="font-semibold">{formatCurrency(Number(fc.total))}</span>
+                        </div>
+                      </div>
+                      {notas.length > 0 && (
+                        <div className="mt-2 ml-4 space-y-1">
+                          {notas.map((n: any) => {
+                            const nNro = n.comprobante_nro || n.numero || "-"
+                            const nPv = n.punto_venta ? String(n.punto_venta).padStart(5, "0") : ""
+                            const nNum = nNro ? String(nNro).padStart(8, "0") : ""
+                            const nDisplay = nPv ? `${nPv}-${nNum}` : nNum
+                            const isNC = n.tipo.toLowerCase().includes("crédito") || n.tipo.toLowerCase().includes("credito")
+                            return (
+                              <div key={n.id} className={`flex items-center justify-between text-sm p-2 rounded ${isNC ? "bg-red-50" : "bg-amber-50"}`}>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className={`text-[10px] ${isNC ? "bg-red-100 text-red-700 border-red-200" : "bg-amber-100 text-amber-700 border-amber-200"}`}>
+                                    {n.tipo.includes("Crédito") || n.tipo.includes("Credito") ? "NC" : "ND"}
+                                  </Badge>
+                                  <Link href={`/admin/facturacion?ver=${n.id}`} className="font-mono hover:underline text-blue-700">{nDisplay}</Link>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-muted-foreground">{n.fecha}</span>
+                                  <span className={`font-medium ${isNC ? "text-red-700" : "text-amber-700"}`}>{formatCurrency(Number(n.total))}</span>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </Card>
+          )}
+
           {/* Status History */}
           <Card className="p-6">
             <h3 className="font-semibold mb-4">Historial de Estados</h3>
@@ -1230,7 +1399,9 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             <div className="space-y-2 max-h-[50vh] overflow-y-auto">
               {itemsPendientesFactura.map((product) => {
                 const override = facturarOverrides[product.productId] || { nombre: product.productName, precio: product.price }
-                const subtotal = (Number(override.precio) || 0) * product.quantity
+                const cantPendiente = product.quantity - (product.cantidadFacturada || 0)
+                const cant = facturarCantidades[product.productId] ?? (cantPendiente > 0 ? cantPendiente : product.quantity)
+                const subtotal = (Number(override.precio) || 0) * cant
                 const isChecked = facturarItems[product.productId] || false
                 return (
                   <div key={product.productId} className={`p-3 border rounded-lg ${isChecked ? "bg-white" : "bg-red-50/40 border-red-200"}`}>
@@ -1266,9 +1437,21 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                             className="w-full p-1 border rounded text-sm"
                           />
                         </div>
-                        <div className="col-span-1 text-center self-end">
-                          <span className="text-[10px] uppercase text-muted-foreground block">Cant.</span>
-                          <span className="text-sm font-medium">{product.quantity}</span>
+                        <div className="col-span-1">
+                          <label className="text-[10px] uppercase text-muted-foreground block">Cant.</label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={cantPendiente > 0 ? cantPendiente : product.quantity}
+                            value={cant}
+                            onChange={(e) => {
+                              const max = cantPendiente > 0 ? cantPendiente : product.quantity
+                              const v = Math.min(Math.max(1, parseInt(e.target.value) || 1), max)
+                              setFacturarCantidades((prev) => ({ ...prev, [product.productId]: v }))
+                            }}
+                            disabled={!isChecked}
+                            className="w-full p-1 border rounded text-sm text-center"
+                          />
                         </div>
                         <div className="col-span-2">
                           <label className="text-[10px] uppercase text-muted-foreground block">Precio</label>
@@ -1306,7 +1489,9 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                     .reduce((sum, p) => {
                       const ov = facturarOverrides[p.productId]
                       const precio = ov?.precio ?? p.price
-                      return sum + precio * p.quantity
+                      const pendiente = p.quantity - (p.cantidadFacturada || 0)
+                      const c = facturarCantidades[p.productId] ?? (pendiente > 0 ? pendiente : p.quantity)
+                      return sum + precio * c
                     }, 0)
                 )}
               </span>
