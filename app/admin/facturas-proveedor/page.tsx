@@ -109,6 +109,12 @@ export default function FacturasProveedorPage() {
   // Stepper: 1 = datos de factura, 2 = items + imputación
   const [step, setStep] = useState<1 | 2>(1)
 
+  // Percepciones IIBB múltiples
+  const [percepcionesIIBB, setPercepcionesIIBB] = useState<{ jurisdiccion: string; monto: string }[]>([])
+
+  // Modal Imputaciones Contables (dedicado)
+  const [imputacionesDialogOpen, setImputacionesDialogOpen] = useState(false)
+
   // Modal "Nueva imputación contable"
   const [nuevaCuentaOpen, setNuevaCuentaOpen] = useState(false)
   const [nuevaCuentaForm, setNuevaCuentaForm] = useState({ codigo: "", categoria: "", sub_categoria: "" })
@@ -253,14 +259,15 @@ export default function FacturasProveedorPage() {
     })
   }
 
-  function calcTotal(f: typeof INITIAL_FORM) {
+  function calcTotal(f: typeof INITIAL_FORM, iibbList?: { jurisdiccion: string; monto: string }[]) {
+    const iibbTotal = (iibbList || percepcionesIIBB).reduce((s, p) => s + (parseFloat(p.monto) || 0), 0)
     const sum =
       (parseFloat(f.neto) || 0) +
       (parseFloat(f.iva) || 0) +
       (parseFloat(f.iva_105) || 0) +
       (parseFloat(f.iva_27) || 0) +
       (parseFloat(f.percepciones_iva) || 0) +
-      (parseFloat(f.percepciones_iibb) || 0) +
+      iibbTotal +
       (parseFloat(f.impuestos_internos) || 0) +
       (parseFloat(f.exentos_no_gravados) || 0) +
       (parseFloat(f.otros_impuestos) || 0)
@@ -448,8 +455,8 @@ export default function FacturasProveedorPage() {
         iva_105: parseFloat(form.iva_105) || 0,
         iva_27: parseFloat(form.iva_27) || 0,
         percepciones_iva: parseFloat(form.percepciones_iva) || 0,
-        percepciones_iibb: parseFloat(form.percepciones_iibb) || 0,
-        jurisdiccion_iibb: form.jurisdiccion_iibb || null,
+        percepciones_iibb: percepcionesIIBB.reduce((s, p) => s + (parseFloat(p.monto) || 0), 0),
+        jurisdiccion_iibb: percepcionesIIBB.length > 0 ? JSON.stringify(percepcionesIIBB.filter((p) => p.jurisdiccion || p.monto)) : null,
         impuestos_internos: parseFloat(form.impuestos_internos) || 0,
         exentos_no_gravados: parseFloat(form.exentos_no_gravados) || 0,
         otros_impuestos: parseFloat(form.otros_impuestos) || 0,
@@ -532,6 +539,7 @@ export default function FacturasProveedorPage() {
       setArchivo(null)
       setFormItems([])
       setImputaciones([])
+      setPercepcionesIIBB([])
       setCuentaSearch("")
       setErrorMsg("")
       setStep(1)
@@ -582,6 +590,7 @@ export default function FacturasProveedorPage() {
             setArchivo(null)
             setFormItems([])
             setImputaciones([])
+            setPercepcionesIIBB([])
             setCuentaSearch("")
             setErrorMsg("")
             setStep(1)
@@ -787,13 +796,13 @@ export default function FacturasProveedorPage() {
           {/* === ETAPA 1: Datos de factura === */}
           {step === 1 && (
           <div className="grid gap-5 py-4">
-            {/* Empresa pagadora — la NUESTRA que registra y paga */}
+            {/* Razón social facturada — empresa nuestra que registra y paga */}
             <div>
               <label
                 className="block text-sm font-medium text-gray-700 mb-1"
                 title="Aquiles o Conancap. Empresa que registra y paga."
               >
-                Empresa pagadora *
+                Razón social facturada *
               </label>
               <select
                 value={form.empresa}
@@ -1001,30 +1010,71 @@ export default function FacturasProveedorPage() {
                   className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Perc. IIBB</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.percepciones_iibb}
-                  onChange={(e) => handleImpuestoChange("percepciones_iibb", e.target.value)}
-                  placeholder="0.00"
-                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Jurisdicción IIBB</label>
-                <select
-                  value={form.jurisdiccion_iibb}
-                  onChange={(e) => setForm((prev) => ({ ...prev, jurisdiccion_iibb: e.target.value }))}
-                  disabled={(parseFloat(form.percepciones_iibb) || 0) <= 0}
-                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm disabled:bg-gray-50"
-                >
-                  <option value="">—</option>
-                  {PROVINCIAS_ARGENTINA.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
+              <div className="col-span-2">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium text-gray-700">Percepciones IIBB</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = [...percepcionesIIBB, { jurisdiccion: "", monto: "" }]
+                      setPercepcionesIIBB(updated)
+                    }}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    + Agregar percepción
+                  </button>
+                </div>
+                {percepcionesIIBB.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-1">Sin percepciones IIBB. Clic en "+ Agregar percepción".</p>
+                ) : (
+                  <div className="space-y-2">
+                    {percepcionesIIBB.map((perc, idx) => (
+                      <div key={idx} className="flex gap-2 items-center">
+                        <select
+                          value={perc.jurisdiccion}
+                          onChange={(e) => {
+                            const updated = [...percepcionesIIBB]
+                            updated[idx] = { ...updated[idx], jurisdiccion: e.target.value }
+                            setPercepcionesIIBB(updated)
+                          }}
+                          className="flex-1 px-2 py-1.5 border rounded text-sm"
+                        >
+                          <option value="">Jurisdicción...</option>
+                          {PROVINCIAS_ARGENTINA.map((p) => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          step="0.01"
+                          placeholder="Monto"
+                          value={perc.monto}
+                          onChange={(e) => {
+                            const updated = [...percepcionesIIBB]
+                            updated[idx] = { ...updated[idx], monto: e.target.value }
+                            setPercepcionesIIBB(updated)
+                            setForm((prev) => ({ ...prev, total: calcTotal(prev, updated) }))
+                          }}
+                          className="w-28 px-2 py-1.5 border rounded text-sm text-right"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = percepcionesIIBB.filter((_, i) => i !== idx)
+                            setPercepcionesIIBB(updated)
+                            setForm((prev) => ({ ...prev, total: calcTotal(prev, updated) }))
+                          }}
+                          className="text-red-500 hover:text-red-700 text-sm px-1"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    <p className="text-xs text-gray-500 text-right">
+                      Total IIBB: ${percepcionesIIBB.reduce((s, p) => s + (parseFloat(p.monto) || 0), 0).toFixed(2)}
+                    </p>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Imp. Internos</label>
@@ -1137,6 +1187,7 @@ export default function FacturasProveedorPage() {
                         <div className="relative">
                           <input
                             type="text"
+                            data-item-field={`${item.id}-codigo`}
                             value={item.codigo}
                             onChange={(e) => {
                               setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, codigo: e.target.value } : it))
@@ -1144,6 +1195,13 @@ export default function FacturasProveedorPage() {
                             }}
                             onFocus={() => item.codigo && setActiveProductRow(`${item.id}-c`)}
                             onBlur={() => setTimeout(() => setActiveProductRow((r) => r === `${item.id}-c` ? null : r), 150)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault()
+                                const next = document.querySelector(`[data-item-field="${item.id}-nombre"]`) as HTMLElement
+                                next?.focus()
+                              }
+                            }}
                             className="w-full p-2 border rounded text-sm font-mono"
                             placeholder="Código"
                           />
@@ -1167,6 +1225,7 @@ export default function FacturasProveedorPage() {
                         <div className="relative">
                           <input
                             type="text"
+                            data-item-field={`${item.id}-nombre`}
                             value={item.nombre}
                             onChange={(e) => {
                               setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, nombre: e.target.value } : it))
@@ -1174,6 +1233,13 @@ export default function FacturasProveedorPage() {
                             }}
                             onFocus={() => setActiveProductRow(`${item.id}-n`)}
                             onBlur={() => setTimeout(() => setActiveProductRow((r) => r === `${item.id}-n` ? null : r), 150)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault()
+                                const next = document.querySelector(`[data-item-field="${item.id}-cantidad"]`) as HTMLElement
+                                next?.focus()
+                              }
+                            }}
                             className="w-full p-2 border rounded text-sm"
                             placeholder="Buscar o escribir nombre..."
                           />
@@ -1196,16 +1262,35 @@ export default function FacturasProveedorPage() {
                         </div>
                         <input
                           type="number"
+                          data-item-field={`${item.id}-cantidad`}
                           value={item.cantidad}
                           onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, cantidad: e.target.value } : it))}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault()
+                              const next = document.querySelector(`[data-item-field="${item.id}-precio"]`) as HTMLElement
+                              next?.focus()
+                            }
+                          }}
                           className="p-2 border rounded text-sm text-center"
                           min="1"
                         />
                         <input
                           type="number"
+                          data-item-field={`${item.id}-precio`}
                           step="0.01"
                           value={item.precio}
                           onChange={(e) => setFormItems((prev) => prev.map((it) => it.id === item.id ? { ...it, precio: e.target.value } : it))}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault()
+                              const nextItem = formItems[formItems.indexOf(item) + 1]
+                              if (nextItem) {
+                                const next = document.querySelector(`[data-item-field="${nextItem.id}-codigo"]`) as HTMLElement
+                                next?.focus()
+                              }
+                            }
+                          }}
                           className="p-2 border rounded text-sm text-right"
                           placeholder="0.00"
                         />
@@ -1235,7 +1320,7 @@ export default function FacturasProveedorPage() {
               )}
             </div>
 
-            {/* Imputación Contable */}
+            {/* Imputación Contable — abre dialog dedicado */}
             <div className="border rounded-lg p-3 bg-blue-50/50">
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-medium text-gray-700">
@@ -1243,61 +1328,19 @@ export default function FacturasProveedorPage() {
                 </label>
                 <button
                   type="button"
-                  onClick={abrirNuevaCuenta}
-                  className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                  onClick={() => setImputacionesDialogOpen(true)}
+                  className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700"
                 >
-                  + Nueva imputación
+                  {imputaciones.length > 0 ? "Editar imputaciones" : "Agregar imputaciones"}
                 </button>
-              </div>
-              <div className="relative mb-2">
-                <input
-                  type="text"
-                  placeholder="Buscar por código, categoría o subcategoría..."
-                  value={cuentaSearch}
-                  onChange={(e) => {
-                    setCuentaSearch(e.target.value)
-                    setShowCuentaList(true)
-                  }}
-                  onFocus={() => setShowCuentaList(true)}
-                  onBlur={() => setTimeout(() => setShowCuentaList(false), 150)}
-                  className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
-                />
-                {showCuentaList && cuentasFiltradas.length > 0 && (
-                  <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg mt-1 max-h-56 overflow-y-auto">
-                    {cuentasFiltradas.map((c: any) => {
-                      const disabled = imputaciones.some((i) => i.cuenta_codigo === c.codigo)
-                      return (
-                        <button
-                          key={c.codigo}
-                          type="button"
-                          disabled={disabled}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => addImputacion(c)}
-                          className="w-full text-left px-3 py-1.5 hover:bg-gray-100 text-sm border-b last:border-0 disabled:opacity-40 disabled:cursor-not-allowed grid grid-cols-[80px,1fr,1fr] gap-2"
-                        >
-                          <span className="font-mono text-gray-500">{c.codigo}</span>
-                          <span className="text-gray-700 truncate">{c.categoria}</span>
-                          <span className="text-gray-600 truncate">{c.sub_categoria || "-"}</span>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
               </div>
               {imputaciones.length > 0 ? (
                 <div className="space-y-1">
                   {imputaciones.map((imp) => (
-                    <div key={imp.id} className="grid grid-cols-[80px,1fr,1fr,24px] gap-2 items-center bg-white border rounded px-2 py-1.5 text-sm">
+                    <div key={imp.id} className="grid grid-cols-[80px,1fr,1fr] gap-2 items-center bg-white border rounded px-2 py-1.5 text-sm">
                       <span className="font-mono text-gray-500">{imp.cuenta_codigo}</span>
                       <span className="text-gray-700 truncate">{imp.cuenta_categoria}</span>
                       <span className="text-gray-600 truncate">{imp.cuenta_sub || "-"}</span>
-                      <button
-                        type="button"
-                        onClick={() => setImputaciones((prev) => prev.filter((i) => i.id !== imp.id))}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        ×
-                      </button>
                     </div>
                   ))}
                 </div>
@@ -1398,7 +1441,21 @@ export default function FacturasProveedorPage() {
                 {Number(viewing.iva_105) > 0 && <div><span className="text-gray-500">IVA 10.5%:</span> <span className="font-medium">{formatCurrency(Number(viewing.iva_105))}</span></div>}
                 {Number(viewing.iva_27) > 0 && <div><span className="text-gray-500">IVA 27%:</span> <span className="font-medium">{formatCurrency(Number(viewing.iva_27))}</span></div>}
                 <div><span className="text-gray-500">Perc. IVA:</span> <span className="font-medium">{formatCurrency(Number(viewing.percepciones_iva) || 0)}</span></div>
-                <div><span className="text-gray-500">Perc. IIBB:</span> <span className="font-medium">{formatCurrency(Number(viewing.percepciones_iibb) || 0)}{viewing.jurisdiccion_iibb ? ` (${viewing.jurisdiccion_iibb})` : ""}</span></div>
+                <div>
+                  <span className="text-gray-500">Perc. IIBB:</span>{" "}
+                  <span className="font-medium">{formatCurrency(Number(viewing.percepciones_iibb) || 0)}</span>
+                  {viewing.jurisdiccion_iibb && (() => {
+                    try {
+                      const parsed = JSON.parse(viewing.jurisdiccion_iibb)
+                      if (Array.isArray(parsed)) return (
+                        <span className="text-xs text-gray-500 ml-1">
+                          ({parsed.map((p: any) => `${p.jurisdiccion}: $${p.monto}`).join(", ")})
+                        </span>
+                      )
+                    } catch {}
+                    return <span className="text-xs text-gray-500 ml-1">({viewing.jurisdiccion_iibb})</span>
+                  })()}
+                </div>
                 {Number(viewing.impuestos_internos) > 0 && <div><span className="text-gray-500">Imp. Internos:</span> <span className="font-medium">{formatCurrency(Number(viewing.impuestos_internos))}</span></div>}
                 {Number(viewing.exentos_no_gravados) > 0 && <div><span className="text-gray-500">Exentos/No Grav.:</span> <span className="font-medium">{formatCurrency(Number(viewing.exentos_no_gravados))}</span></div>}
                 <div><span className="text-gray-500">Otros Imp.:</span> <span className="font-medium">{formatCurrency(Number(viewing.otros_impuestos) || 0)}</span></div>
@@ -1414,6 +1471,92 @@ export default function FacturasProveedorPage() {
               )}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ==================== DIALOG: Imputaciones Contables ==================== */}
+      <Dialog open={imputacionesDialogOpen} onOpenChange={setImputacionesDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Imputaciones Contables</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Buscar por código, categoría o subcategoría..."
+                value={cuentaSearch}
+                onChange={(e) => {
+                  setCuentaSearch(e.target.value)
+                  setShowCuentaList(true)
+                }}
+                onFocus={() => setShowCuentaList(true)}
+                onBlur={() => setTimeout(() => setShowCuentaList(false), 150)}
+                className="w-full px-3 py-2.5 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
+              />
+              {showCuentaList && cuentasFiltradas.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg mt-1 max-h-56 overflow-y-auto">
+                  {cuentasFiltradas.map((c: any) => {
+                    const disabled = imputaciones.some((i) => i.cuenta_codigo === c.codigo)
+                    return (
+                      <button
+                        key={c.codigo}
+                        type="button"
+                        disabled={disabled}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => addImputacion(c)}
+                        className="w-full text-left px-3 py-1.5 hover:bg-gray-100 text-sm border-b last:border-0 disabled:opacity-40 disabled:cursor-not-allowed grid grid-cols-[80px,1fr,1fr] gap-2"
+                      >
+                        <span className="font-mono text-gray-500">{c.codigo}</span>
+                        <span className="text-gray-700 truncate">{c.categoria}</span>
+                        <span className="text-gray-600 truncate">{c.sub_categoria || "-"}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {imputaciones.length > 0 ? (
+              <div className="space-y-1">
+                {imputaciones.map((imp) => (
+                  <div key={imp.id} className="grid grid-cols-[80px,1fr,1fr,24px] gap-2 items-center bg-white border rounded px-2 py-1.5 text-sm">
+                    <span className="font-mono text-gray-500">{imp.cuenta_codigo}</span>
+                    <span className="text-gray-700 truncate">{imp.cuenta_categoria}</span>
+                    <span className="text-gray-600 truncate">{imp.cuenta_sub || "-"}</span>
+                    <button
+                      type="button"
+                      onClick={() => setImputaciones((prev) => prev.filter((i) => i.id !== imp.id))}
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 text-center py-4">
+                Busque y seleccione imputaciones contables del plan de cuentas.
+              </p>
+            )}
+
+            <div className="flex justify-between items-center pt-2 border-t">
+              <button
+                type="button"
+                onClick={abrirNuevaCuenta}
+                className="text-xs px-3 py-1.5 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                + Nueva cuenta
+              </button>
+              <button
+                type="button"
+                onClick={() => setImputacionesDialogOpen(false)}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm"
+              >
+                Listo ({imputaciones.length} seleccionadas)
+              </button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
