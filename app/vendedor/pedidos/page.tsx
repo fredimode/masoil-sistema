@@ -52,8 +52,6 @@ export default function VendedorPedidosPage() {
   if (statusFilter !== "todos") {
     if (statusFilter === "pendientes") {
       filteredOrders = filteredOrders.filter((o) => !["ENTREGADO", "CANCELADO"].includes(o.status))
-    } else if (statusFilter === "urgentes") {
-      filteredOrders = filteredOrders.filter((o) => o.isUrgent && !["ENTREGADO", "CANCELADO"].includes(o.status))
     } else if (statusFilter === "entregados") {
       filteredOrders = filteredOrders.filter((o) => o.status === "ENTREGADO")
     }
@@ -105,7 +103,6 @@ export default function VendedorPedidosPage() {
             <SelectContent>
               <SelectItem value="todos">Todos</SelectItem>
               <SelectItem value="pendientes">Pendientes</SelectItem>
-              <SelectItem value="urgentes">Urgentes</SelectItem>
               <SelectItem value="entregados">Entregados</SelectItem>
             </SelectContent>
           </Select>

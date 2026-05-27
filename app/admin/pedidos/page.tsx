@@ -75,8 +75,6 @@ export default function AdminPedidosPage() {
   if (statusFilter !== "todos") {
     if (statusFilter === "pendientes") {
       filteredOrders = filteredOrders.filter((o) => !["ENTREGADO", "CANCELADO"].includes(o.status))
-    } else if (statusFilter === "urgentes") {
-      filteredOrders = filteredOrders.filter((o) => o.isUrgent)
     } else {
       filteredOrders = filteredOrders.filter((o) => o.status === statusFilter)
     }
@@ -158,7 +156,6 @@ export default function AdminPedidosPage() {
           <SelectContent>
             <SelectItem value="todos">Todos los estados</SelectItem>
             <SelectItem value="pendientes">Pendientes</SelectItem>
-            <SelectItem value="urgentes">Urgentes</SelectItem>
             <SelectItem value="BORRADOR">Borrador</SelectItem>
             <SelectItem value="INGRESADO">Ingresado</SelectItem>
             <SelectItem value="FACTURADO_PARCIAL">Facturado Parcial</SelectItem>
