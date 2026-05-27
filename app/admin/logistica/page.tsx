@@ -61,11 +61,17 @@ export default function LogisticaPage() {
     const updates: any = { [field]: value }
     const item = items.find((i) => i.id === id)
     if (field === "estado_entrega") {
-      // Tanto "entregado" como "cliente_retira" pasan el pedido a ENTREGADO
       if ((value === "entregado" || value === "cliente_retira") && item?.order_id) {
         try {
+          const supabase = createClient()
+          const { data: orderItems } = await supabase
+            .from("order_items")
+            .select("facturado")
+            .eq("order_id", item.order_id)
+          const allInvoiced = orderItems && orderItems.length > 0 && orderItems.every((oi: any) => oi.facturado)
+          const newStatus = allInvoiced ? "ENTREGADO" : "ENTREGADO_PARCIAL"
           const note = value === "cliente_retira" ? "Cliente lo pasó a buscar" : "Entregado desde Logística"
-          await updateOrderStatus(item.order_id, "ENTREGADO" as any, vendedor?.id || "", vendedor?.name || "Admin", note)
+          await updateOrderStatus(item.order_id, newStatus as any, vendedor?.id || "", vendedor?.name || "Admin", note)
         } catch (e) { console.error(e) }
       }
     }
