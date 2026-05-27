@@ -1699,54 +1699,49 @@ export async function assignOrderToNextReparto(orderId: string): Promise<void> {
   const fechaISO = fecha.toISOString().slice(0, 10)
   const repartoId = await ensureRepartoForFecha(fechaISO)
 
-  // Ya está en este mismo reparto → nada que hacer.
-  if (order.reparto_id === repartoId) return
+  const shouldTransition = order.status === "FACTURADO"
+  const alreadyInReparto = order.reparto_id === repartoId
 
-  // Verificar si ya existe reparto_item para este order en el reparto destino
-  // (defensa contra duplicados aunque order.reparto_id apunte a otro lado).
-  const { data: existing } = await supabase
-    .from("reparto_items")
-    .select("id")
-    .eq("reparto_id", repartoId)
-    .eq("order_id", orderId)
-    .maybeSingle()
-  if (existing) return
+  if (!alreadyInReparto) {
+    const { data: existing } = await supabase
+      .from("reparto_items")
+      .select("id")
+      .eq("reparto_id", repartoId)
+      .eq("order_id", orderId)
+      .maybeSingle()
 
-  let facturaNro: string | null = null
-  if (order.factura_id) {
-    const { data: f } = await supabase.from("facturas").select("numero, punto_venta").eq("id", order.factura_id).single()
-    if (f) facturaNro = f.numero ? `${f.punto_venta || ""}-${f.numero}`.replace(/^-/, "") : null
+    if (!existing) {
+      let facturaNro: string | null = null
+      if (order.factura_id) {
+        const { data: f } = await supabase.from("facturas").select("numero, punto_venta").eq("id", order.factura_id).single()
+        if (f) facturaNro = f.numero ? `${f.punto_venta || ""}-${f.numero}`.replace(/^-/, "") : null
+      }
+
+      await supabase.from("reparto_items").insert({
+        reparto_id: repartoId,
+        order_id: orderId,
+        factura_numero: facturaNro,
+        client_name: order.client_name,
+        zona: order.zona || null,
+        sucursal_entrega: order.entrega_otra_sucursal || null,
+        estado_entrega: "pendiente",
+        es_destino_extra: false,
+      })
+    }
   }
 
-  await supabase.from("reparto_items").insert({
-    reparto_id: repartoId,
-    order_id: orderId,
-    factura_numero: facturaNro,
-    client_name: order.client_name,
-    zona: order.zona || null,
-    sucursal_entrega: order.entrega_otra_sucursal || null,
-    estado_entrega: "pendiente",
-    es_destino_extra: false,
-  })
-
-  // Auto-transicion FACTURADO -> EN_PROCESO_ENTREGA (item Excel #30).
-  // FACTURADO_PARCIAL queda como esta porque puede tener items pendientes
-  // de facturar todavia, y el operador puede querer facturar mas antes de
-  // marcar como "en proceso de entrega".
   const updateFields: Record<string, unknown> = {
     reparto_id: repartoId,
     numero_reparto: formatNumeroReparto(fecha),
   }
-  if (order.status === "FACTURADO") {
+  if (shouldTransition) {
     updateFields.status = "EN_PROCESO_ENTREGA"
     console.log(`assignOrderToNextReparto: ${orderId} FACTURADO -> EN_PROCESO_ENTREGA al asignar reparto ${repartoId}`)
   }
 
   await supabase.from("orders").update(updateFields).eq("id", orderId)
 
-  // Si cambiamos el estado, registramos en order_status_history para que
-  // el timeline del pedido refleje la transicion (auto).
-  if (updateFields.status === "EN_PROCESO_ENTREGA") {
+  if (shouldTransition) {
     await supabase.from("order_status_history").insert({
       order_id: orderId,
       status: "EN_PROCESO_ENTREGA",
