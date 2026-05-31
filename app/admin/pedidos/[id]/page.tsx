@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { StatusTimeline } from "@/components/vendedor/status-timeline"
 import { CountdownWidget } from "@/components/vendedor/countdown-widget"
 import {
-  fetchOrderById, fetchClientById, updateOrderStatus, addItemsToOrder, fetchProducts,
+  fetchOrderById, fetchClientById, updateOrderStatus, addItemsToOrder, removeOrderItem, fetchProducts,
   fetchOrdenCompraArchivos, createOrdenCompraArchivo, deleteOrdenCompraArchivo,
   fetchClients, fetchVendedores, esVendedorComercial, updateOrder,
   type OrdenCompraArchivo,
@@ -20,7 +20,7 @@ import {
 import type { Vendedor } from "@/lib/types"
 import { getStatusConfig, getNextStatuses } from "@/lib/status-config"
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils"
-import type { Order, Client, OrderStatus, Product } from "@/lib/types"
+import type { Order, Client, OrderStatus, Product, OrderProduct } from "@/lib/types"
 import { normalizeSearch } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ArrowLeft, Printer, MessageCircle, Phone, XCircle, FileText, Trash2 } from "lucide-react"
@@ -77,6 +77,8 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [prodSearch, setProdSearch] = useState("")
   const [prodToAdd, setProdToAdd] = useState<{ product: Product; qty: number; price: number }[]>([])
   const [agregando, setAgregando] = useState(false)
+  // Eliminar item del pedido (N.8). Guarda el id de la fila order_items en curso.
+  const [quitandoItemId, setQuitandoItemId] = useState<string | null>(null)
 
   // Editar pedido (item Excel #92, D.7)
   const [editOpen, setEditOpen] = useState(false)
@@ -832,6 +834,29 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     }
   }
 
+  // N.8: eliminar un item del pedido (solo BORRADOR/INGRESADO, no facturados).
+  async function handleQuitarItem(item: OrderProduct) {
+    if (!order || !item.id) return
+    if ((item.cantidadFacturada || 0) > 0 || item.facturado) {
+      alert("No se puede eliminar un item que ya fue facturado.")
+      return
+    }
+    if (!confirm(`¿Eliminar "${item.productName}" del pedido? Se devolverá el stock reservado.`)) return
+    setQuitandoItemId(item.id)
+    try {
+      await removeOrderItem(order.id, item.id)
+      setOrder((prev) => prev ? {
+        ...prev,
+        products: prev.products.filter((p) => p.id !== item.id),
+        total: Math.max(0, prev.total - item.price * item.quantity),
+      } : prev)
+    } catch (e: any) {
+      alert("Error al eliminar item: " + (e?.message || ""))
+    } finally {
+      setQuitandoItemId(null)
+    }
+  }
+
   function openRemitoDialog() {
     const rs = (o.razonSocial || "").toLowerCase()
     const defaultEmpresa: "Aquiles" | "Conancap" = rs.includes("conancap") ? "Conancap" : "Aquiles"
@@ -1133,6 +1158,19 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                     <div className="flex items-center gap-4">
                       <span className="text-sm text-muted-foreground">Cant: {product.quantity}</span>
                       <span className="font-semibold">{formatCurrency(product.price * product.quantity)}</span>
+                      {/* N.8: eliminar item (solo BORRADOR/INGRESADO y no facturado) */}
+                      {(["BORRADOR", "INGRESADO"] as string[]).includes(currentStatus) && cantFact === 0 && !product.facturado && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                          disabled={quitandoItemId === product.id}
+                          onClick={() => handleQuitarItem(product)}
+                          title="Eliminar item del pedido"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )

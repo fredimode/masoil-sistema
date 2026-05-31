@@ -39,6 +39,9 @@ export interface Product {
 }
 
 export interface OrderProduct {
+  // id de la fila order_items (necesario para eliminar un item puntual,
+  // ya que productId es null en lineas libre/descuento).
+  id?: string
   productId: string
   productCode: string
   productName: string

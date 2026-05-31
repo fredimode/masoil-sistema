@@ -34,6 +34,7 @@ function mapOrder(row: any): Order {
 
 function mapOrderItem(row: any): OrderProduct {
   return {
+    id: row.id,
     productId: row.product_id,
     // Para lineas libres/descuento product_id es null y los datos viven en
     // las columnas denormalizadas producto_nombre/producto_codigo.
@@ -409,6 +410,53 @@ export async function addItemsToOrder(
     if (product) {
       const newStock = Math.max(0, (product.stock ?? 0) - item.quantity)
       await supabase.from("products").update({ stock: newStock }).eq("id", item.productId)
+    }
+  }
+}
+
+// Eliminar un item del pedido. Simetrico a addItemsToOrder: devuelve el stock
+// reservado (solo si era un producto de catalogo), resta el subtotal del total
+// del pedido y borra la fila. No permite borrar items ya facturados.
+export async function removeOrderItem(orderId: string, itemId: string): Promise<void> {
+  const supabase = createSupabaseClient()
+
+  const { data: item, error: itemErr } = await supabase
+    .from("order_items")
+    .select("quantity, unit_price, product_id, tipo_linea, facturado, cantidad_facturada")
+    .eq("id", itemId)
+    .eq("order_id", orderId)
+    .single()
+  if (itemErr || !item) throw itemErr || new Error("Item no encontrado")
+  if (item.facturado || Number(item.cantidad_facturada || 0) > 0) {
+    throw new Error("No se puede eliminar un item que ya fue facturado (total o parcial)")
+  }
+
+  const { error: delErr } = await supabase.from("order_items").delete().eq("id", itemId)
+  if (delErr) throw delErr
+
+  // Restar el subtotal del total del pedido
+  const { data: currentOrder } = await supabase
+    .from("orders")
+    .select("total")
+    .eq("id", orderId)
+    .single()
+  const delta = Number(item.quantity) * Number(item.unit_price)
+  const newTotal = Math.max(0, Number(currentOrder?.total || 0) - delta)
+  await supabase
+    .from("orders")
+    .update({ total: newTotal, updated_at: new Date().toISOString() })
+    .eq("id", orderId)
+
+  // Devolver el stock reservado (solo productos de catalogo, igual que al agregar)
+  if (item.tipo_linea === "producto" && item.product_id) {
+    const { data: product } = await supabase
+      .from("products")
+      .select("stock")
+      .eq("id", item.product_id)
+      .single()
+    if (product) {
+      const newStock = (product.stock ?? 0) + Number(item.quantity)
+      await supabase.from("products").update({ stock: newStock }).eq("id", item.product_id)
     }
   }
 }
