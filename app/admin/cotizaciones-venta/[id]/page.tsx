@@ -14,7 +14,7 @@ import {
   fetchCotizacionVentaById, fetchCotizacionVentaItems, updateCotizacionVenta,
   updateCotizacionVentaItemAprobado, fetchClientById, createOrder,
   updateCotizacionVentaItem, createCotizacionVentaItem, deleteCotizacionVentaItem,
-  fetchProducts,
+  fetchProducts, fetchClients, fetchVendedores, esVendedorComercial,
 } from "@/lib/supabase/queries"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 import { generateCotizacionPDF } from "@/lib/pdf/cotizacion-pdf"
@@ -26,6 +26,10 @@ const ESTADO_BADGES: Record<string, { label: string; cls: string }> = {
   no_aprobada: { label: "No aprobada", cls: "bg-red-100 text-red-800 border-red-200" },
   convertida_pedido: { label: "Convertida a pedido", cls: "bg-indigo-100 text-indigo-800 border-indigo-200" },
 }
+
+// Mismas opciones que la pantalla de creacion (nueva/page.tsx).
+const PLAZOS = ["7 días hábiles", "10 días hábiles", "15 días hábiles", "20 días hábiles", "30 días hábiles"]
+const FORMAS_PAGO = ["Contado", "Transferencia", "Cheque", "7 días", "15 días", "21 días", "30 días", "45 días", "60 días", "Cuenta Corriente", "Ver observación"]
 
 export default function CotizacionVentaDetallePage() {
   const params = useParams()
@@ -53,6 +57,21 @@ export default function CotizacionVentaDetallePage() {
   const [addProduct, setAddProduct] = useState<any | null>(null)
   const [products, setProducts] = useState<any[]>([])
   const [savingItem, setSavingItem] = useState(false)
+
+  // N.6: edicion de cabecera de la cotizacion (cliente, vendedor, terminos).
+  const [editCabOpen, setEditCabOpen] = useState(false)
+  const [editCabSaving, setEditCabSaving] = useState(false)
+  const [editClients, setEditClients] = useState<any[]>([])
+  const [editVendedores, setEditVendedores] = useState<any[]>([])
+  const [editCab, setEditCab] = useState({
+    client_id: "",
+    vendedor_id: "",
+    razon_social: "",
+    validez_fecha: "",
+    forma_pago: "",
+    plazo_entrega: "",
+    observaciones: "",
+  })
 
   function buildPDFData() {
     if (!cot) return null
@@ -192,6 +211,69 @@ export default function CotizacionVentaDetallePage() {
     await updateCotizacionVenta(id, { total })
     setItems(its)
     setCot((prev: any) => prev ? { ...prev, total } : prev)
+  }
+
+  // N.6: abrir dialog de edicion de cabecera. Carga clientes/vendedores una vez.
+  async function openEditCabecera() {
+    if (!cot) return
+    if (editClients.length === 0) {
+      try {
+        const [cs, vs] = await Promise.all([fetchClients(), fetchVendedores()])
+        setEditClients(cs)
+        setEditVendedores(vs)
+      } catch (e) {
+        console.error("Error cargando clientes/vendedores:", e)
+      }
+    }
+    setEditCab({
+      client_id: cot.client_id || "",
+      vendedor_id: cot.vendedor_id || "",
+      razon_social: cot.razon_social || "",
+      validez_fecha: cot.validez_fecha || "",
+      forma_pago: cot.forma_pago || "",
+      plazo_entrega: cot.plazo_entrega || "",
+      observaciones: cot.observaciones || "",
+    })
+    setEditCabOpen(true)
+  }
+
+  async function handleSaveCabecera() {
+    if (!cot) return
+    setEditCabSaving(true)
+    try {
+      const updates: Record<string, any> = {
+        razon_social: editCab.razon_social || null,
+        validez_fecha: editCab.validez_fecha || null,
+        forma_pago: editCab.forma_pago || null,
+        plazo_entrega: editCab.plazo_entrega || null,
+        observaciones: editCab.observaciones || null,
+      }
+      const cli = editClients.find((c) => c.id === editCab.client_id)
+      if (cli) {
+        updates.client_id = cli.id
+        updates.client_name = cli.businessName
+        updates.zona = cli.zona || null
+      }
+      const vend = editVendedores.find((v) => v.id === editCab.vendedor_id)
+      if (vend) {
+        updates.vendedor_id = vend.id
+        updates.vendedor_nombre = vend.name || null
+        if (vend.iniciales) updates.vendedor_iniciales = vend.iniciales
+      }
+
+      await updateCotizacionVenta(id, updates)
+
+      // Refrescar cliente del panel si cambio
+      if (cli && cli.id !== cot.client_id) {
+        try { setClient(await fetchClientById(cli.id)) } catch {}
+      }
+      setCot((prev: any) => prev ? { ...prev, ...updates } : prev)
+      setEditCabOpen(false)
+    } catch (e: any) {
+      alert("Error al guardar cambios: " + (e?.message || ""))
+    } finally {
+      setEditCabSaving(false)
+    }
   }
 
   async function openAddProduct() {
@@ -468,6 +550,8 @@ export default function CotizacionVentaDetallePage() {
   const est = ESTADO_BADGES[cot.estado] || { label: cot.estado, cls: "bg-gray-100 text-gray-700" }
   const puedeAprobar = cot.estado === "pendiente" || cot.estado === "parcialmente_aprobada"
   const puedeConvertir = (cot.estado === "pendiente" || cot.estado === "parcialmente_aprobada") && !cot.order_id
+  // N.6: cabecera editable salvo una vez convertida en pedido (mismo gate que la edicion de items).
+  const puedeEditarCabecera = cot.estado !== "convertida_pedido"
 
   return (
     <div className="p-6 md:p-8">
@@ -497,6 +581,11 @@ export default function CotizacionVentaDetallePage() {
               <Send className="h-4 w-4 mr-2" /> Reenviar
               {cot.enviada && <span className="ml-1 text-[10px] text-green-600">✓</span>}
             </Button>
+            {puedeEditarCabecera && (
+              <Button variant="outline" onClick={openEditCabecera}>
+                <Pencil className="h-4 w-4 mr-2" /> Editar
+              </Button>
+            )}
           </div>
         </div>
 
@@ -784,6 +873,122 @@ export default function CotizacionVentaDetallePage() {
             <Button variant="outline" onClick={() => setAddOpen(false)} disabled={savingItem}>Cancelar</Button>
             <Button onClick={saveAddProduct} disabled={savingItem || !addProduct}>
               {savingItem ? "Agregando..." : "Agregar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Editar cabecera dialog (N.6) */}
+      <Dialog open={editCabOpen} onOpenChange={setEditCabOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar cotización {cot.numero}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2 max-h-[65vh] overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium block">Cliente</label>
+                <select
+                  value={editCab.client_id}
+                  onChange={(e) => setEditCab((p) => ({ ...p, client_id: e.target.value }))}
+                  className="w-full p-2 border rounded text-sm"
+                >
+                  <option value="">— Sin asignar —</option>
+                  {editClients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.businessName}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium block">Vendedor</label>
+                <select
+                  value={editCab.vendedor_id}
+                  onChange={(e) => setEditCab((p) => ({ ...p, vendedor_id: e.target.value }))}
+                  className="w-full p-2 border rounded text-sm"
+                >
+                  <option value="">— Sin asignar —</option>
+                  {editVendedores.filter((v) => v.isActive && esVendedorComercial(v)).map((v) => (
+                    <option key={v.id} value={v.id}>{v.name}{v.iniciales ? ` (${v.iniciales})` : ""}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium block">Razón social emisora</label>
+                <select
+                  value={editCab.razon_social}
+                  onChange={(e) => setEditCab((p) => ({ ...p, razon_social: e.target.value }))}
+                  className="w-full p-2 border rounded text-sm"
+                >
+                  <option value="">— Sin asignar —</option>
+                  <option value="Aquiles">Aquiles</option>
+                  <option value="Conancap">Conancap</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium block">Validez</label>
+                <input
+                  type="date"
+                  value={editCab.validez_fecha}
+                  onChange={(e) => setEditCab((p) => ({ ...p, validez_fecha: e.target.value }))}
+                  className="w-full p-2 border rounded text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium block">Forma de pago</label>
+                <select
+                  value={editCab.forma_pago}
+                  onChange={(e) => setEditCab((p) => ({ ...p, forma_pago: e.target.value }))}
+                  className="w-full p-2 border rounded text-sm"
+                >
+                  <option value="">— Sin asignar —</option>
+                  {editCab.forma_pago && !FORMAS_PAGO.includes(editCab.forma_pago) && (
+                    <option value={editCab.forma_pago}>{editCab.forma_pago}</option>
+                  )}
+                  {FORMAS_PAGO.map((f) => (
+                    <option key={f} value={f}>{f}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium block">Plazo de entrega</label>
+                <select
+                  value={editCab.plazo_entrega}
+                  onChange={(e) => setEditCab((p) => ({ ...p, plazo_entrega: e.target.value }))}
+                  className="w-full p-2 border rounded text-sm"
+                >
+                  <option value="">— Sin asignar —</option>
+                  {editCab.plazo_entrega && !PLAZOS.includes(editCab.plazo_entrega) && (
+                    <option value={editCab.plazo_entrega}>{editCab.plazo_entrega}</option>
+                  )}
+                  {PLAZOS.map((pl) => (
+                    <option key={pl} value={pl}>{pl}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-medium block">Observaciones</label>
+              <textarea
+                value={editCab.observaciones}
+                onChange={(e) => setEditCab((p) => ({ ...p, observaciones: e.target.value }))}
+                rows={3}
+                className="w-full p-2 border rounded text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditCabOpen(false)} disabled={editCabSaving}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveCabecera} disabled={editCabSaving}>
+              {editCabSaving ? "Guardando..." : "Guardar cambios"}
             </Button>
           </DialogFooter>
         </DialogContent>
