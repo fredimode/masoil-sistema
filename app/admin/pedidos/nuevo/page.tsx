@@ -19,6 +19,7 @@ import { formatCurrency, formatCurrencyExact } from "@/lib/utils"
 import { ArrowLeft, Plus, Trash2, Search, AlertTriangle, PackagePlus, History, CircleDot, Truck } from "lucide-react"
 import Link from "next/link"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { HistorialVentasDialog } from "@/components/historial-ventas-dialog"
 
 interface OrderItem {
   productId: string
@@ -42,6 +43,7 @@ export default function AdminNuevoPedidoPage() {
   const [loading, setLoading] = useState(true)
 
   const [selectedClientId, setSelectedClientId] = useState("")
+  const [histDialog, setHistDialog] = useState<{ open: boolean; productId?: string; productName?: string }>({ open: false })
   const [selectedVendedorId, setSelectedVendedorId] = useState("")
   const [clientSearch, setClientSearch] = useState("")
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
@@ -432,6 +434,15 @@ export default function AdminNuevoPedidoPage() {
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <h2 className="text-lg font-semibold">2. Productos</h2>
             <div className="flex gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!selectedClientId}
+                title={selectedClientId ? "Ver historial de ventas del cliente" : "Seleccioná un cliente primero"}
+                onClick={() => setHistDialog({ open: true })}
+              >
+                <History className="h-4 w-4 mr-2" /> Historial cliente
+              </Button>
               <Button variant="outline" size="sm" onClick={addLineaLibre}>
                 + Línea libre
               </Button>
@@ -572,36 +583,28 @@ export default function AdminNuevoPedidoPage() {
                             ) : (
                               <>
                                 <span className="font-mono text-xs text-muted-foreground">{item.productCode}</span>
-                                <span className="font-medium">{item.productName}</span>
+                                {/* N.5: descripción editable por línea (default del catálogo) */}
+                                <Input
+                                  value={item.productName}
+                                  onChange={(e) => setOrderItems(orderItems.map((i) => (i.productId === item.productId ? { ...i, productName: e.target.value } : i)))}
+                                  className="h-7 text-sm font-medium flex-1 min-w-[200px]"
+                                  title="Editable: podés ajustar la descripción de esta línea"
+                                />
                                 {product?.costoNeto != null && (
                                   <span className="text-xs text-gray-400">(Costo: {formatCurrencyExact(product.costoNeto)})</span>
                                 )}
                                 {item.requiereCotizacion && (
                                   <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300 text-xs">Cotizar</Badge>
                                 )}
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <button
-                                        type="button"
-                                        className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-0.5"
-                                        onMouseEnter={() => loadPriceHistory(item.productId)}
-                                      >
-                                        <History className="h-3 w-3" /> Hist.
-                                      </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom" className="max-w-xs">
-                                      <p className="font-semibold text-xs mb-1">Últimas ventas:</p>
-                                      {!history || history.length === 0 ? (
-                                        <p className="text-xs text-gray-400">Sin historial</p>
-                                      ) : (
-                                        history.map((h, i) => (
-                                          <p key={i} className="text-xs">{h.fecha}: {formatCurrencyExact(h.precio)}</p>
-                                        ))
-                                      )}
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
+                                <button
+                                  type="button"
+                                  disabled={!selectedClientId}
+                                  title={selectedClientId ? "Historial de este producto al cliente" : "Seleccioná un cliente primero"}
+                                  className="text-xs text-blue-600 hover:text-blue-800 disabled:text-gray-300 disabled:cursor-not-allowed flex items-center gap-0.5"
+                                  onClick={() => setHistDialog({ open: true, productId: item.productId, productName: item.productName })}
+                                >
+                                  <History className="h-3 w-3" /> Hist.
+                                </button>
                                 <TooltipProvider>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
@@ -814,6 +817,15 @@ export default function AdminNuevoPedidoPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <HistorialVentasDialog
+        open={histDialog.open}
+        onOpenChange={(o) => setHistDialog((prev) => ({ ...prev, open: o }))}
+        clientId={selectedClientId}
+        clientName={clients.find((c) => c.id === selectedClientId)?.businessName}
+        productId={histDialog.productId}
+        productName={histDialog.productName}
+      />
     </div>
   )
 }

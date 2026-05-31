@@ -39,6 +39,7 @@ export interface OrdenCompraPDFData {
     cantidad: number
     precio_unitario: number
     descuento_porcentaje?: number | null
+    tasa_iva?: number | null
     subtotal: number
   }[]
   total: number
@@ -122,14 +123,18 @@ export function generateOrdenCompraPDF(data: OrdenCompraPDFData): Blob {
   }
   y += 6
 
-  // Tabla de items
+  // Tabla de items. IVA por línea = subtotal (neto, ya descontado) × tasa_iva
+  // (default 21%); Total = subtotal + IVA.
+  const round2 = (n: number) => Math.round(n * 100) / 100
   const cols = [
-    { label: "Código", w: 70, align: "left" as const },
-    { label: "Descripción", w: 220, align: "left" as const },
-    { label: "Cant.", w: 45, align: "center" as const },
-    { label: "P. Unit.", w: 75, align: "right" as const },
-    { label: "Desc.", w: 40, align: "right" as const },
-    { label: "Subtotal", w: 85, align: "right" as const },
+    { label: "Código", w: 52, align: "left" as const },
+    { label: "Descripción", w: 150, align: "left" as const },
+    { label: "Cant.", w: 30, align: "center" as const },
+    { label: "P. Unit.", w: 60, align: "right" as const },
+    { label: "Desc.", w: 30, align: "right" as const },
+    { label: "Subtotal", w: 66, align: "right" as const },
+    { label: "IVA", w: 60, align: "right" as const },
+    { label: "Total", w: 67, align: "right" as const },
   ]
 
   function drawHeader() {
@@ -149,6 +154,8 @@ export function generateOrdenCompraPDF(data: OrdenCompraPDFData): Blob {
 
   drawHeader()
 
+  let sumSub = 0
+  let sumIva = 0
   for (const it of data.items) {
     if (y > pageH - 140) {
       doc.addPage()
@@ -156,6 +163,11 @@ export function generateOrdenCompraPDF(data: OrdenCompraPDFData): Blob {
       drawHeader()
     }
     let x = margin + 4
+    const tasa = it.tasa_iva ?? 21
+    const ivaLinea = round2(it.subtotal * (tasa / 100))
+    const totalLinea = round2(it.subtotal + ivaLinea)
+    sumSub += it.subtotal
+    sumIva += ivaLinea
     const row: string[] = [
       it.codigo || "-",
       it.descripcion,
@@ -163,6 +175,8 @@ export function generateOrdenCompraPDF(data: OrdenCompraPDFData): Blob {
       fmt(it.precio_unitario),
       it.descuento_porcentaje ? `${it.descuento_porcentaje}%` : "-",
       fmt(it.subtotal),
+      fmt(ivaLinea),
+      fmt(totalLinea),
     ]
     cols.forEach((c, i) => {
       const xPos = c.align === "right" ? x + c.w - 6 : c.align === "center" ? x + c.w / 2 : x
@@ -180,12 +194,23 @@ export function generateOrdenCompraPDF(data: OrdenCompraPDFData): Blob {
     doc.line(margin, y - 4, pageW - margin, y - 4)
   }
 
-  // Total
+  // Totales (reconciliados desde los ítems: Subtotal neto + IVA = Total)
+  sumSub = round2(sumSub)
+  sumIva = round2(sumIva)
+  const grandTotal = round2(sumSub + sumIva)
   y += 10
+  doc.setFont("helvetica", "normal")
+  doc.setFontSize(9)
+  doc.text("Subtotal (neto):", pageW - margin - 110, y)
+  doc.text(fmt(sumSub), pageW - margin, y, { align: "right" })
+  y += 13
+  doc.text("IVA:", pageW - margin - 110, y)
+  doc.text(fmt(sumIva), pageW - margin, y, { align: "right" })
+  y += 15
   doc.setFont("helvetica", "bold")
   doc.setFontSize(12)
-  doc.text("TOTAL:", pageW - margin - 100, y)
-  doc.text(fmt(data.total), pageW - margin, y, { align: "right" })
+  doc.text("TOTAL:", pageW - margin - 110, y)
+  doc.text(fmt(grandTotal), pageW - margin, y, { align: "right" })
   y += 20
 
   // Condición de pago / Observaciones

@@ -16,6 +16,7 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { BotonSincAfip, type CamposAFIP } from "@/components/admin/boton-sinc-afip"
 import { mapCondicionIvaToSelectOption } from "@/lib/afip-sync"
+import { HistorialVentas } from "@/components/historial-ventas-dialog"
 
 export default function AdminClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params)
@@ -26,8 +27,6 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
   const [loading, setLoading] = useState(true)
   const [notFoundState, setNotFoundState] = useState(false)
   const [ultimasFacturas, setUltimasFacturas] = useState<any[]>([])
-  const [historialArticulos, setHistorialArticulos] = useState<any[]>([])
-  const [articuloSearch, setArticuloSearch] = useState("")
 
   const [editOpen, setEditOpen] = useState(false)
   const [allVendedores, setAllVendedores] = useState<Vendedor[]>([])
@@ -80,30 +79,8 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
         setClientOrders(allOrders.filter((o) => o.clientId === clientData.id))
         fetchFacturasByClient(clientData.id, 10).then(setUltimasFacturas).catch(() => setUltimasFacturas([]))
 
-        // Historial de artículos facturados al cliente (item Excel #77).
-        // Trae order_items de pedidos del cliente cuyo pedido fue facturado
-        // (orders.factura_id no null), con producto + factura asociada para
-        // mostrar Fecha/Comprobante/Codigo/Descripcion/Cant/Precio.
-        const supabase = createSupabaseClient()
-        supabase
-          .from("order_items")
-          .select(`
-            id, quantity, unit_price, created_at,
-            products(code, name),
-            orders!inner(client_id, factura_id, facturas(numero, comprobante_nro, fecha, tipo))
-          `)
-          .eq("orders.client_id", clientData.id)
-          .not("orders.factura_id", "is", null)
-          .order("created_at", { ascending: false })
-          .limit(500)
-          .then(({ data, error }) => {
-            if (error) {
-              console.error("Error cargando historial articulos:", error)
-              setHistorialArticulos([])
-            } else {
-              setHistorialArticulos(data || [])
-            }
-          })
+        // Historial de artículos: ahora vive en <HistorialVentas> (N.4), que
+        // hace su propia query y muestra el precio SIN IVA.
         setVendedor(allVendedores.find((v) => v.id === clientData.vendedorId) || null)
         setEditForm({
           businessName: clientData.businessName,
@@ -379,79 +356,13 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
             )}
           </Card>
 
-          {/* Historial de Artículos facturados (item Excel #77) */}
+          {/* Historial de Artículos facturados (item Excel #77 + N.4) */}
           <Card className="p-6">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-lg font-semibold">Historial de Artículos</h3>
-              <input
-                type="text"
-                placeholder="Buscar por código o descripción..."
-                value={articuloSearch}
-                onChange={(e) => setArticuloSearch(e.target.value)}
-                className="px-3 py-1.5 border rounded-md text-sm w-64"
-              />
-            </div>
+            <h3 className="text-lg font-semibold mb-2">Historial de Artículos</h3>
             <p className="text-xs text-muted-foreground mb-4">
-              Últimos artículos facturados al cliente — útil para consultar precios históricos.
+              Artículos facturados al cliente — precio unitario SIN IVA, útil para consultar precios históricos.
             </p>
-            {historialArticulos.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No hay artículos facturados</p>
-            ) : (() => {
-              const q = articuloSearch.trim().toLowerCase()
-              const rows = historialArticulos.filter((it: any) => {
-                if (!q) return true
-                const code = (it.products?.code || "").toLowerCase()
-                const name = (it.products?.name || "").toLowerCase()
-                return code.includes(q) || name.includes(q)
-              })
-              if (rows.length === 0) {
-                return <p className="text-sm text-muted-foreground">Sin coincidencias para &quot;{articuloSearch}&quot;</p>
-              }
-              return (
-                <div className="overflow-x-auto border rounded-lg">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-xs uppercase">
-                      <tr>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-600">Fecha</th>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-600">Comprobante</th>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-600">Código</th>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-600">Descripción</th>
-                        <th className="px-3 py-2 text-right font-semibold text-gray-600">Cant.</th>
-                        <th className="px-3 py-2 text-right font-semibold text-gray-600">Precio Unit.</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.slice(0, 200).map((it: any) => {
-                        const f = it.orders?.facturas
-                        const fecha = f?.fecha
-                        const tipoLetra = (f?.tipo || "").replace(/^(FACTURA|NOTA DE CREDITO|NOTA DE DEBITO)\s*/i, "").trim()
-                        const nro = f?.comprobante_nro || f?.numero || "-"
-                        const comp = tipoLetra ? `${tipoLetra}-${nro}` : nro
-                        return (
-                          <tr key={it.id} className="border-t">
-                            <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
-                              {fecha ? formatDate(new Date(fecha)) : "-"}
-                            </td>
-                            <td className="px-3 py-2 font-mono text-gray-700">{comp}</td>
-                            <td className="px-3 py-2 font-mono text-gray-600 text-xs">{it.products?.code || "-"}</td>
-                            <td className="px-3 py-2 text-gray-800">{it.products?.name || "-"}</td>
-                            <td className="px-3 py-2 text-right text-gray-700">{Number(it.quantity) || 0}</td>
-                            <td className="px-3 py-2 text-right font-medium text-gray-900">
-                              {formatCurrency(Number(it.unit_price) || 0)}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                  {rows.length > 200 && (
-                    <p className="text-xs text-muted-foreground p-2 text-center">
-                      Mostrando primeros 200 de {rows.length} resultados. Refiná la búsqueda para ver el resto.
-                    </p>
-                  )}
-                </div>
-              )
-            })()}
+            <HistorialVentas clientId={client.id} />
           </Card>
 
           {/* Notes */}

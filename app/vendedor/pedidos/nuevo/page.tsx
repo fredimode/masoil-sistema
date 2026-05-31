@@ -14,8 +14,9 @@ import { fetchClientsByVendedor, fetchProducts, createOrder } from "@/lib/supaba
 import type { Client, Product } from "@/lib/types"
 import { formatCurrency, formatCurrencyExact } from "@/lib/utils"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowLeft, Plus, Trash2, Search, AlertTriangle } from "lucide-react"
+import { ArrowLeft, Plus, Trash2, Search, AlertTriangle, History } from "lucide-react"
 import Link from "next/link"
+import { HistorialVentasDialog } from "@/components/historial-ventas-dialog"
 
 interface OrderItem {
   productId: string
@@ -58,6 +59,7 @@ function NuevoPedidoContent() {
   }, [vendedorId])
 
   const [selectedClientId, setSelectedClientId] = useState(preselectedClientId || "")
+  const [histDialog, setHistDialog] = useState<{ open: boolean; productId?: string; productName?: string }>({ open: false })
   const [clientSearch, setClientSearch] = useState("")
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
   const [selectedProductId, setSelectedProductId] = useState("")
@@ -312,6 +314,15 @@ function NuevoPedidoContent() {
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h2 className="text-lg font-semibold">2. Agregar Productos</h2>
               <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!selectedClientId}
+                  title={selectedClientId ? "Ver historial de ventas del cliente" : "Seleccioná un cliente primero"}
+                  onClick={() => setHistDialog({ open: true })}
+                >
+                  <History className="h-4 w-4 mr-1" /> Historial
+                </Button>
                 <Button variant="outline" size="sm" onClick={addLineaLibre}>+ Línea libre</Button>
                 <Button variant="outline" size="sm" onClick={addDescuento}>+ Descuento</Button>
               </div>
@@ -403,10 +414,27 @@ function NuevoPedidoContent() {
                     <div>
                       {esCatalogo ? (
                         <>
-                          <p className="font-medium text-sm">{item.productName}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {item.productCode} • {formatCurrencyExact(item.price)} c/u
-                          </p>
+                          {/* N.5: descripción editable por línea */}
+                          <Input
+                            value={item.productName}
+                            onChange={(e) => setOrderItems(orderItems.map((i) => (i.productId === item.productId ? { ...i, productName: e.target.value } : i)))}
+                            className="h-8 text-sm font-medium"
+                            title="Editable: podés ajustar la descripción"
+                          />
+                          <div className="flex items-center gap-2 mt-1">
+                            <p className="text-xs text-muted-foreground">
+                              {item.productCode} • {formatCurrencyExact(item.price)} c/u
+                            </p>
+                            <button
+                              type="button"
+                              disabled={!selectedClientId}
+                              title={selectedClientId ? "Historial de este producto al cliente" : "Seleccioná un cliente primero"}
+                              className="text-xs text-blue-600 hover:text-blue-800 disabled:text-gray-300 disabled:cursor-not-allowed flex items-center gap-0.5"
+                              onClick={() => setHistDialog({ open: true, productId: item.productId, productName: item.productName })}
+                            >
+                              <History className="h-3 w-3" /> Hist.
+                            </button>
+                          </div>
                         </>
                       ) : (
                         <div className="space-y-1">
@@ -565,6 +593,15 @@ function NuevoPedidoContent() {
           </div>
         </div>
       </div>
+
+      <HistorialVentasDialog
+        open={histDialog.open}
+        onOpenChange={(o) => setHistDialog((prev) => ({ ...prev, open: o }))}
+        clientId={selectedClientId}
+        clientName={clients.find((c) => c.id === selectedClientId)?.businessName}
+        productId={histDialog.productId}
+        productName={histDialog.productName}
+      />
     </div>
   )
 }

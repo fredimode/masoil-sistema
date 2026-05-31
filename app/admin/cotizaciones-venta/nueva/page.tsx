@@ -9,8 +9,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Search, Trash2, Truck } from "lucide-react"
+import { ArrowLeft, Search, Trash2, Truck, History } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { HistorialVentasDialog } from "@/components/historial-ventas-dialog"
 import {
   fetchClients, fetchProducts, fetchVendedores,
   createCotizacionVenta, getNextCotizacionVentaNumero, esVendedorComercial,
@@ -72,6 +73,7 @@ export default function NuevaCotizacionVentaPage() {
   const [loading, setLoading] = useState(true)
 
   const [selectedClientId, setSelectedClientId] = useState("")
+  const [histDialog, setHistDialog] = useState<{ open: boolean; productId?: string; productName?: string }>({ open: false })
   const [clientSearch, setClientSearch] = useState("")
   const [selectedVendedorId, setSelectedVendedorId] = useState("")
   const [razonSocial, setRazonSocial] = useState("")
@@ -333,9 +335,21 @@ export default function NuevaCotizacionVentaPage() {
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">2. Productos</h2>
-            <Button type="button" variant="outline" size="sm" onClick={addDescuento}>
-              + Línea de descuento
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!selectedClientId}
+                title={selectedClientId ? "Ver historial de ventas del cliente" : "Seleccioná un cliente primero"}
+                onClick={() => setHistDialog({ open: true })}
+              >
+                <History className="h-4 w-4 mr-1" /> Historial cliente
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={addDescuento}>
+                + Línea de descuento
+              </Button>
+            </div>
           </div>
           <div className="relative mb-4">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -410,7 +424,24 @@ export default function NuevaCotizacionVentaPage() {
                               className="h-7 text-sm flex-1 min-w-[200px]"
                             />
                           ) : (
-                            <span className="font-medium">{item.productName}</span>
+                            <>
+                              {/* N.5: descripción editable por línea (default del catálogo) */}
+                              <Input
+                                value={item.productName}
+                                onChange={(e) => setItems(items.map((i) => (i.productId === item.productId ? { ...i, productName: e.target.value } : i)))}
+                                className="h-7 text-sm font-medium flex-1 min-w-[200px]"
+                                title="Editable: podés ajustar la descripción de esta línea"
+                              />
+                              <button
+                                type="button"
+                                disabled={!selectedClientId}
+                                title={selectedClientId ? "Historial de este producto al cliente" : "Seleccioná un cliente primero"}
+                                className="text-xs text-blue-600 hover:text-blue-800 disabled:text-gray-300 disabled:cursor-not-allowed flex items-center gap-0.5"
+                                onClick={() => setHistDialog({ open: true, productId: item.productId as string, productName: item.productName })}
+                              >
+                                <History className="h-3 w-3" /> Hist.
+                              </button>
+                            </>
                           )}
                           {item.productId && item.tipoLinea !== "descuento" && (
                             <TooltipProvider>
@@ -532,6 +563,15 @@ export default function NuevaCotizacionVentaPage() {
           </Button>
         </div>
       </div>
+
+      <HistorialVentasDialog
+        open={histDialog.open}
+        onOpenChange={(o) => setHistDialog((prev) => ({ ...prev, open: o }))}
+        clientId={selectedClientId}
+        clientName={clients.find((c) => c.id === selectedClientId)?.businessName}
+        productId={histDialog.productId}
+        productName={histDialog.productName}
+      />
     </div>
   )
 }

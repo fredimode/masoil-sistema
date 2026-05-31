@@ -1389,6 +1389,39 @@ export async function createOrdenCompra(oc: {
   return data.id
 }
 
+// N.2: editar cantidad / costo / descuento por ítem en una OC existente.
+// Recalcula subtotal por ítem (neto de descuento) e importe_total de la OC.
+export async function updateOrdenCompraItems(
+  ordenCompraId: string,
+  items: { id: string; cantidad: number; precio_unitario: number; descuento_porcentaje?: number }[],
+): Promise<number> {
+  const supabase = createSupabaseClient()
+  let importeTotal = 0
+  for (const it of items) {
+    const base = it.cantidad * it.precio_unitario
+    const desc = base * ((it.descuento_porcentaje || 0) / 100)
+    const subtotal = Math.round((base - desc) * 100) / 100
+    importeTotal += subtotal
+    const { error } = await supabase
+      .from("orden_compra_items")
+      .update({
+        cantidad: it.cantidad,
+        precio_unitario: it.precio_unitario,
+        descuento_porcentaje: it.descuento_porcentaje ?? 0,
+        subtotal,
+      })
+      .eq("id", it.id)
+    if (error) throw error
+  }
+  importeTotal = Math.round(importeTotal * 100) / 100
+  const { error: ocError } = await supabase
+    .from("ordenes_compra")
+    .update({ importe_total: importeTotal })
+    .eq("id", ordenCompraId)
+  if (ocError) throw ocError
+  return importeTotal
+}
+
 // ---------------------------------------------------------------------------
 // Facturas (emitidas por el sistema)
 // ---------------------------------------------------------------------------

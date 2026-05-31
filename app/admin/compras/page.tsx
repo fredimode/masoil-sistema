@@ -95,6 +95,7 @@ export default function ComprasPage() {
 
   // Action dialogs - Ordenes
   const [viewingOrden, setViewingOrden] = useState<any | null>(null)
+  const [viewingOrdenItems, setViewingOrdenItems] = useState<any[]>([])
   const [editingOrden, setEditingOrden] = useState<any | null>(null)
   const [editOrdenForm, setEditOrdenForm] = useState<any>({})
   const [deletingOrden, setDeletingOrden] = useState<any | null>(null)
@@ -927,7 +928,14 @@ export default function ComprasPage() {
                         <td className="px-1 py-2 text-center">
                           <div className="flex items-center justify-center gap-1">
                             <button
-                              onClick={() => setViewingOrden(o)}
+                              onClick={async () => {
+                                setViewingOrden(o)
+                                try {
+                                  setViewingOrdenItems(await fetchOrdenCompraItems(o.id))
+                                } catch {
+                                  setViewingOrdenItems([])
+                                }
+                              }}
                               className="p-1 hover:bg-gray-200 rounded"
                               title="Ver detalle"
                             >
@@ -1061,19 +1069,87 @@ export default function ComprasPage() {
 
       {/* View Orden */}
       <Dialog open={!!viewingOrden} onOpenChange={(open) => !open && setViewingOrden(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalle de Orden de Compra</DialogTitle>
           </DialogHeader>
           {viewingOrden && (
-            <div className="space-y-2 text-sm">
-              <div><strong>Fecha:</strong> {viewingOrden.fecha ? formatDate(new Date(viewingOrden.fecha)) : "-"}</div>
-              <div><strong>Proveedor:</strong> {viewingOrden.proveedor_nombre || "-"}</div>
-              <div><strong>Importe Total:</strong> {formatCurrency(Number(viewingOrden.importe_total) || 0)}</div>
-              <div><strong>Estado:</strong> {viewingOrden.estado || "-"}</div>
-              <div><strong>Nro OC:</strong> {viewingOrden.nro_oc || "-"}</div>
-              <div><strong>Razon Social:</strong> {viewingOrden.razon_social || "-"}</div>
-              <div><strong>Ubicacion:</strong> {viewingOrden.ubicacion_oc || "-"}</div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                <div><strong>Fecha:</strong> {viewingOrden.fecha ? formatDate(new Date(viewingOrden.fecha)) : "-"}</div>
+                <div><strong>Nro OC:</strong> {viewingOrden.nro_oc || "-"}</div>
+                <div><strong>Proveedor:</strong> {viewingOrden.proveedor_nombre || "-"}</div>
+                <div><strong>Estado:</strong> {viewingOrden.estado || "-"}</div>
+                <div><strong>Razon Social:</strong> {viewingOrden.razon_social || "-"}</div>
+                <div><strong>Ubicacion:</strong> {viewingOrden.ubicacion_oc || "-"}</div>
+              </div>
+
+              {(() => {
+                let sumSub = 0
+                let sumIva = 0
+                const rows = viewingOrdenItems.map((it) => {
+                  const sub = Number(it.subtotal) || 0
+                  const iva = Math.round(sub * 0.21 * 100) / 100
+                  sumSub += sub
+                  sumIva += iva
+                  return { it, sub, iva, total: Math.round((sub + iva) * 100) / 100 }
+                })
+                sumSub = Math.round(sumSub * 100) / 100
+                sumIva = Math.round(sumIva * 100) / 100
+                return (
+                  <div className="overflow-x-auto border rounded-lg">
+                    <table className="w-full text-sm">
+                      <thead className="bg-muted text-xs">
+                        <tr>
+                          <th className="text-center p-2">Cantidad</th>
+                          <th className="text-left p-2">Código</th>
+                          <th className="text-left p-2">Producto</th>
+                          <th className="text-right p-2">Costo</th>
+                          <th className="text-right p-2">Desc.%</th>
+                          <th className="text-right p-2">Subtotal</th>
+                          <th className="text-right p-2">IVA</th>
+                          <th className="text-right p-2">Total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.length === 0 ? (
+                          <tr><td colSpan={8} className="p-3 text-center text-muted-foreground">Sin ítems cargados.</td></tr>
+                        ) : rows.map(({ it, sub, iva, total }) => (
+                          <tr key={it.id} className="border-t">
+                            <td className="text-center p-2">{it.cantidad}</td>
+                            <td className="p-2 font-mono text-xs">{it.producto_codigo || "-"}</td>
+                            <td className="p-2">{it.producto_nombre || "-"}</td>
+                            <td className="text-right p-2">{formatCurrency(Number(it.precio_unitario) || 0)}</td>
+                            <td className="text-right p-2">{it.descuento_porcentaje ? `${it.descuento_porcentaje}%` : "-"}</td>
+                            <td className="text-right p-2">{formatCurrency(sub)}</td>
+                            <td className="text-right p-2">{formatCurrency(iva)}</td>
+                            <td className="text-right p-2 font-medium">{formatCurrency(total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      {rows.length > 0 && (
+                        <tfoot>
+                          <tr className="border-t font-medium bg-muted/40">
+                            <td colSpan={5} className="text-right p-2">Subtotal (neto) / IVA / Total</td>
+                            <td className="text-right p-2">{formatCurrency(sumSub)}</td>
+                            <td className="text-right p-2">{formatCurrency(sumIva)}</td>
+                            <td className="text-right p-2">{formatCurrency(Math.round((sumSub + sumIva) * 100) / 100)}</td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                )
+              })()}
+
+              <div className="flex justify-end">
+                <Link
+                  href={`/admin/compras/${viewingOrden.id}/editar`}
+                  className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm"
+                >
+                  Editar ítems
+                </Link>
+              </div>
             </div>
           )}
         </DialogContent>
