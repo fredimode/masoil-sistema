@@ -56,6 +56,9 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [facturarEmpresa, setFacturarEmpresa] = useState<"Aquiles" | "Conancap">("Aquiles")
   const [facturarModo, setFacturarModo] = useState<"testing" | "produccion">("testing")
   const [facturarObs, setFacturarObs] = useState("")
+  // N.7: descuento al facturar — el operador ingresa monto positivo (con IVA),
+  // el sistema lo resta del total agregando una línea negativa.
+  const [facturarDescuento, setFacturarDescuento] = useState(0)
 
   // OC (archivos del cliente — múltiples)
   const [ocUploading, setOcUploading] = useState(false)
@@ -504,6 +507,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     setFacturarEmpresa(rs.includes("conancap") ? "Conancap" : "Aquiles")
     setFacturarModo("testing")
     setFacturarObs("")
+    setFacturarDescuento(0)
     setFacturarOpen(true)
   }
 
@@ -558,6 +562,17 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           alicuota: 21 as const,
         }
       })
+
+      // N.7: línea de descuento (monto positivo ingresado → línea negativa que
+      // resta del total, mismo criterio que la factura standalone).
+      if (facturarDescuento && facturarDescuento > 0) {
+        items.push({
+          descripcion: "Descuento",
+          cantidad: 1,
+          precioUnitarioSinIva: -Math.round((facturarDescuento / 1.21) * 100) / 100,
+          alicuota: 21 as const,
+        })
+      }
 
       const res = await fetch("/api/facturar", {
         method: "POST",
@@ -1525,6 +1540,21 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                 ⚠ Se emitirá una factura real ante AFIP. Verificá empresa, cliente e items.
               </p>
             )}
+            <div className="space-y-1">
+              <Label className="text-xs">Descuento (con IVA, opcional)</Label>
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                value={facturarDescuento || ""}
+                onChange={(e) => setFacturarDescuento(Math.max(0, parseFloat(e.target.value) || 0))}
+                placeholder="0.00"
+                className="w-full p-2 border rounded-md text-sm"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Se agrega como una línea negativa en la factura (monto final con IVA incluido).
+              </p>
+            </div>
             <div className="space-y-1">
               <Label className="text-xs">Observaciones (opcional)</Label>
               <Textarea
