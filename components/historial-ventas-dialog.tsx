@@ -17,7 +17,7 @@ function normalize(it: any) {
   const prod = Array.isArray(it.products) ? it.products[0] : it.products
   const fact = Array.isArray(it.orders) ? it.orders[0] : it.orders
   const factura = fact?.facturas ? (Array.isArray(fact.facturas) ? fact.facturas[0] : fact.facturas) : null
-  const fecha = factura?.fecha || it.created_at
+  const fecha = factura?.fecha || null
   const comprobante = factura ? (factura.numero || factura.comprobante_nro || "-") : "-"
   // order_items.unit_price se guarda CON IVA → mostramos SIN IVA (÷1.21)
   const precioSinIva = Math.round((Number(it.unit_price) / 1.21) * 100) / 100
@@ -48,19 +48,23 @@ export function HistorialVentas({ clientId, productId }: HistorialVentasProps) {
     async function load() {
       setLoading(true)
       const supabase = createClient()
+      // NOTA: order_items NO tiene columna created_at. Referenciarla hacía
+      // fallar la query entera (PostgREST: "column order_items.created_at does
+      // not exist") y, como el error se descartaba, la tabla quedaba vacía.
+      // Ordenamos client-side por fecha de factura.
       let query = supabase
         .from("order_items")
         .select(`
-          id, quantity, unit_price, created_at,
+          id, quantity, unit_price,
           products(code, name),
           orders!inner(client_id, factura_id, facturas(numero, comprobante_nro, fecha, tipo))
         `)
         .eq("orders.client_id", clientId)
         .not("orders.factura_id", "is", null)
-        .order("created_at", { ascending: false })
         .limit(500)
       if (productId) query = query.eq("product_id", productId)
-      const { data } = await query
+      const { data, error } = await query
+      if (error) console.error("HistorialVentas query error:", error)
       if (!cancelled) {
         setRows((data as any) || [])
         setLoading(false)
@@ -72,11 +76,14 @@ export function HistorialVentas({ clientId, productId }: HistorialVentasProps) {
     }
   }, [clientId, productId])
 
-  const items = rows.map(normalize).filter((r) => {
-    if (!search.trim()) return true
-    const q = search.toLowerCase()
-    return r.codigo.toLowerCase().includes(q) || r.descripcion.toLowerCase().includes(q)
-  })
+  const items = rows
+    .map(normalize)
+    .filter((r) => {
+      if (!search.trim()) return true
+      const q = search.toLowerCase()
+      return r.codigo.toLowerCase().includes(q) || r.descripcion.toLowerCase().includes(q)
+    })
+    .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || ""))
 
   return (
     <div>
@@ -113,7 +120,7 @@ export function HistorialVentas({ clientId, productId }: HistorialVentasProps) {
             <tbody>
               {items.map((r) => (
                 <tr key={r.id} className="border-t">
-                  <td className="p-2">{new Date(r.fecha).toLocaleDateString("es-AR")}</td>
+                  <td className="p-2">{r.fecha ? new Date(r.fecha).toLocaleDateString("es-AR") : "-"}</td>
                   <td className="text-right p-2">{r.cantidad}</td>
                   <td className="p-2">{r.descripcion}</td>
                   <td className="p-2 font-mono text-xs">{r.codigo}</td>
