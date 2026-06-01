@@ -482,7 +482,11 @@ export default function NuevaCotizacionVentaPage() {
                           min={item.tipoLinea === "descuento" ? undefined : 0}
                           value={item.price}
                           onChange={(e) => {
-                            const price = parseFloat(e.target.value) || 0
+                            const parsed = parseFloat(e.target.value) || 0
+                            // En descuentos el monto SIEMPRE resta: se coacciona a
+                            // negativo (el operario tipea "100" y el subtotal baja
+                            // $100). Antes guardaba tal cual y "100" SUMABA.
+                            const price = item.tipoLinea === "descuento" ? -Math.abs(parsed) : parsed
                             setItems(items.map((i) => (i.productId === item.productId ? { ...i, price } : i)))
                           }}
                           className="h-8 text-right text-sm"

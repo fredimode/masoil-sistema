@@ -937,7 +937,13 @@ export default function NuevaFacturaPage() {
                             min={it.esDescuento ? undefined : 0}
                             step={0.01}
                             value={it.precioUnitario}
-                            onChange={(e) => actualizarItem(idx, "precioUnitario", parseFloat(e.target.value) || 0)}
+                            onChange={(e) => {
+                              const parsed = parseFloat(e.target.value) || 0
+                              // En descuentos el monto SIEMPRE resta: se coacciona
+                              // a negativo (el operario tipea "100" y el total baja
+                              // $100). Antes guardaba tal cual y "100" SUMABA.
+                              actualizarItem(idx, "precioUnitario", it.esDescuento ? -Math.abs(parsed) : parsed)
+                            }}
                             className="w-28 p-1 border rounded text-right text-sm"
                           />
                         )}

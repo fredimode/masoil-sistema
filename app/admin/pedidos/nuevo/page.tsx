@@ -642,7 +642,12 @@ export default function AdminNuevoPedidoPage() {
                             min={esDescuento ? undefined : 0}
                             value={item.price}
                             onChange={(e) => {
-                              const newPrice = parseFloat(e.target.value) || 0
+                              const parsed = parseFloat(e.target.value) || 0
+                              // En líneas de descuento el monto SIEMPRE resta: se
+                              // coacciona a negativo (el operario tipea "100" y el
+                              // total baja $100). Antes se guardaba tal cual y, como
+                              // el total es Σ price*qty, un "100" SUMABA.
+                              const newPrice = esDescuento ? -Math.abs(parsed) : parsed
                               setOrderItems(orderItems.map((i) =>
                                 i.productId === item.productId ? { ...i, price: newPrice } : i
                               ))
