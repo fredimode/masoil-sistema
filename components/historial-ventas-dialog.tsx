@@ -25,10 +25,14 @@ function normalize(it: any) {
     id: it.id,
     fecha,
     cantidad: it.quantity,
-    descripcion: prod?.name || "-",
-    codigo: prod?.code || "-",
+    // Fallback a los snapshots producto_nombre/producto_codigo persistidos en
+    // el order_item, para que la columna no quede en "-" si el producto fue
+    // borrado o el join no resuelve.
+    descripcion: prod?.name || it.producto_nombre || "-",
+    codigo: prod?.code || it.producto_codigo || "-",
     precioSinIva,
     comprobante,
+    tipoLinea: it.tipo_linea || "producto",
   }
 }
 
@@ -55,7 +59,7 @@ export function HistorialVentas({ clientId, productId }: HistorialVentasProps) {
       let query = supabase
         .from("order_items")
         .select(`
-          id, quantity, unit_price,
+          id, quantity, unit_price, tipo_linea, producto_nombre, producto_codigo,
           products(code, name),
           orders!inner(client_id, factura_id, facturas(numero, comprobante_nro, fecha, tipo))
         `)
@@ -78,6 +82,10 @@ export function HistorialVentas({ clientId, productId }: HistorialVentasProps) {
 
   const items = rows
     .map(normalize)
+    // Las líneas de descuento (N.7 / Sprint O) no son productos comprados:
+    // se excluyen del historial de artículos. Filtro client-side para no
+    // descartar filas legacy con tipo_linea NULL (.neq las excluiría).
+    .filter((r) => r.tipoLinea !== "descuento")
     .filter((r) => {
       if (!search.trim()) return true
       const q = search.toLowerCase()
