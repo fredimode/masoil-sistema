@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import * as XLSX from "xlsx"
 import { formatCurrency, formatDate, normalizeSearch } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
@@ -18,6 +17,7 @@ import {
   updateSolicitudCompra,
   deleteSolicitudCompra,
   createSolicitudCompra,
+  createOrdenCompra,
   fetchProveedores,
   fetchProducts,
   fetchOrdenCompraItems,
@@ -57,7 +57,6 @@ function estadoBadge(estado: string) {
 }
 
 export default function ComprasPage() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [compras, setCompras] = useState<any[]>([])
   const [ordenes, setOrdenes] = useState<any[]>([])
@@ -67,6 +66,10 @@ export default function ComprasPage() {
   const [solBusqueda, setSolBusqueda] = useState("")
   const [proveedores, setProveedores] = useState<any[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  // Pestaña activa (controlada para poder saltar a "ordenes" tras convertir una solicitud)
+  const [activeTab, setActiveTab] = useState("solicitudes")
+  // Id de la solicitud que se está convirtiendo en OC (deshabilita el botón mientras tanto)
+  const [convirtiendoOC, setConvirtiendoOC] = useState<string | null>(null)
 
   // Nueva solicitud manual
   const [nuevaSolDialog, setNuevaSolDialog] = useState(false)
@@ -276,26 +279,92 @@ export default function ComprasPage() {
     }
   }
 
-  function handleConvertirOC(solicitud: any) {
-    // Find proveedor habitual del producto (si ya se compró antes ese producto)
-    const provHabitual = proveedores.find((p) =>
-      compras.some((c) =>
-        c.proveedor_id === p.id &&
-        normalizeSearch(c.articulo || "").includes(normalizeSearch(solicitud.producto_nombre || "")),
-      ),
-    )
-    const params = new URLSearchParams({
-      solicitud_id: solicitud.id,
-      producto_nombre: solicitud.producto_nombre || "",
-      producto_codigo: solicitud.producto_codigo || "",
-      product_id: solicitud.product_id || "",
-      cantidad: String(solicitud.cantidad_faltante || solicitud.cantidad_solicitada || 1),
-    })
-    if (provHabitual) {
-      params.set("proveedor_id", provHabitual.id || "")
-      params.set("proveedor_nombre", provHabitual.nombre || provHabitual.razon_social || "")
+  // Q.2 — Convierte la solicitud directamente en una Orden de Compra (1 clic):
+  // resuelve proveedor (historial → sugerido), precio (producto_proveedor →
+  // costo del producto), crea la OC con su ítem, marca la solicitud como
+  // convertido_oc y muestra la OC nueva (pestaña Órdenes).
+  async function handleConvertirOC(solicitud: any) {
+    if (convirtiendoOC) return
+
+    // Resolver proveedor: habitual (ya se compró antes ese producto) o sugerido
+    let proveedor =
+      proveedores.find((p) =>
+        compras.some((c) =>
+          c.proveedor_id === p.id &&
+          normalizeSearch(c.articulo || "").includes(normalizeSearch(solicitud.producto_nombre || "")),
+        ),
+      ) || null
+    if (!proveedor && solicitud.proveedor_sugerido) {
+      const q = normalizeSearch(solicitud.proveedor_sugerido)
+      proveedor =
+        proveedores.find((p) =>
+          normalizeSearch(p.nombre || p.razon_social || "").includes(q),
+        ) || null
     }
-    router.push(`/admin/compras/nueva?${params.toString()}`)
+
+    const proveedorNombre =
+      proveedor?.nombre || proveedor?.razon_social || solicitud.proveedor_sugerido || ""
+    const cantidad = Number(solicitud.cantidad_faltante || solicitud.cantidad_solicitada || 1) || 1
+
+    if (!confirm(
+      `¿Convertir la solicitud de "${solicitud.producto_nombre || "este producto"}" en una Orden de Compra?` +
+      (proveedorNombre ? `\nProveedor: ${proveedorNombre}` : "\nSin proveedor — podrás cargarlo en la OC."),
+    )) return
+
+    setConvirtiendoOC(solicitud.id)
+    try {
+      const supabase = createClient()
+
+      // Precio: producto_proveedor (producto + proveedor) → costo del producto → 0
+      let precioUnitario = 0
+      let descuento = 0
+      if (solicitud.product_id && proveedor?.id) {
+        const { data } = await supabase
+          .from("producto_proveedor")
+          .select("*")
+          .eq("product_id", solicitud.product_id)
+          .eq("proveedor_id", proveedor.id)
+          .maybeSingle()
+        const row = data as Record<string, any> | null
+        if (row?.precio_proveedor != null) precioUnitario = Number(row.precio_proveedor) || 0
+        if (row?.descuento_porcentaje != null) descuento = Number(row.descuento_porcentaje) || 0
+      }
+      if (!precioUnitario && solicitud.product_id) {
+        const prod = products.find((p) => String(p.id) === String(solicitud.product_id))
+        precioUnitario = Number(prod?.costoNeto ?? prod?.price ?? 0) || 0
+      }
+      const subtotal = precioUnitario * cantidad * (1 - descuento / 100)
+
+      const ocId = await createOrdenCompra({
+        proveedor_nombre: proveedorNombre,
+        proveedor_id: proveedor?.id || null,
+        importe_total: subtotal,
+        estado: "Pendiente",
+        email_comercial: proveedor?.email_comercial || null,
+        items: [{
+          product_id: solicitud.product_id || null,
+          producto_nombre: solicitud.producto_nombre || "Sin descripción",
+          producto_codigo: solicitud.producto_codigo || null,
+          cantidad,
+          precio_unitario: precioUnitario,
+          descuento_porcentaje: descuento,
+          subtotal,
+        }],
+      })
+
+      await updateSolicitudCompra(solicitud.id, { estado: "convertido_oc", orden_compra_id: ocId })
+      await loadData()
+      setActiveTab("ordenes")
+      alert("Solicitud convertida en Orden de Compra correctamente.")
+    } catch (err) {
+      console.error("Error convirtiendo a OC:", err)
+      const msg = err instanceof Error
+        ? err.message
+        : ((err as any)?.message || (err as any)?.details || "desconocido")
+      alert("Error al convertir en OC: " + msg)
+    } finally {
+      setConvirtiendoOC(null)
+    }
   }
 
   async function handleDownloadAdjunto(path: string) {
@@ -415,7 +484,7 @@ export default function ComprasPage() {
         </Link>
       </div>
 
-      <Tabs defaultValue="solicitudes">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-4">
           <TabsTrigger value="solicitudes">Solicitudes de Compra ({solicitudes.length})</TabsTrigger>
           <TabsTrigger value="ordenes">Ordenes de Compra</TabsTrigger>
@@ -547,9 +616,10 @@ export default function ComprasPage() {
                               {(s.estado === "borrador" || s.estado === "aceptado") && (
                                 <button
                                   onClick={() => handleConvertirOC(s)}
-                                  className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                                  disabled={convirtiendoOC === s.id}
+                                  className="px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 disabled:opacity-50"
                                 >
-                                  Convertir en OC
+                                  {convirtiendoOC === s.id ? "Convirtiendo..." : "Convertir en OC"}
                                 </button>
                               )}
                               <button
