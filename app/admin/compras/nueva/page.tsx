@@ -3,7 +3,7 @@
 import { Suspense, useState, useEffect, useMemo, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
-import { fetchProveedores, fetchCompras, fetchProducts, updateSolicitudCompra, createOrdenCompra, fetchProveedoresByProducto } from "@/lib/supabase/queries"
+import { fetchProveedores, fetchCompras, fetchProducts, updateSolicitudCompra, createOrdenCompra, fetchProveedoresByProducto, fetchProductosByProveedor } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/client"
 import { normalizeSearch, formatCurrency } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -49,6 +49,8 @@ function NuevaCompraForm() {
   const [showProdDropdown, setShowProdDropdown] = useState(false)
   const [compraItems, setCompraItems] = useState<CompraItem[]>([])
   const [proveedoresAsociados, setProveedoresAsociados] = useState<any[]>([])
+  const [proveedorProductos, setProveedorProductos] = useState<any[]>([])
+  const [provProdSearch, setProvProdSearch] = useState("")
   const [articuloMode, setArticuloMode] = useState<"productos" | "texto">("productos")
   const [presupuestoFile, setPresupuestoFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -140,6 +142,28 @@ function NuevaCompraForm() {
     }
     loadAsoc()
   }, [compraItems])
+
+  // Q.1 — Productos asociados al proveedor seleccionado (producto_proveedor).
+  // Al elegir un proveedor mostramos su catálogo (código, nombre, último
+  // precio de compra, descuento) como lista sugerida; la búsqueda libre sigue
+  // disponible para productos no asociados.
+  useEffect(() => {
+    async function loadProvProductos() {
+      if (!form.proveedor_id) {
+        setProveedorProductos([])
+        setProvProdSearch("")
+        return
+      }
+      try {
+        const rows = await fetchProductosByProveedor(form.proveedor_id)
+        setProveedorProductos(rows)
+      } catch (e) {
+        console.error("Error cargando productos del proveedor:", e)
+        setProveedorProductos([])
+      }
+    }
+    loadProvProductos()
+  }, [form.proveedor_id])
 
   // Auto-seleccionar el proveedor si todos los productos están asociados al mismo único proveedor
   useEffect(() => {
@@ -278,6 +302,36 @@ function NuevaCompraForm() {
     setProdSearch("")
     setShowProdDropdown(false)
   }
+
+  // Agrega un producto desde el catálogo del proveedor (ya trae precio y
+  // descuento del par producto_proveedor, sin re-consultar la base).
+  function addProductoProveedorRow(row: any) {
+    const productId = String(row.product_id || "")
+    if (productId && compraItems.some((i) => i.productId === productId)) {
+      setCompraItems((prev) => prev.map((i) => i.productId === productId ? { ...i, quantity: i.quantity + 1 } : i))
+      return
+    }
+    const precio = Number(row.precio_proveedor) || Number(row.product_price) || 0
+    const desc = Number(row.descuento_porcentaje) || 0
+    setCompraItems((prev) => [...prev, {
+      productId,
+      code: row.product_code || row.codigo_proveedor || "",
+      name: row.product_name || "",
+      costoNeto: precio,
+      quantity: 1,
+      descuento: desc,
+    }])
+  }
+
+  const filteredProvProductos = useMemo(() => {
+    if (!provProdSearch.trim()) return proveedorProductos
+    const q = normalizeSearch(provProdSearch)
+    return proveedorProductos.filter((r) =>
+      normalizeSearch(r.product_code || "").includes(q) ||
+      normalizeSearch(r.product_name || "").includes(q) ||
+      normalizeSearch(r.codigo_proveedor || "").includes(q)
+    )
+  }, [provProdSearch, proveedorProductos])
 
   function buildArticuloText(): string {
     if (articuloMode === "texto") return form.articulo
@@ -517,6 +571,46 @@ function NuevaCompraForm() {
                 </TabsList>
 
                 <TabsContent value="productos" className="space-y-3">
+                  {/* Q.1 — Catálogo del proveedor seleccionado (producto_proveedor) */}
+                  {form.proveedor_id && proveedorProductos.length > 0 && (
+                    <div className="rounded-lg border border-green-200 bg-green-50 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-medium text-green-800">
+                          Productos de {form.proveedor_nombre || "este proveedor"} ({proveedorProductos.length})
+                        </p>
+                        <input
+                          placeholder="Filtrar..."
+                          value={provProdSearch}
+                          onChange={(e) => setProvProdSearch(e.target.value)}
+                          className="text-xs px-2 py-1 border rounded bg-white w-40"
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div className="max-h-56 overflow-y-auto border rounded-lg bg-white divide-y">
+                        {filteredProvProductos.length === 0 ? (
+                          <p className="text-xs text-gray-400 text-center py-3">Sin coincidencias</p>
+                        ) : filteredProvProductos.map((row) => {
+                          const precio = Number(row.precio_proveedor) || Number(row.product_price) || 0
+                          const desc = Number(row.descuento_porcentaje) || 0
+                          return (
+                            <button
+                              key={row.id}
+                              type="button"
+                              onClick={() => addProductoProveedorRow(row)}
+                              className="w-full text-left px-3 py-2 hover:bg-green-100 text-sm flex items-center gap-2"
+                            >
+                              <span className="font-mono text-xs text-gray-500 shrink-0 w-20 truncate">{row.product_code || row.codigo_proveedor || "S/C"}</span>
+                              <span className="font-medium flex-1 min-w-0 truncate">{row.product_name || "-"}</span>
+                              {precio > 0 && <span className="text-xs text-gray-600 shrink-0">{formatCurrency(precio)}</span>}
+                              {desc > 0 && <span className="text-[10px] text-green-700 shrink-0">-{desc}%</span>}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <p className="text-[11px] text-green-700/80">Elegí de la lista o buscá libremente abajo si el producto no está asociado.</p>
+                    </div>
+                  )}
+
                   {/* Product search */}
                   <div className="relative">
                     <Input
