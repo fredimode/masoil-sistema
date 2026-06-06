@@ -75,7 +75,10 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [agregarOpen, setAgregarOpen] = useState(false)
   const [prodList, setProdList] = useState<Product[]>([])
   const [prodSearch, setProdSearch] = useState("")
-  const [prodToAdd, setProdToAdd] = useState<{ product: Product; qty: number; price: number }[]>([])
+  // R.8: prodToAdd soporta líneas de catálogo y de descuento (igual que el
+  // form de pedido nuevo). Las de descuento van con product null y precio que
+  // se coacciona a negativo.
+  const [prodToAdd, setProdToAdd] = useState<{ product: Product | null; tipoLinea: "producto" | "descuento"; nombre: string; codigo: string; qty: number; price: number }[]>([])
   const [agregando, setAgregando] = useState(false)
   // Eliminar item del pedido (N.8). Guarda el id de la fila order_items en curso.
   const [quitandoItemId, setQuitandoItemId] = useState<string | null>(null)
@@ -1648,13 +1651,23 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             <DialogTitle>Agregar productos al pedido</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <input
-              type="text"
-              placeholder="Buscar producto..."
-              value={prodSearch}
-              onChange={(e) => setProdSearch(e.target.value)}
-              className="w-full p-2 border rounded-md text-sm"
-            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Buscar producto..."
+                value={prodSearch}
+                onChange={(e) => setProdSearch(e.target.value)}
+                className="flex-1 p-2 border rounded-md text-sm"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setProdToAdd([...prodToAdd, { product: null, tipoLinea: "descuento", nombre: "Descuento", codigo: "DESCUENTO", qty: 1, price: 0 }])}
+              >
+                + Descuento
+              </Button>
+            </div>
             {prodSearch.length >= 2 && (
               <div className="border rounded-md max-h-48 overflow-auto">
                 {prodList
@@ -1667,8 +1680,8 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                     <button
                       key={p.id}
                       onClick={() => {
-                        if (prodToAdd.find((x) => x.product.id === p.id)) return
-                        setProdToAdd([...prodToAdd, { product: p, qty: 1, price: p.price }])
+                        if (prodToAdd.find((x) => x.product?.id === p.id)) return
+                        setProdToAdd([...prodToAdd, { product: p, tipoLinea: "producto", nombre: p.name, codigo: p.code || "", qty: 1, price: p.price }])
                         setProdSearch("")
                       }}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 border-b"
@@ -1687,20 +1700,33 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                   <span>Producto</span><span>Cant.</span><span>Precio</span><span></span>
                 </div>
                 {prodToAdd.map((it, i) => (
-                  <div key={it.product.id} className="grid grid-cols-[1fr,80px,120px,40px] gap-2 p-2 border-t items-center">
-                    <span className="text-sm">{it.product.name}</span>
+                  <div key={it.product?.id ?? `linea-${i}`} className={`grid grid-cols-[1fr,80px,120px,40px] gap-2 p-2 border-t items-center ${it.tipoLinea === "descuento" ? "bg-amber-50" : ""}`}>
+                    {it.tipoLinea === "descuento" ? (
+                      <input
+                        type="text"
+                        value={it.nombre}
+                        onChange={(e) => setProdToAdd(prodToAdd.map((x, j) => j === i ? { ...x, nombre: e.target.value } : x))}
+                        placeholder="Ej: Descuento por pago contado"
+                        className="p-1 border rounded text-sm"
+                      />
+                    ) : (
+                      <span className="text-sm">{it.nombre}</span>
+                    )}
                     <input
                       type="number" min={1} value={it.qty}
+                      disabled={it.tipoLinea === "descuento"}
                       onChange={(e) => {
                         const q = parseInt(e.target.value) || 1
                         setProdToAdd(prodToAdd.map((x, j) => j === i ? { ...x, qty: q } : x))
                       }}
-                      className="p-1 border rounded text-sm w-16"
+                      className="p-1 border rounded text-sm w-16 disabled:bg-gray-100"
                     />
                     <input
                       type="number" step={0.01} value={it.price}
                       onChange={(e) => {
-                        const pr = parseFloat(e.target.value) || 0
+                        const parsed = parseFloat(e.target.value) || 0
+                        // En descuentos el monto siempre resta: se coacciona a negativo.
+                        const pr = it.tipoLinea === "descuento" ? -Math.abs(parsed) : parsed
                         setProdToAdd(prodToAdd.map((x, j) => j === i ? { ...x, price: pr } : x))
                       }}
                       className="p-1 border rounded text-sm"
@@ -1722,11 +1748,12 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                 setAgregando(true)
                 try {
                   await addItemsToOrder(o.id, prodToAdd.map((x) => ({
-                    productId: x.product.id,
-                    productCode: x.product.code || "",
-                    productName: x.product.name,
+                    productId: x.tipoLinea === "producto" && x.product ? x.product.id : null,
+                    productCode: x.codigo,
+                    productName: x.nombre,
                     quantity: x.qty,
                     price: x.price,
+                    tipoLinea: x.tipoLinea,
                   })))
                   alert("Productos agregados. TODO: notificar a Matías")
                   // TODO: notificación a Matías cuando se agrega productos a pedido existente
