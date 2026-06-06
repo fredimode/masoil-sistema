@@ -152,10 +152,13 @@ export async function POST(request: NextRequest) {
   let cotizacionNumero: string | null = null
   let pedidoNumero: string | null = null
   let pedidoVendedorId: string | null = null
+  // R.13: sector y receptor cargados en el pedido deben impactar en la FC.
+  let pedidoSector: string | null = null
+  let pedidoRecibe: string | null = null
   if (orderId) {
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, order_number_serial, order_number, vendedor_id")
+      .select("id, order_number_serial, order_number, vendedor_id, sector, recibe")
       .eq("id", orderId)
       .single()
 
@@ -164,6 +167,8 @@ export async function POST(request: NextRequest) {
     }
     pedidoNumero = order.order_number_serial || order.order_number || null
     pedidoVendedorId = order.vendedor_id || null
+    pedidoSector = order.sector || null
+    pedidoRecibe = order.recibe || null
 
     // Lookup automático: si hay cotización con order_id = orderId, asociarla.
     // cotizaciones_venta.order_id es TEXT; orderId puede ser UUID — comparamos
@@ -204,6 +209,15 @@ export async function POST(request: NextRequest) {
   }
   console.log(`Step 4: tipoFactura → ${tipoFactura}`)
 
+  // R.13: combinar observaciones del modal con Sector/Receptor del pedido para
+  // que impacten en la FC (AFIP no tiene campos nativos de sector/receptor, van
+  // como leyenda/observaciones del comprobante y del PDF).
+  const datosEntrega = [
+    pedidoSector ? `Sector: ${pedidoSector}` : null,
+    pedidoRecibe ? `Recibe: ${pedidoRecibe}` : null,
+  ].filter(Boolean).join(" | ")
+  const observacionesFinal = [observaciones, datosEntrega || null].filter(Boolean).join(" | ") || undefined
+
   // ───────────────── PASO 5: bases + totales ─────────────────
   const { bases, totalNeto, totalIVA, total } = calcularBasesYTotales(items)
 
@@ -224,7 +238,7 @@ export async function POST(request: NextRequest) {
       },
       items,
       total,
-      observaciones,
+      observaciones: observacionesFinal,
       comprobanteAsociado,
     })
   } catch (e) {
@@ -281,7 +295,7 @@ export async function POST(request: NextRequest) {
     // Si la factura proviene de una cotización, agregamos esa info al final
     // de observaciones para que aparezca en el PDF (item Excel #89).
     const observacionesPDF = [
-      observaciones,
+      observacionesFinal,
       cotizacionNumero ? `Cotización N° ${cotizacionNumero}` : null,
     ].filter(Boolean).join(" | ") || undefined
 

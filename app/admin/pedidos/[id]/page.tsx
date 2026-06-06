@@ -526,7 +526,8 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     const rs = (o.razonSocial || "").toLowerCase()
     setFacturarEmpresa(rs.includes("conancap") ? "Conancap" : "Aquiles")
     setFacturarModo("testing")
-    setFacturarObs("")
+    // R.13: pre-cargar las observaciones del pedido para que impacten en la FC.
+    setFacturarObs(o.notes || "")
     setFacturarDescuento(0)
     setFacturarOpen(true)
   }
@@ -952,7 +953,8 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     const rs = (o.razonSocial || "").toLowerCase()
     const defaultEmpresa: "Aquiles" | "Conancap" = rs.includes("conancap") ? "Conancap" : "Aquiles"
     setRemitoEmpresa(defaultEmpresa)
-    setRemitoObs("")
+    // R.13: pre-cargar observaciones del pedido para que impacten en el remito.
+    setRemitoObs(o.notes || "")
     setRemitoResult(null)
     setRemitoOpen(true)
   }
