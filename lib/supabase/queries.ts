@@ -1930,7 +1930,13 @@ export async function assignOrderToNextReparto(orderId: string): Promise<void> {
   const fechaISO = fecha.toISOString().slice(0, 10)
   const repartoId = await ensureRepartoForFecha(fechaISO)
 
-  const shouldTransition = order.status === "FACTURADO"
+  // R.14: la transición a EN_PROCESO_ENTREGA debe dispararse también para
+  // FACTURADO_PARCIAL (p.ej. un pedido que venía de ENTREGADO_PARCIAL y se
+  // factura el resto). updateOrderStatus llama a esta función para ambos
+  // estados, pero antes solo FACTURADO transicionaba: el pedido quedaba
+  // asignado al reparto pero sin pasar a EN_PROCESO_ENTREGA, inconsistente con
+  // la hoja de ruta.
+  const shouldTransition = order.status === "FACTURADO" || order.status === "FACTURADO_PARCIAL"
   const alreadyInReparto = order.reparto_id === repartoId
 
   if (!alreadyInReparto) {
@@ -1967,7 +1973,7 @@ export async function assignOrderToNextReparto(orderId: string): Promise<void> {
   }
   if (shouldTransition) {
     updateFields.status = "EN_PROCESO_ENTREGA"
-    console.log(`assignOrderToNextReparto: ${orderId} FACTURADO -> EN_PROCESO_ENTREGA al asignar reparto ${repartoId}`)
+    console.log(`assignOrderToNextReparto: ${orderId} ${order.status} -> EN_PROCESO_ENTREGA al asignar reparto ${repartoId}`)
   }
 
   await supabase.from("orders").update(updateFields).eq("id", orderId)
