@@ -19,7 +19,7 @@ import {
 } from "@/lib/supabase/queries"
 import type { Vendedor } from "@/lib/types"
 import { getStatusConfig, getNextStatuses } from "@/lib/status-config"
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils"
+import { formatCurrencyExact, formatDate, formatDateTime } from "@/lib/utils"
 import type { Order, Client, OrderStatus, Product, OrderProduct } from "@/lib/types"
 import { normalizeSearch } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -1157,7 +1157,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-sm text-muted-foreground">Cant: {product.quantity}</span>
-                      <span className="font-semibold">{formatCurrency(product.price * product.quantity)}</span>
+                      <span className="font-semibold">{formatCurrencyExact(product.price * product.quantity)}</span>
                       {/* N.8: eliminar item (solo BORRADOR/INGRESADO y no facturado) */}
                       {(["BORRADOR", "INGRESADO"] as string[]).includes(currentStatus) && cantFact === 0 && !product.facturado && (
                         <Button
@@ -1179,7 +1179,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             <Separator className="my-4" />
             <div className="flex items-center justify-between">
               <span className="font-semibold text-lg">Total</span>
-              <span className="font-bold text-2xl">{formatCurrency(o.total)}</span>
+              <span className="font-bold text-2xl">{formatCurrencyExact(o.total)}</span>
             </div>
           </Card>
 
@@ -1204,7 +1204,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                         <div className="flex items-center gap-3 text-sm">
                           {fc.empresa && <Badge variant="outline" className="text-xs">{fc.empresa}</Badge>}
                           <span className="text-muted-foreground">{fc.fecha}</span>
-                          <span className="font-semibold">{formatCurrency(Number(fc.total))}</span>
+                          <span className="font-semibold">{formatCurrencyExact(Number(fc.total))}</span>
                         </div>
                       </div>
                       {notas.length > 0 && (
@@ -1225,7 +1225,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                                 </div>
                                 <div className="flex items-center gap-3">
                                   <span className="text-muted-foreground">{n.fecha}</span>
-                                  <span className={`font-medium ${isNC ? "text-red-700" : "text-amber-700"}`}>{formatCurrency(Number(n.total))}</span>
+                                  <span className={`font-medium ${isNC ? "text-red-700" : "text-amber-700"}`}>{formatCurrencyExact(Number(n.total))}</span>
                                 </div>
                               </div>
                             )
@@ -1525,7 +1525,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                         </div>
                         <div className="col-span-1 text-right self-end">
                           <span className="text-[10px] uppercase text-muted-foreground block">Subtotal</span>
-                          <span className="text-sm font-semibold">{formatCurrency(subtotal)}</span>
+                          <span className="text-sm font-semibold">{formatCurrencyExact(subtotal)}</span>
                         </div>
                       </div>
                     </div>
@@ -1536,7 +1536,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             <div className="flex justify-between items-center pt-2 border-t">
               <span className="font-semibold">Total a facturar</span>
               <span className="text-lg font-bold">
-                {formatCurrency(
+                {formatCurrencyExact(
                   itemsPendientesFactura
                     .filter((p) => facturarItems[p.productId])
                     .reduce((sum, p) => {
@@ -1652,7 +1652,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                     >
                       <div className="flex justify-between">
                         <span>{p.name} <span className="text-xs text-gray-500">{p.code}</span></span>
-                        <span className="font-medium">{formatCurrency(p.price)}</span>
+                        <span className="font-medium">{formatCurrencyExact(p.price)}</span>
                       </div>
                     </button>
                   ))}
@@ -1750,7 +1750,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                 <Separator />
                 <div className="flex justify-between text-base">
                   <span className="font-bold">Total</span>
-                  <span className="font-bold text-primary">{formatCurrency(facturaResult.total)}</span>
+                  <span className="font-bold text-primary">{formatCurrencyExact(facturaResult.total)}</span>
                 </div>
                 <div className="text-xs">
                   Email: {facturaResult.emailEnviado

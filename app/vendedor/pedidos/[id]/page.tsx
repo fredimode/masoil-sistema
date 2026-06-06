@@ -9,7 +9,7 @@ import { StatusTimeline } from "@/components/vendedor/status-timeline"
 import { CountdownWidget } from "@/components/vendedor/countdown-widget"
 import { fetchOrderById, fetchClientById } from "@/lib/supabase/queries"
 import { getStatusConfig } from "@/lib/status-config"
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils"
+import { formatCurrencyExact, formatDate, formatDateTime } from "@/lib/utils"
 import type { Order, Client } from "@/lib/types"
 import { ArrowLeft, Phone, MessageCircle, MapPin } from "lucide-react"
 import Link from "next/link"
@@ -136,7 +136,7 @@ export default function VendedorPedidoDetailPage({ params }: { params: Promise<{
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-muted-foreground">x{product.quantity}</p>
-                    <p className="font-semibold text-sm">{formatCurrency(product.price * product.quantity)}</p>
+                    <p className="font-semibold text-sm">{formatCurrencyExact(product.price * product.quantity)}</p>
                   </div>
                 </div>
               ))}
@@ -144,7 +144,7 @@ export default function VendedorPedidoDetailPage({ params }: { params: Promise<{
             <Separator className="my-3" />
             <div className="flex items-center justify-between">
               <span className="font-semibold">Total</span>
-              <span className="font-bold text-xl">{formatCurrency(order.total)}</span>
+              <span className="font-bold text-xl">{formatCurrencyExact(order.total)}</span>
             </div>
           </Card>
 

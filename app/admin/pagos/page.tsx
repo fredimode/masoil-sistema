@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
-import { formatCurrency, formatDateStr, normalizeSearch } from "@/lib/utils"
+import { formatCurrencyExact, formatDateStr, normalizeSearch } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import {
   fetchPagosProveedores,
@@ -273,9 +273,9 @@ export default function PagosPage() {
         <td>${m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "-"}</td>
         <td>${m.tipo_comprobante || "-"}</td>
         <td>${m.numero_comprobante || "-"}</td>
-        <td style="text-align:right">${m.debe ? formatCurrency(Number(m.debe)) : "-"}</td>
-        <td style="text-align:right">${m.haber ? formatCurrency(Number(m.haber)) : "-"}</td>
-        <td style="text-align:right">${formatCurrency(Number(m.saldo) || 0)}</td>
+        <td style="text-align:right">${m.debe ? formatCurrencyExact(Number(m.debe)) : "-"}</td>
+        <td style="text-align:right">${m.haber ? formatCurrencyExact(Number(m.haber)) : "-"}</td>
+        <td style="text-align:right">${formatCurrencyExact(Number(m.saldo) || 0)}</td>
       </tr>`).join("")
     w.document.write(`<html><head><title>Cta Cte - ${prov.nombre || "Proveedor"}</title>
       <style>body{font-family:sans-serif;max-width:1000px;margin:30px auto}h2{margin-bottom:4px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #ddd;padding:6px 8px;font-size:12px}th{background:#f5f5f5;text-align:left}.totals td{font-weight:bold;background:#f0f0f0}.saldo{margin-top:16px;padding:12px;background:#fef3c7;font-size:18px;font-weight:bold;text-align:right}</style></head><body>
@@ -284,9 +284,9 @@ export default function PagosPage() {
       <p><strong>Movimientos:</strong> ${expandedCCFiltrado.length}</p>
       <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Comprobante</th><th style="text-align:right">Debe</th><th style="text-align:right">Haber</th><th style="text-align:right">Saldo</th></tr></thead>
       <tbody>${rows}
-      <tr class="totals"><td colspan="3">TOTALES</td><td style="text-align:right">${formatCurrency(totalDebe)}</td><td style="text-align:right">${formatCurrency(totalHaber)}</td><td></td></tr>
+      <tr class="totals"><td colspan="3">TOTALES</td><td style="text-align:right">${formatCurrencyExact(totalDebe)}</td><td style="text-align:right">${formatCurrencyExact(totalHaber)}</td><td></td></tr>
       </tbody></table>
-      <div class="saldo">SALDO: ${formatCurrency(saldoTotal)}</div>
+      <div class="saldo">SALDO: ${formatCurrencyExact(saldoTotal)}</div>
       <script>window.print()<\/script></body></html>`)
   }
 
@@ -736,7 +736,7 @@ export default function PagosPage() {
                             worstColor === "yellow" ? "bg-yellow-100 text-yellow-700 border-yellow-200" :
                             "bg-green-100 text-green-700 border-green-200"
                           }>
-                            {provFCs.length} FC pend. - {formatCurrency(totalPendiente)}
+                            {provFCs.length} FC pend. - {formatCurrencyExact(totalPendiente)}
                           </Badge>
                         )}
                         <span className="text-gray-400">{isExpanded ? "▲" : "▼"}</span>
@@ -763,7 +763,7 @@ export default function PagosPage() {
                                       </span>
                                     </div>
                                     <div className="flex items-center gap-3">
-                                      <span className="font-bold">{formatCurrency(Number(f.saldo_pendiente || f.total) || 0)}</span>
+                                      <span className="font-bold">{formatCurrencyExact(Number(f.saldo_pendiente || f.total) || 0)}</span>
                                       {!f.lote_pago_id && lotesBorrador.length > 0 && (
                                         <button
                                           onClick={(e) => { e.stopPropagation(); setEnviarALoteFC(f) }}
@@ -824,9 +824,9 @@ export default function PagosPage() {
                                     <td className="px-3 py-2">{m.fecha ? new Date(m.fecha).toLocaleDateString("es-AR") : "-"}</td>
                                     <td className="px-3 py-2">{m.tipo_comprobante || "-"}</td>
                                     <td className="px-3 py-2">{m.numero_comprobante || "-"}</td>
-                                    <td className="px-3 py-2 text-right">{m.debe ? formatCurrency(Number(m.debe)) : "-"}</td>
-                                    <td className="px-3 py-2 text-right">{m.haber ? formatCurrency(Number(m.haber)) : "-"}</td>
-                                    <td className="px-3 py-2 text-right font-medium">{formatCurrency(Number(m.saldo) || 0)}</td>
+                                    <td className="px-3 py-2 text-right">{m.debe ? formatCurrencyExact(Number(m.debe)) : "-"}</td>
+                                    <td className="px-3 py-2 text-right">{m.haber ? formatCurrencyExact(Number(m.haber)) : "-"}</td>
+                                    <td className="px-3 py-2 text-right font-medium">{formatCurrencyExact(Number(m.saldo) || 0)}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -939,7 +939,7 @@ export default function PagosPage() {
                         {estadoBadge(lote.estado)}
                       </div>
                       <div className="flex items-center gap-4">
-                        <span className="font-bold text-gray-900">{formatCurrency(Number(lote.total) || 0)}</span>
+                        <span className="font-bold text-gray-900">{formatCurrencyExact(Number(lote.total) || 0)}</span>
                         {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
                       </div>
                     </button>
@@ -977,7 +977,7 @@ export default function PagosPage() {
                                           <td className="px-2 py-1.5">{item.empresa || "-"}</td>
                                           <td className="px-2 py-1.5">{formatDateStr(item.fecha_fc)}</td>
                                           <td className="px-2 py-1.5">{item.nro_fc || "-"}</td>
-                                          <td className="px-2 py-1.5 text-right font-bold">{formatCurrency(Number(item.importe) || 0)}</td>
+                                          <td className="px-2 py-1.5 text-right font-bold">{formatCurrencyExact(Number(item.importe) || 0)}</td>
                                           <td className="px-2 py-1.5">
                                             <input
                                               type="text"
@@ -1106,7 +1106,7 @@ export default function PagosPage() {
                         <td className="px-3 py-3 font-medium">{s.servicio || "-"}</td>
                         <td className="px-3 py-3">{s.forma_pago || "-"}</td>
                         <td className="px-3 py-3 font-mono text-xs">{s.nro_fc_pendiente || "-"}</td>
-                        <td className="px-3 py-3 text-right font-semibold">{s.importe != null ? formatCurrency(Number(s.importe)) : "-"}</td>
+                        <td className="px-3 py-3 text-right font-semibold">{s.importe != null ? formatCurrencyExact(Number(s.importe)) : "-"}</td>
                         <td className="px-3 py-3">{s.fecha_vencimiento ? formatDateStr(s.fecha_vencimiento) : "-"}</td>
                         <td className="px-3 py-3 text-gray-600 truncate max-w-[200px]" title={s.observaciones || ""}>{s.observaciones || "-"}</td>
                         <td className="px-3 py-3 text-gray-600 truncate max-w-[150px]" title={s.bonificaciones || ""}>{s.bonificaciones || "-"}</td>
@@ -1323,7 +1323,7 @@ export default function PagosPage() {
           {enviarALoteFC && (
             <div className="space-y-4 py-2">
               <p className="text-sm text-gray-600">
-                <strong>{enviarALoteFC.proveedor_nombre}</strong> — {formatCurrency(Number(enviarALoteFC.saldo_pendiente || enviarALoteFC.total) || 0)}
+                <strong>{enviarALoteFC.proveedor_nombre}</strong> — {formatCurrencyExact(Number(enviarALoteFC.saldo_pendiente || enviarALoteFC.total) || 0)}
               </p>
               <div>
                 <label className="text-sm text-gray-600 block mb-1">Seleccionar lote (borrador)</label>
@@ -1335,7 +1335,7 @@ export default function PagosPage() {
                   <option value="">Seleccionar...</option>
                   {lotesBorrador.map((l) => (
                     <option key={l.id} value={l.id}>
-                      {formatDateStr(l.fecha_lote)} - {l.empresa || "Todas"} ({formatCurrency(Number(l.total) || 0)})
+                      {formatDateStr(l.fecha_lote)} - {l.empresa || "Todas"} ({formatCurrencyExact(Number(l.total) || 0)})
                     </option>
                   ))}
                 </select>
@@ -1362,7 +1362,7 @@ export default function PagosPage() {
               <div><strong>Empresa:</strong> {viewingPago.empresa || "-"}</div>
               <div><strong>Fecha FC:</strong> {formatDateStr(viewingPago.fecha_fc)}</div>
               <div><strong>Nro FC:</strong> {viewingPago.numero_fc || "-"}</div>
-              <div><strong>Importe:</strong> {formatCurrency(Number(viewingPago.importe) || 0)}</div>
+              <div><strong>Importe:</strong> {formatCurrencyExact(Number(viewingPago.importe) || 0)}</div>
               <div><strong>Forma de pago:</strong> {viewingPago.forma_pago || "-"}</div>
               <div><strong>Estado:</strong> {viewingPago.estado_pago || "-"}</div>
               <div><strong>Banco:</strong> {viewingPago.banco || "-"}</div>
@@ -1882,7 +1882,7 @@ function TabOrdenesDePago({ pagos, empresaGlobal }: { pagos: any[]; empresaGloba
           </div>
           <div className="ml-auto text-sm">
             <span className="text-gray-600">Total: </span>
-            <span className="font-bold text-primary">{formatCurrency(total)}</span>
+            <span className="font-bold text-primary">{formatCurrencyExact(total)}</span>
           </div>
         </div>
       </div>
@@ -1913,7 +1913,7 @@ function TabOrdenesDePago({ pagos, empresaGlobal }: { pagos: any[]; empresaGloba
                     <td className="px-3 py-2 font-mono text-xs font-semibold">{p.orden_pago_numero}</td>
                     <td className="px-3 py-2 font-medium">{p.proveedor_nombre || "-"}</td>
                     <td className="px-3 py-2">{p.empresa || "-"}</td>
-                    <td className="px-3 py-2 text-right font-semibold">{formatCurrency(Number(p.importe) || 0)}</td>
+                    <td className="px-3 py-2 text-right font-semibold">{formatCurrencyExact(Number(p.importe) || 0)}</td>
                     <td className="px-3 py-2 text-center">
                       <button
                         onClick={() => handleVerOP(p)}

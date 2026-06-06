@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { formatCurrency, formatDate, cn } from "@/lib/utils"
+import { formatCurrencyExact, formatDate, cn } from "@/lib/utils"
 import { getStatusConfig, getNextStatuses, statusConfig } from "@/lib/status-config"
 import { updateOrderStatus } from "@/lib/supabase/queries"
 import type { Order, OrderStatus } from "@/lib/types"
@@ -101,7 +101,7 @@ export function OrderTable({ orders: initialOrders }: OrderTableProps) {
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">{formatDate(order.createdAt)}</TableCell>
                 <TableCell className="text-sm text-muted-foreground">{formatDate(order.estimatedDelivery)}</TableCell>
-                <TableCell className="text-right font-semibold">{formatCurrency(order.total)}</TableCell>
+                <TableCell className="text-right font-semibold">{formatCurrencyExact(order.total)}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button asChild size="sm" variant="ghost">

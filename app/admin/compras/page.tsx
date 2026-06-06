@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
-import { formatCurrency, formatDate, normalizeSearch } from "@/lib/utils"
+import { formatCurrencyExact, formatDate, normalizeSearch } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import {
   fetchCompras,
@@ -843,14 +843,14 @@ export default function ComprasPage() {
             </div>
             <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl p-4 border border-indigo-200 shadow-sm">
               <p className="text-sm text-indigo-600 font-semibold">Monto Total</p>
-              <p className="text-2xl font-bold text-indigo-700">{formatCurrency(montoTotalOC)}</p>
+              <p className="text-2xl font-bold text-indigo-700">{formatCurrencyExact(montoTotalOC)}</p>
             </div>
             {Object.entries(montosPorRazon)
               .slice(0, 2)
               .map(([razon, monto]) => (
                 <div key={razon} className="bg-white rounded-xl p-4 border shadow-sm">
                   <p className="text-sm text-gray-500 truncate" title={razon}>{razon}</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatCurrency(monto)}</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatCurrencyExact(monto)}</p>
                 </div>
               ))}
           </div>
@@ -923,7 +923,7 @@ export default function ComprasPage() {
                           {o.proveedor_nombre || "-"}
                         </td>
                         <td className="px-2 py-2 text-right font-bold text-gray-900">
-                          {formatCurrency(Number(o.importe_total) || 0)}
+                          {formatCurrencyExact(Number(o.importe_total) || 0)}
                         </td>
                         <td className="px-2 py-1">
                           <select
@@ -1189,11 +1189,11 @@ export default function ComprasPage() {
                             <td className="text-center p-2">{it.cantidad}</td>
                             <td className="p-2 font-mono text-xs">{it.producto_codigo || "-"}</td>
                             <td className="p-2">{it.producto_nombre || "-"}</td>
-                            <td className="text-right p-2">{formatCurrency(Number(it.precio_unitario) || 0)}</td>
+                            <td className="text-right p-2">{formatCurrencyExact(Number(it.precio_unitario) || 0)}</td>
                             <td className="text-right p-2">{it.descuento_porcentaje ? `${it.descuento_porcentaje}%` : "-"}</td>
-                            <td className="text-right p-2">{formatCurrency(sub)}</td>
-                            <td className="text-right p-2">{formatCurrency(iva)}</td>
-                            <td className="text-right p-2 font-medium">{formatCurrency(total)}</td>
+                            <td className="text-right p-2">{formatCurrencyExact(sub)}</td>
+                            <td className="text-right p-2">{formatCurrencyExact(iva)}</td>
+                            <td className="text-right p-2 font-medium">{formatCurrencyExact(total)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -1201,9 +1201,9 @@ export default function ComprasPage() {
                         <tfoot>
                           <tr className="border-t font-medium bg-muted/40">
                             <td colSpan={5} className="text-right p-2">Subtotal (neto) / IVA / Total</td>
-                            <td className="text-right p-2">{formatCurrency(sumSub)}</td>
-                            <td className="text-right p-2">{formatCurrency(sumIva)}</td>
-                            <td className="text-right p-2">{formatCurrency(Math.round((sumSub + sumIva) * 100) / 100)}</td>
+                            <td className="text-right p-2">{formatCurrencyExact(sumSub)}</td>
+                            <td className="text-right p-2">{formatCurrencyExact(sumIva)}</td>
+                            <td className="text-right p-2">{formatCurrencyExact(Math.round((sumSub + sumIva) * 100) / 100)}</td>
                           </tr>
                         </tfoot>
                       )}

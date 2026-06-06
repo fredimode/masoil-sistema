@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { fetchProducts } from "@/lib/supabase/queries"
 import type { Product } from "@/lib/types"
 import { Search } from "lucide-react"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrencyExact } from "@/lib/utils"
 
 export default function VendedorStockPage() {
   const [products, setProducts] = useState<Product[]>([])
@@ -101,7 +101,7 @@ export default function VendedorStockPage() {
                   <p className="text-sm text-muted-foreground font-mono">{product.code}</p>
                 </div>
                 <div className="text-right">
-                  <div className="font-bold text-lg">{formatCurrency(product.price)}</div>
+                  <div className="font-bold text-lg">{formatCurrencyExact(product.price)}</div>
                   <div className="text-xs text-muted-foreground">{product.category}</div>
                 </div>
               </div>

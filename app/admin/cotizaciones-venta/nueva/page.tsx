@@ -21,7 +21,7 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import type { Client, Product, Vendedor } from "@/lib/types"
-import { formatCurrency, normalizeSearch } from "@/lib/utils"
+import { formatCurrencyExact, normalizeSearch } from "@/lib/utils"
 
 interface CotItem {
   productId: string | null
@@ -443,7 +443,7 @@ export default function NuevaCotizacionVentaPage() {
                           <Badge variant="outline" className={`${stockColor} text-xs`}>
                             {noStock ? "Sin stock" : `Stock: ${p.stock}`}
                           </Badge>
-                          <span className="text-sm font-medium">{formatCurrency(p.price)}</span>
+                          <span className="text-sm font-medium">{formatCurrencyExact(p.price)}</span>
                         </div>
                       </div>
                       {hasOCPending && (
@@ -571,7 +571,7 @@ export default function NuevaCotizacionVentaPage() {
                                     if (list.length === 0) return <p className="text-xs text-gray-400">Sin proveedores asociados</p>
                                     return list.map((p, i) => (
                                       <p key={i} className="text-xs">
-                                        {p.proveedor_nombre}{p.precio_proveedor ? ` - ${formatCurrency(Number(p.precio_proveedor))}` : ""}
+                                        {p.proveedor_nombre}{p.precio_proveedor ? ` - ${formatCurrencyExact(Number(p.precio_proveedor))}` : ""}
                                       </p>
                                     ))
                                   })()}
@@ -600,7 +600,7 @@ export default function NuevaCotizacionVentaPage() {
                           className="h-8 text-right text-sm"
                         />
                       </td>
-                      <td className="px-2 py-1.5 text-right font-semibold whitespace-nowrap">{formatCurrency(item.price * item.quantity)}</td>
+                      <td className="px-2 py-1.5 text-right font-semibold whitespace-nowrap">{formatCurrencyExact(item.price * item.quantity)}</td>
                       <td className="px-1 py-1.5 text-center">
                         <Button
                           variant="ghost"
@@ -618,17 +618,17 @@ export default function NuevaCotizacionVentaPage() {
                   {/* R.2: discriminación de impuestos idéntica a pedidos/nuevo */}
                   <tr className="bg-muted/50 border-t">
                     <td colSpan={4} className="px-2 py-1.5 text-right text-sm text-muted-foreground">Subtotal (sin IVA)</td>
-                    <td className="px-2 py-1.5 text-right text-sm">{formatCurrency(subtotal)}</td>
+                    <td className="px-2 py-1.5 text-right text-sm">{formatCurrencyExact(subtotal)}</td>
                     <td />
                   </tr>
                   <tr className="bg-muted/50">
                     <td colSpan={4} className="px-2 py-1.5 text-right text-sm text-muted-foreground">IVA 21%</td>
-                    <td className="px-2 py-1.5 text-right text-sm">{formatCurrency(ivaCalculado)}</td>
+                    <td className="px-2 py-1.5 text-right text-sm">{formatCurrencyExact(ivaCalculado)}</td>
                     <td />
                   </tr>
                   <tr className="bg-muted border-t">
                     <td colSpan={4} className="px-2 py-2 text-right font-semibold">Total</td>
-                    <td className="px-2 py-2 text-right text-xl font-bold">{formatCurrency(totalConIva)}</td>
+                    <td className="px-2 py-2 text-right text-xl font-bold">{formatCurrencyExact(totalConIva)}</td>
                     <td />
                   </tr>
                 </tfoot>

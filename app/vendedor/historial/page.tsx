@@ -12,7 +12,7 @@ import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import {
   fetchCotizacionesVenta, fetchFacturas, fetchRecibosCobranza,
 } from "@/lib/supabase/queries"
-import { formatCurrency, formatDateStr, normalizeSearch } from "@/lib/utils"
+import { formatCurrencyExact, formatDateStr, normalizeSearch } from "@/lib/utils"
 
 // /vendedor/historial — vista de solo lectura del historial propio del
 // vendedor. Item Excel #75: acceso a cotizaciones / facturas / cobros.
@@ -133,7 +133,7 @@ export default function VendedorHistorialPage() {
                     <p className="text-xs text-muted-foreground">{formatDateStr(c.fecha || c.created_at)}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="font-bold">{formatCurrency(Number(c.total) || 0)}</p>
+                    <p className="font-bold">{formatCurrencyExact(Number(c.total) || 0)}</p>
                     <Badge variant="outline" className="text-xs mt-1">{c.estado}</Badge>
                   </div>
                 </div>
@@ -157,7 +157,7 @@ export default function VendedorHistorialPage() {
                     <p className="text-xs text-muted-foreground">{formatDateStr(f.fecha || f.created_at)}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="font-bold">{formatCurrency(Number(f.total) || 0)}</p>
+                    <p className="font-bold">{formatCurrencyExact(Number(f.total) || 0)}</p>
                     {f.pdf_url && (
                       <a href={f.pdf_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
                         Ver PDF
@@ -185,7 +185,7 @@ export default function VendedorHistorialPage() {
                     <p className="text-xs text-muted-foreground">{formatDateStr(r.fecha)}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="font-bold">{formatCurrency(Number(r.total_valores) || 0)}</p>
+                    <p className="font-bold">{formatCurrencyExact(Number(r.total_valores) || 0)}</p>
                   </div>
                 </div>
               </Card>

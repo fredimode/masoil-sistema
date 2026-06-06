@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { createClient } from "@/lib/supabase/client"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrencyExact } from "@/lib/utils"
 import { Search } from "lucide-react"
 
 interface HistorialVentasProps {
@@ -132,7 +132,7 @@ export function HistorialVentas({ clientId, productId }: HistorialVentasProps) {
                   <td className="text-right p-2">{r.cantidad}</td>
                   <td className="p-2">{r.descripcion}</td>
                   <td className="p-2 font-mono text-xs">{r.codigo}</td>
-                  <td className="text-right p-2">{formatCurrency(r.precioSinIva)}</td>
+                  <td className="text-right p-2">{formatCurrencyExact(r.precioSinIva)}</td>
                   <td className="p-2">{r.comprobante}</td>
                 </tr>
               ))}

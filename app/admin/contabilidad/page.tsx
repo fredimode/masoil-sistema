@@ -12,7 +12,7 @@ import {
   mesAnoToRange, calcularIvaAPagar,
   mapFacturaGPToSubdiarioRow, mapFacturaNuevaToSubdiarioRow,
 } from "@/lib/contabilidad/calculos"
-import { formatCurrency, formatDateStr } from "@/lib/utils"
+import { formatCurrencyExact, formatDateStr } from "@/lib/utils"
 import { Download } from "lucide-react"
 import * as XLSX from "xlsx"
 
@@ -143,27 +143,27 @@ function TabIvaPagar() {
               <TableBody>
                 <TableRow>
                   <TableCell>IVA por Ventas (21%)</TableCell>
-                  <TableCell className="text-right">{formatCurrency(calculado.debIVA21)}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyExact(calculado.debIVA21)}</TableCell>
                   <TableCell></TableCell>
                   <TableCell></TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell>IVA por Compras</TableCell>
                   <TableCell></TableCell>
-                  <TableCell className="text-right">{formatCurrency(calculado.credIVA)}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyExact(calculado.credIVA)}</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
                 <TableRow>
                   <TableCell>Percepciones IVA por Compras</TableCell>
                   <TableCell></TableCell>
-                  <TableCell className="text-right">{formatCurrency(calculado.percIVA)}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyExact(calculado.percIVA)}</TableCell>
                   <TableCell></TableCell>
                 </TableRow>
                 <TableRow className="bg-amber-50 font-bold">
                   <TableCell>TOTAL</TableCell>
-                  <TableCell className="text-right">{formatCurrency(calculado.debIVA21)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(calculado.credIVA + calculado.percIVA)}</TableCell>
-                  <TableCell className="text-right text-amber-700">{formatCurrency(calculado.total)}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyExact(calculado.debIVA21)}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyExact(calculado.credIVA + calculado.percIVA)}</TableCell>
+                  <TableCell className="text-right text-amber-700">{formatCurrencyExact(calculado.total)}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
@@ -189,8 +189,8 @@ function TabIvaPagar() {
                       {g.items.map((r, j) => (
                         <TableRow key={j}>
                           <TableCell>{r.concepto}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(r.debitos || 0)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(r.creditos || 0)}</TableCell>
+                          <TableCell className="text-right">{formatCurrencyExact(r.debitos || 0)}</TableCell>
+                          <TableCell className="text-right">{formatCurrencyExact(r.creditos || 0)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -311,20 +311,20 @@ function TabSubdiarioVentas() {
                   <TableCell className="text-xs">{r.tipo_nro}</TableCell>
                   <TableCell className="text-xs">{r.cliente}</TableCell>
                   <TableCell className="text-xs">{r.cuit}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(r.neto)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(r.exento)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(r.iva21)}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(r.percep_iibb)}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(r.total)}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyExact(r.neto)}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyExact(r.exento)}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyExact(r.iva21)}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyExact(r.percep_iibb)}</TableCell>
+                  <TableCell className="text-right font-medium">{formatCurrencyExact(r.total)}</TableCell>
                 </TableRow>
               ))}
               <TableRow className="bg-gray-50 font-bold">
                 <TableCell colSpan={4}>TOTALES ({rows.length})</TableCell>
-                <TableCell className="text-right">{formatCurrency(totales.neto)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(totales.exento)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(totales.iva21)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(totales.percep_iibb)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(totales.total)}</TableCell>
+                <TableCell className="text-right">{formatCurrencyExact(totales.neto)}</TableCell>
+                <TableCell className="text-right">{formatCurrencyExact(totales.exento)}</TableCell>
+                <TableCell className="text-right">{formatCurrencyExact(totales.iva21)}</TableCell>
+                <TableCell className="text-right">{formatCurrencyExact(totales.percep_iibb)}</TableCell>
+                <TableCell className="text-right">{formatCurrencyExact(totales.total)}</TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -425,20 +425,20 @@ function TabSubdiarioCompras() {
                   <TableCell className="text-xs">{r.tipo} {r.punto_venta}-{r.numero}-{r.letra}</TableCell>
                   <TableCell className="text-xs">{r.razon_social || r.proveedor_nombre}</TableCell>
                   <TableCell className="text-xs">{r.cuit || "-"}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(Number(r.neto || 0))}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(Number(r.iva || 0))}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(Number(r.percepciones_iva || 0))}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(Number(r.percepciones_iibb || 0))}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(Number(r.total || 0))}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyExact(Number(r.neto || 0))}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyExact(Number(r.iva || 0))}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyExact(Number(r.percepciones_iva || 0))}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyExact(Number(r.percepciones_iibb || 0))}</TableCell>
+                  <TableCell className="text-right font-medium">{formatCurrencyExact(Number(r.total || 0))}</TableCell>
                 </TableRow>
               ))}
               <TableRow className="bg-gray-50 font-bold">
                 <TableCell colSpan={4}>TOTALES ({rows.length})</TableCell>
-                <TableCell className="text-right">{formatCurrency(totales.neto)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(totales.iva)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(totales.percepIva)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(totales.percepIibb)}</TableCell>
-                <TableCell className="text-right">{formatCurrency(totales.total)}</TableCell>
+                <TableCell className="text-right">{formatCurrencyExact(totales.neto)}</TableCell>
+                <TableCell className="text-right">{formatCurrencyExact(totales.iva)}</TableCell>
+                <TableCell className="text-right">{formatCurrencyExact(totales.percepIva)}</TableCell>
+                <TableCell className="text-right">{formatCurrencyExact(totales.percepIibb)}</TableCell>
+                <TableCell className="text-right">{formatCurrencyExact(totales.total)}</TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -578,16 +578,16 @@ function TabJurisdiccion() {
                         <TableCell className="text-xs">{r.razon_social}</TableCell>
                         <TableCell className="text-xs">{r.cond_iva}</TableCell>
                         <TableCell className="text-xs">{r.cuit}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(r.neto)}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(r.iva21)}</TableCell>
-                        <TableCell className="text-right font-medium">{formatCurrency(r.total)}</TableCell>
+                        <TableCell className="text-right">{formatCurrencyExact(r.neto)}</TableCell>
+                        <TableCell className="text-right">{formatCurrencyExact(r.iva21)}</TableCell>
+                        <TableCell className="text-right font-medium">{formatCurrencyExact(r.total)}</TableCell>
                       </TableRow>
                     ))}
                     <TableRow className="bg-gray-50 font-bold">
                       <TableCell colSpan={5}>SUBTOTAL {provincia}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(tot.neto)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(tot.iva21)}</TableCell>
-                      <TableCell className="text-right">{formatCurrency(tot.total)}</TableCell>
+                      <TableCell className="text-right">{formatCurrencyExact(tot.neto)}</TableCell>
+                      <TableCell className="text-right">{formatCurrencyExact(tot.iva21)}</TableCell>
+                      <TableCell className="text-right">{formatCurrencyExact(tot.total)}</TableCell>
                     </TableRow>
                   </TableBody>
                 </Table>

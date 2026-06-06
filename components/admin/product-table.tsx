@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { StockIndicator } from "@/components/vendedor/stock-indicator"
-import { formatCurrency, cn } from "@/lib/utils"
+import { formatCurrencyExact, cn } from "@/lib/utils"
 import type { Product } from "@/lib/types"
 import { Edit, Trash2, Eye } from "lucide-react"
 import Link from "next/link"
@@ -105,7 +105,7 @@ export function ProductTable({ products, onEdit, onDelete, selectedIds, onSelect
                   )}
                 </TableCell>
                 <TableCell className="text-right">
-                  {product.costoNeto != null ? formatCurrency(product.costoNeto) : "-"}
+                  {product.costoNeto != null ? formatCurrencyExact(product.costoNeto) : "-"}
                 </TableCell>
                 <TableCell className="max-w-[120px] truncate" title={product.grupoRubro || ""}>
                   {product.grupoRubro || "-"}
@@ -117,7 +117,7 @@ export function ProductTable({ products, onEdit, onDelete, selectedIds, onSelect
                 <TableCell>
                   <StockIndicator product={product} showCount={false} />
                 </TableCell>
-                <TableCell className="text-right font-semibold">{formatCurrency(product.price)}</TableCell>
+                <TableCell className="text-right font-semibold">{formatCurrencyExact(product.price)}</TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button asChild size="sm" variant="ghost">

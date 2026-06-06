@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import * as XLSX from "xlsx"
-import { formatCurrency, formatDateStr, normalizeSearch } from "@/lib/utils"
+import { formatCurrencyExact, formatDateStr, normalizeSearch } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { fetchChequesEmitidos, updateChequeEmitido } from "@/lib/supabase/queries"
 import { Badge } from "@/components/ui/badge"
@@ -233,7 +233,7 @@ export default function ChequesPage() {
                     <td className="px-3 py-3 font-medium text-gray-900 truncate" title={c.numero || ""}>{c.numero || "-"}</td>
                     <td className="px-3 py-3 text-gray-600 truncate" title={c.banco || ""}>{c.banco || "-"}</td>
                     <td className="px-3 py-3 text-gray-600 truncate" title={c.pago_id || ""}>{c.pago_id ? c.pago_id.slice(0, 8) + "..." : "-"}</td>
-                    <td className="px-3 py-3 text-right font-bold text-gray-900">{formatCurrency(Number(c.importe) || 0)}</td>
+                    <td className="px-3 py-3 text-right font-bold text-gray-900">{formatCurrencyExact(Number(c.importe) || 0)}</td>
                     <td className="px-3 py-3 text-gray-600">{formatDateStr(c.fecha_emision)}</td>
                     <td className="px-3 py-3 text-gray-600">{formatDateStr(c.fecha_pago)}</td>
                     <td className="px-3 py-3 text-center">{tipoBadge(c.tipo)}</td>
@@ -302,7 +302,7 @@ export default function ChequesPage() {
                 </div>
                 <div>
                   <p className="text-gray-500 font-medium">Importe</p>
-                  <p className="text-gray-900 font-bold">{formatCurrency(Number(viewing.importe) || 0)}</p>
+                  <p className="text-gray-900 font-bold">{formatCurrencyExact(Number(viewing.importe) || 0)}</p>
                 </div>
                 <div>
                   <p className="text-gray-500 font-medium">Pago ID</p>

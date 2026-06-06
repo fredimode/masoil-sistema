@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { fetchProducts } from "@/lib/supabase/queries"
 import type { Product } from "@/lib/types"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrencyExact } from "@/lib/utils"
 import { AlertTriangle, Package, ShoppingCart } from "lucide-react"
 
 export default function AdminStockAlertsPage() {
@@ -116,7 +116,7 @@ export default function AdminStockAlertsPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Precio:</span>
-                      <span className="font-semibold">{formatCurrency(product.price)}</span>
+                      <span className="font-semibold">{formatCurrencyExact(product.price)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Categoría:</span>
@@ -172,7 +172,7 @@ export default function AdminStockAlertsPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Precio:</span>
-                      <span className="font-semibold">{formatCurrency(product.price)}</span>
+                      <span className="font-semibold">{formatCurrencyExact(product.price)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Categoría:</span>
@@ -223,7 +223,7 @@ export default function AdminStockAlertsPage() {
                   <div className="space-y-1 text-xs">
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Precio:</span>
-                      <span className="font-semibold">{formatCurrency(product.price)}</span>
+                      <span className="font-semibold">{formatCurrencyExact(product.price)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Categoría:</span>

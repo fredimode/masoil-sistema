@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { fetchOrders } from "@/lib/supabase/queries"
 import type { Order } from "@/lib/types"
-import { formatCurrency, formatDate, getDaysRemaining } from "@/lib/utils"
+import { formatCurrencyExact, formatDate, getDaysRemaining } from "@/lib/utils"
 import { getStatusConfig } from "@/lib/status-config"
 import Link from "next/link"
 import { Eye } from "lucide-react"
@@ -92,7 +92,7 @@ export default function AdminCustomOrdersPage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Total:</span>
-                      <span className="font-semibold">{formatCurrency(order.total)}</span>
+                      <span className="font-semibold">{formatCurrencyExact(order.total)}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Zona:</span>

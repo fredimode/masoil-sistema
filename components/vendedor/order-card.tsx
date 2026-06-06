@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrencyExact, formatDate } from "@/lib/utils"
 import { getStatusConfig } from "@/lib/status-config"
 import type { Order, Client } from "@/lib/types"
 import Link from "next/link"
@@ -38,7 +38,7 @@ export function OrderCard({ order, client }: OrderCardProps) {
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>{order.products.length} productos</span>
           <span>•</span>
-          <span className="font-semibold">{formatCurrency(order.total)}</span>
+          <span className="font-semibold">{formatCurrencyExact(order.total)}</span>
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span className="px-2 py-0.5 bg-secondary rounded-full text-xs font-medium">{order.zona}</span>

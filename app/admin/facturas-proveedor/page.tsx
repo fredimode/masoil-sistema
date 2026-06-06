@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
-import { formatCurrency, normalizeSearch } from "@/lib/utils"
+import { formatCurrencyExact, normalizeSearch } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import {
   fetchProveedores,
@@ -705,11 +705,11 @@ export default function FacturasProveedorPage() {
                     <td className="px-2 py-2 text-gray-600 text-xs">
                       {f.punto_venta || "-"}-{f.numero || "-"}
                     </td>
-                    <td className="px-2 py-2 text-right text-gray-600">{formatCurrency(Number(f.neto) || 0)}</td>
-                    <td className="px-2 py-2 text-right text-gray-600">{formatCurrency(Number(f.iva) || 0)}</td>
-                    <td className="px-2 py-2 text-right font-medium text-gray-900">{formatCurrency(Number(f.total) || 0)}</td>
+                    <td className="px-2 py-2 text-right text-gray-600">{formatCurrencyExact(Number(f.neto) || 0)}</td>
+                    <td className="px-2 py-2 text-right text-gray-600">{formatCurrencyExact(Number(f.iva) || 0)}</td>
+                    <td className="px-2 py-2 text-right font-medium text-gray-900">{formatCurrencyExact(Number(f.total) || 0)}</td>
                     <td className="px-2 py-2 text-center">{estadoBadge(f.estado)}</td>
-                    <td className="px-2 py-2 text-right text-gray-600">{formatCurrency(Number(f.saldo_pendiente) || 0)}</td>
+                    <td className="px-2 py-2 text-right text-gray-600">{formatCurrencyExact(Number(f.saldo_pendiente) || 0)}</td>
                     <td className="px-2 py-2 text-center">
                       <div className="flex items-center justify-center gap-1">
                         <button
@@ -781,7 +781,7 @@ export default function FacturasProveedorPage() {
                 <span className="text-gray-300">|</span>
                 <span><span className="text-gray-500">Fecha:</span> <span className="font-medium">{form.fecha ? new Date(form.fecha).toLocaleDateString("es-AR") : "-"}</span></span>
                 <span className="text-gray-300">|</span>
-                <span><span className="text-gray-500">Total:</span> <span className="font-semibold text-primary">{form.total ? formatCurrency(parseFloat(form.total)) : "$0,00"}</span></span>
+                <span><span className="text-gray-500">Total:</span> <span className="font-semibold text-primary">{form.total ? formatCurrencyExact(parseFloat(form.total)) : "$0,00"}</span></span>
               </div>
               <button
                 type="button"
@@ -1104,7 +1104,7 @@ export default function FacturasProveedorPage() {
             <div className="flex items-center justify-end gap-3 bg-primary/5 border border-primary/20 rounded-lg px-4 py-2">
               <span className="text-sm font-medium text-gray-700">Total:</span>
               <span className="text-2xl font-bold text-primary">
-                {form.total ? formatCurrency(parseFloat(form.total)) : "$0,00"}
+                {form.total ? formatCurrencyExact(parseFloat(form.total)) : "$0,00"}
               </span>
             </div>
 
@@ -1130,7 +1130,7 @@ export default function FacturasProveedorPage() {
                   <option value="">Sin vincular</option>
                   {ordenesProveedor.map((o) => (
                     <option key={o.id} value={o.id}>
-                      OC {o.nro_oc || o.id.slice(0, 8)} - {formatCurrency(Number(o.importe_total) || 0)} ({o.estado})
+                      OC {o.nro_oc || o.id.slice(0, 8)} - {formatCurrencyExact(Number(o.importe_total) || 0)} ({o.estado})
                     </option>
                   ))}
                 </select>
@@ -1295,7 +1295,7 @@ export default function FacturasProveedorPage() {
                           placeholder="0.00"
                         />
                         <div className="text-right text-sm font-medium text-gray-700 py-2">
-                          {formatCurrency(subtotal)}
+                          {formatCurrencyExact(subtotal)}
                         </div>
                         <button
                           type="button"
@@ -1310,7 +1310,7 @@ export default function FacturasProveedorPage() {
                   })}
                   {formItems.some((it) => it.nombre.trim()) && (
                     <div className="text-right text-sm text-gray-700 pt-2 border-t mt-2">
-                      Subtotal items: <span className="font-semibold">{formatCurrency(formItems.reduce((s, it) => s + (parseFloat(it.cantidad) || 0) * (parseFloat(it.precio) || 0), 0))}</span>
+                      Subtotal items: <span className="font-semibold">{formatCurrencyExact(formItems.reduce((s, it) => s + (parseFloat(it.cantidad) || 0) * (parseFloat(it.precio) || 0), 0))}</span>
                     </div>
                   )}
                 </div>
@@ -1436,14 +1436,14 @@ export default function FacturasProveedorPage() {
               </div>
               <hr />
               <div className="grid grid-cols-2 gap-2">
-                <div><span className="text-gray-500">Neto:</span> <span className="font-medium">{formatCurrency(Number(viewing.neto) || 0)}</span></div>
-                <div><span className="text-gray-500">IVA 21%:</span> <span className="font-medium">{formatCurrency(Number(viewing.iva) || 0)}</span></div>
-                {Number(viewing.iva_105) > 0 && <div><span className="text-gray-500">IVA 10.5%:</span> <span className="font-medium">{formatCurrency(Number(viewing.iva_105))}</span></div>}
-                {Number(viewing.iva_27) > 0 && <div><span className="text-gray-500">IVA 27%:</span> <span className="font-medium">{formatCurrency(Number(viewing.iva_27))}</span></div>}
-                <div><span className="text-gray-500">Perc. IVA:</span> <span className="font-medium">{formatCurrency(Number(viewing.percepciones_iva) || 0)}</span></div>
+                <div><span className="text-gray-500">Neto:</span> <span className="font-medium">{formatCurrencyExact(Number(viewing.neto) || 0)}</span></div>
+                <div><span className="text-gray-500">IVA 21%:</span> <span className="font-medium">{formatCurrencyExact(Number(viewing.iva) || 0)}</span></div>
+                {Number(viewing.iva_105) > 0 && <div><span className="text-gray-500">IVA 10.5%:</span> <span className="font-medium">{formatCurrencyExact(Number(viewing.iva_105))}</span></div>}
+                {Number(viewing.iva_27) > 0 && <div><span className="text-gray-500">IVA 27%:</span> <span className="font-medium">{formatCurrencyExact(Number(viewing.iva_27))}</span></div>}
+                <div><span className="text-gray-500">Perc. IVA:</span> <span className="font-medium">{formatCurrencyExact(Number(viewing.percepciones_iva) || 0)}</span></div>
                 <div>
                   <span className="text-gray-500">Perc. IIBB:</span>{" "}
-                  <span className="font-medium">{formatCurrency(Number(viewing.percepciones_iibb) || 0)}</span>
+                  <span className="font-medium">{formatCurrencyExact(Number(viewing.percepciones_iibb) || 0)}</span>
                   {viewing.jurisdiccion_iibb && (() => {
                     try {
                       const parsed = JSON.parse(viewing.jurisdiccion_iibb)
@@ -1456,15 +1456,15 @@ export default function FacturasProveedorPage() {
                     return <span className="text-xs text-gray-500 ml-1">({viewing.jurisdiccion_iibb})</span>
                   })()}
                 </div>
-                {Number(viewing.impuestos_internos) > 0 && <div><span className="text-gray-500">Imp. Internos:</span> <span className="font-medium">{formatCurrency(Number(viewing.impuestos_internos))}</span></div>}
-                {Number(viewing.exentos_no_gravados) > 0 && <div><span className="text-gray-500">Exentos/No Grav.:</span> <span className="font-medium">{formatCurrency(Number(viewing.exentos_no_gravados))}</span></div>}
-                <div><span className="text-gray-500">Otros Imp.:</span> <span className="font-medium">{formatCurrency(Number(viewing.otros_impuestos) || 0)}</span></div>
-                <div className="col-span-2"><span className="text-gray-500 font-semibold">Total:</span> <span className="font-bold">{formatCurrency(Number(viewing.total) || 0)}</span></div>
+                {Number(viewing.impuestos_internos) > 0 && <div><span className="text-gray-500">Imp. Internos:</span> <span className="font-medium">{formatCurrencyExact(Number(viewing.impuestos_internos))}</span></div>}
+                {Number(viewing.exentos_no_gravados) > 0 && <div><span className="text-gray-500">Exentos/No Grav.:</span> <span className="font-medium">{formatCurrencyExact(Number(viewing.exentos_no_gravados))}</span></div>}
+                <div><span className="text-gray-500">Otros Imp.:</span> <span className="font-medium">{formatCurrencyExact(Number(viewing.otros_impuestos) || 0)}</span></div>
+                <div className="col-span-2"><span className="text-gray-500 font-semibold">Total:</span> <span className="font-bold">{formatCurrencyExact(Number(viewing.total) || 0)}</span></div>
               </div>
               <hr />
               <div className="grid grid-cols-2 gap-2">
                 <div><span className="text-gray-500">Estado:</span> {estadoBadge(viewing.estado)}</div>
-                <div><span className="text-gray-500">Saldo Pendiente:</span> <span className="font-bold text-amber-700">{formatCurrency(Number(viewing.saldo_pendiente) || 0)}</span></div>
+                <div><span className="text-gray-500">Saldo Pendiente:</span> <span className="font-bold text-amber-700">{formatCurrencyExact(Number(viewing.saldo_pendiente) || 0)}</span></div>
               </div>
               {viewing.observaciones && (
                 <div><span className="text-gray-500">Observaciones:</span> <p className="mt-1 text-gray-700">{viewing.observaciones}</p></div>
@@ -1658,7 +1658,7 @@ export default function FacturasProveedorPage() {
           </DialogHeader>
           <p className="text-sm text-gray-600">
             Estas seguro de eliminar la factura de <strong>{deleting?.proveedor_nombre}</strong> por{" "}
-            <strong>{formatCurrency(Number(deleting?.total) || 0)}</strong>?
+            <strong>{formatCurrencyExact(Number(deleting?.total) || 0)}</strong>?
           </p>
           <DialogFooter>
             <button

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { fetchProveedores, fetchFacturasProveedor, createPagoProveedor, createChequeEmitido, updateFacturaProveedor, createMovimientoCuentaCorrienteProveedor } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/client"
-import { normalizeSearch, formatCurrency } from "@/lib/utils"
+import { normalizeSearch, formatCurrencyExact } from "@/lib/utils"
 import { Paperclip, Mail, Upload, Check, Plus, Trash2 } from "lucide-react"
 
 const EMPRESAS = ["Masoil", "Aquiles", "Conancap"]
@@ -196,7 +196,7 @@ export default function NuevoPagoPage() {
     let y = 85
     if (esPagoACuenta) {
       doc.setFontSize(9)
-      doc.text(`Importe anticipado: ${formatCurrency(importeTotal)}`, 14, y)
+      doc.text(`Importe anticipado: ${formatCurrencyExact(importeTotal)}`, 14, y)
       doc.text("Este pago figurará como DEBE en la cuenta corriente del proveedor.", 14, y + 6)
       y += 16
     } else {
@@ -215,8 +215,8 @@ export default function NuevoPagoPage() {
         const tipo = f.tipo === "NOTA_CREDITO" ? "NC" : f.tipo === "NOTA_DEBITO" ? "ND" : "FC"
         doc.text(`${tipo} ${f.letra || ""}`, 14, y)
         doc.text(`${f.punto_venta || ""}-${f.numero || ""}`, 40, y)
-        doc.text(formatCurrency(Number(f.total) || 0), 100, y)
-        doc.text(formatCurrency(Number(f.saldo_pendiente) || Number(f.total) || 0), 140, y)
+        doc.text(formatCurrencyExact(Number(f.total) || 0), 100, y)
+        doc.text(formatCurrencyExact(Number(f.saldo_pendiente) || Number(f.total) || 0), 140, y)
         y += 5
         if (y > 260) { doc.addPage(); y = 20 }
       }
@@ -233,7 +233,7 @@ export default function NuevoPagoPage() {
       let detail = fp.tipo
       if (fp.tipo === "Tarjeta de crédito" && fp.banco_entidad) detail += ` - ${fp.banco_entidad}`
       doc.text(detail, 14, y)
-      doc.text(formatCurrency(parseFloat(fp.importe) || 0), 140, y)
+      doc.text(formatCurrencyExact(parseFloat(fp.importe) || 0), 140, y)
       y += 5
     }
 
@@ -242,7 +242,7 @@ export default function NuevoPagoPage() {
     doc.line(14, y, 196, y)
     y += 6
     doc.setFontSize(12)
-    doc.text(`TOTAL: ${formatCurrency(importeTotal)}`, 140, y)
+    doc.text(`TOTAL: ${formatCurrencyExact(importeTotal)}`, 140, y)
 
     // Upload to Supabase Storage
     const pdfBlob = doc.output("blob")
@@ -274,7 +274,7 @@ export default function NuevoPagoPage() {
       return
     }
     if (esPagoACuenta) {
-      const msg = `No seleccionó facturas. Se registrará como Pago a Cuenta por ${formatCurrency(importeTotal)}. ¿Continuar?`
+      const msg = `No seleccionó facturas. Se registrará como Pago a Cuenta por ${formatCurrencyExact(importeTotal)}. ¿Continuar?`
       if (!confirm(msg)) return
     }
     setGuardando(true)
@@ -519,8 +519,8 @@ export default function NuevoPagoPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2 font-mono text-xs">{f.punto_venta || ""}-{f.numero || ""}</td>
-                          <td className="px-3 py-2 text-right font-medium">{formatCurrency(Number(f.total) || 0)}</td>
-                          <td className="px-3 py-2 text-right font-bold text-red-600">{formatCurrency(Number(f.saldo_pendiente) || Number(f.total) || 0)}</td>
+                          <td className="px-3 py-2 text-right font-medium">{formatCurrencyExact(Number(f.total) || 0)}</td>
+                          <td className="px-3 py-2 text-right font-bold text-red-600">{formatCurrencyExact(Number(f.saldo_pendiente) || Number(f.total) || 0)}</td>
                           <td className="px-3 py-2">
                             <span className={`text-xs px-2 py-0.5 rounded ${f.estado === "pagada_parcial" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>
                               {f.estado === "pagada_parcial" ? "Parcial" : "Pendiente"}
@@ -534,7 +534,7 @@ export default function NuevoPagoPage() {
                 {selectedFacturaIds.size > 0 ? (
                   <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex justify-between items-center">
                     <span className="text-sm text-blue-700">{selectedFacturaIds.size} factura(s) seleccionada(s)</span>
-                    <span className="font-bold text-blue-900">Total: {formatCurrency(totalFacturasSeleccionadas)}</span>
+                    <span className="font-bold text-blue-900">Total: {formatCurrencyExact(totalFacturasSeleccionadas)}</span>
                   </div>
                 ) : (
                   <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
@@ -727,7 +727,7 @@ export default function NuevoPagoPage() {
               ))}
               {cheques.length > 0 && (
                 <div className="mt-2 text-right text-sm font-bold text-purple-800">
-                  Total cheques: {formatCurrency(totalCheques)}
+                  Total cheques: {formatCurrencyExact(totalCheques)}
                 </div>
               )}
             </div>
@@ -737,15 +737,15 @@ export default function NuevoPagoPage() {
           <div className="mt-4 p-3 border-t space-y-1">
             <div className="flex justify-between text-sm">
               <span>Total facturas seleccionadas:</span>
-              <span className="font-medium">{formatCurrency(totalFacturasSeleccionadas)}</span>
+              <span className="font-medium">{formatCurrencyExact(totalFacturasSeleccionadas)}</span>
             </div>
             <div className="flex justify-between text-sm font-bold">
               <span>Total formas de pago:</span>
-              <span>{formatCurrency(totalFormasPago)}</span>
+              <span>{formatCurrencyExact(totalFormasPago)}</span>
             </div>
             {selectedFacturaIds.size > 0 && totalFormasPago > 0 && Math.abs(diferencia) > 0.01 && (
               <div className={`text-xs mt-1 px-2 py-1 rounded ${diferencia > 0 ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
-                {diferencia > 0 ? `Saldo a favor: ${formatCurrency(diferencia)}` : `Falta cubrir: ${formatCurrency(Math.abs(diferencia))}`}
+                {diferencia > 0 ? `Saldo a favor: ${formatCurrencyExact(diferencia)}` : `Falta cubrir: ${formatCurrencyExact(Math.abs(diferencia))}`}
               </div>
             )}
           </div>
@@ -802,7 +802,7 @@ export default function NuevoPagoPage() {
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between mb-2">
             <span className="text-lg font-semibold text-gray-900">Total a pagar</span>
-            <span className="text-2xl font-bold text-primary">{formatCurrency(importeTotal)}</span>
+            <span className="text-2xl font-bold text-primary">{formatCurrencyExact(importeTotal)}</span>
           </div>
           <p className="text-xs text-gray-500 mb-4">Se generará automáticamente una Orden de Pago al guardar</p>
           <div className="flex justify-end gap-3">

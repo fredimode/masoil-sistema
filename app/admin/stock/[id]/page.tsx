@@ -13,7 +13,7 @@ import {
 import { ArrowLeft, Search } from "lucide-react"
 import { fetchProductById, fetchVentasByProducto } from "@/lib/supabase/queries"
 import type { Product } from "@/lib/types"
-import { formatCurrency, formatDate, normalizeSearch } from "@/lib/utils"
+import { formatCurrencyExact, formatDate, normalizeSearch } from "@/lib/utils"
 
 export default function AdminProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params)
@@ -87,16 +87,16 @@ export default function AdminProductDetailPage({ params }: { params: Promise<{ i
         </Card>
         <Card className="p-4">
           <p className="text-sm text-muted-foreground mb-1">Precio venta</p>
-          <p className="text-2xl font-bold">{formatCurrency(product.price)}</p>
+          <p className="text-2xl font-bold">{formatCurrencyExact(product.price)}</p>
         </Card>
         <Card className="p-4">
           <p className="text-sm text-muted-foreground mb-1">Costo neto</p>
-          <p className="text-2xl font-bold">{product.costoNeto != null ? formatCurrency(product.costoNeto) : "-"}</p>
+          <p className="text-2xl font-bold">{product.costoNeto != null ? formatCurrencyExact(product.costoNeto) : "-"}</p>
         </Card>
         <Card className="p-4">
           <p className="text-sm text-muted-foreground mb-1">Unidades vendidas</p>
           <p className="text-2xl font-bold">{totalVendido}</p>
-          <p className="text-xs text-muted-foreground">{formatCurrency(montoVendido)}</p>
+          <p className="text-xs text-muted-foreground">{formatCurrencyExact(montoVendido)}</p>
         </Card>
       </div>
 
@@ -177,8 +177,8 @@ export default function AdminProductDetailPage({ params }: { params: Promise<{ i
                     ) : "-"}
                   </TableCell>
                   <TableCell className="text-right">{v.cantidad}</TableCell>
-                  <TableCell className="text-right">{formatCurrency(v.precio_unitario)}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(v.subtotal)}</TableCell>
+                  <TableCell className="text-right">{formatCurrencyExact(v.precio_unitario)}</TableCell>
+                  <TableCell className="text-right font-medium">{formatCurrencyExact(v.subtotal)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

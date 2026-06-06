@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dialog"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { fetchProveedores, fetchProveedoresCount, updateProveedor, deleteProveedor, deleteProveedoresBulk } from "@/lib/supabase/queries"
-import { normalizeSearch, formatCurrency } from "@/lib/utils"
+import { normalizeSearch, formatCurrencyExact } from "@/lib/utils"
 import { Search, Plus, Download, Users, Building2, CreditCard, Eye, Pencil, Trash2 } from "lucide-react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
@@ -348,7 +348,7 @@ export default function AdminProveedoresPage() {
                         {p.email || "-"}
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        {p.saldo != null ? formatCurrency(p.saldo) : "-"}
+                        {p.saldo != null ? formatCurrencyExact(p.saldo) : "-"}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">

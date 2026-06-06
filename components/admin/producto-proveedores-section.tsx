@@ -7,7 +7,7 @@ import {
   deleteProductoProveedor,
   fetchProveedores,
 } from "@/lib/supabase/queries"
-import { formatCurrency, normalizeSearch } from "@/lib/utils"
+import { formatCurrencyExact, normalizeSearch } from "@/lib/utils"
 import { Trash2, Plus, X, Search } from "lucide-react"
 
 interface Props {
@@ -140,7 +140,7 @@ export function ProductoProveedoresSection({ productId }: Props) {
                   </td>
                   <td className="px-2 py-2 font-mono">{a.codigo_proveedor || "-"}</td>
                   <td className="px-2 py-2 text-right font-medium">
-                    {a.precio_proveedor ? formatCurrency(Number(a.precio_proveedor)) : "-"}
+                    {a.precio_proveedor ? formatCurrencyExact(Number(a.precio_proveedor)) : "-"}
                   </td>
                   <td className="px-2 py-2 text-right text-muted-foreground">
                     {Number(a.descuento_porcentaje) > 0 ? `${Number(a.descuento_porcentaje)}%` : "-"}

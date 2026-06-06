@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { fetchProveedores, fetchCompras, fetchProducts, updateSolicitudCompra, createOrdenCompra, fetchProveedoresByProducto, fetchProductosByProveedor } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/client"
-import { normalizeSearch, formatCurrency } from "@/lib/utils"
+import { normalizeSearch, formatCurrencyExact } from "@/lib/utils"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -339,7 +339,7 @@ function NuevaCompraForm() {
     return compraItems.map((i) => {
       const desc = Number(i.descuento) || 0
       const descTxt = desc > 0 ? ` (-${desc}%)` : ""
-      return `${i.quantity}x ${i.code ? `[${i.code}] ` : ""}${i.name}${i.costoNeto ? ` - ${formatCurrency(i.costoNeto)}${descTxt}` : ""}`
+      return `${i.quantity}x ${i.code ? `[${i.code}] ` : ""}${i.name}${i.costoNeto ? ` - ${formatCurrencyExact(i.costoNeto)}${descTxt}` : ""}`
     }).join("\n")
   }
 
@@ -515,7 +515,7 @@ function NuevaCompraForm() {
                       className={`px-3 py-1 text-xs rounded-full hover:bg-blue-100 border ${s.origen === "asociado" ? "bg-green-50 border-green-300 text-green-800" : "bg-white border-blue-300"}`}
                     >
                       <span className="font-medium">{s.prov.nombre || s.prov.razon_social}</span>
-                      {s.precio ? <span className="ml-1 text-[10px] opacity-80">({formatCurrency(s.precio)})</span> : null}
+                      {s.precio ? <span className="ml-1 text-[10px] opacity-80">({formatCurrencyExact(s.precio)})</span> : null}
                       {s.origen === "asociado" && <span className="ml-1 text-[10px] opacity-60">★</span>}
                     </button>
                   ))}
@@ -601,7 +601,7 @@ function NuevaCompraForm() {
                             >
                               <span className="font-mono text-xs text-gray-500 shrink-0 w-20 truncate">{row.product_code || row.codigo_proveedor || "S/C"}</span>
                               <span className="font-medium flex-1 min-w-0 truncate">{row.product_name || "-"}</span>
-                              {precio > 0 && <span className="text-xs text-gray-600 shrink-0">{formatCurrency(precio)}</span>}
+                              {precio > 0 && <span className="text-xs text-gray-600 shrink-0">{formatCurrencyExact(precio)}</span>}
                               {desc > 0 && <span className="text-[10px] text-green-700 shrink-0">-{desc}%</span>}
                             </button>
                           )
@@ -627,7 +627,7 @@ function NuevaCompraForm() {
                             <span className="font-mono text-xs text-gray-500 mr-2">{p.code || "S/C"}</span>
                             <span className="font-medium">{p.name}</span>
                             {(p.costoNeto || p.price) ? (
-                              <span className="text-gray-400 ml-2">{formatCurrency(p.costoNeto ?? p.price)}</span>
+                              <span className="text-gray-400 ml-2">{formatCurrencyExact(p.costoNeto ?? p.price)}</span>
                             ) : null}
                           </button>
                         ))}
@@ -703,7 +703,7 @@ function NuevaCompraForm() {
                                   placeholder="0"
                                 />
                               </td>
-                              <td className="px-2 py-1.5 text-right text-sm font-semibold whitespace-nowrap">{formatCurrency(subtotal)}</td>
+                              <td className="px-2 py-1.5 text-right text-sm font-semibold whitespace-nowrap">{formatCurrencyExact(subtotal)}</td>
                               <td className="px-1 py-1.5 text-center">
                                 <button type="button" onClick={() => setCompraItems((prev) => prev.filter((_, j) => j !== idx))} className="p-1 hover:bg-red-100 rounded">
                                   <X className="h-4 w-4 text-red-500" />
@@ -716,7 +716,7 @@ function NuevaCompraForm() {
                         <tfoot>
                           <tr className="bg-gray-50 border-t">
                             <td colSpan={4} className="px-2 py-2 text-right font-semibold">Total</td>
-                            <td className="px-2 py-2 text-right font-bold">{formatCurrency(totalCompra)}</td>
+                            <td className="px-2 py-2 text-right font-bold">{formatCurrencyExact(totalCompra)}</td>
                             <td />
                           </tr>
                         </tfoot>

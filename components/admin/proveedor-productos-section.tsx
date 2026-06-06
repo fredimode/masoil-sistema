@@ -9,7 +9,7 @@ import {
   fetchProducts,
 } from "@/lib/supabase/queries"
 import type { Product } from "@/lib/types"
-import { formatCurrency, normalizeSearch } from "@/lib/utils"
+import { formatCurrencyExact, normalizeSearch } from "@/lib/utils"
 import { Trash2, Plus, X, Search } from "lucide-react"
 
 interface Props {
@@ -137,7 +137,7 @@ export function ProveedorProductosSection({ proveedorId }: Props) {
                     </Link>
                   </td>
                   <td className="px-3 py-2 text-right font-medium">
-                    {a.precio_proveedor ? formatCurrency(Number(a.precio_proveedor)) : "-"}
+                    {a.precio_proveedor ? formatCurrencyExact(Number(a.precio_proveedor)) : "-"}
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">{a.codigo_proveedor || "-"}</td>
                   <td className="px-3 py-2 text-muted-foreground text-xs">

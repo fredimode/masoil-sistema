@@ -12,7 +12,7 @@ import { fetchOrdersByVendedor } from "@/lib/supabase/queries"
 import type { Order } from "@/lib/types"
 import { Plus, Search, Clock, MapPin } from "lucide-react"
 import Link from "next/link"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrencyExact, formatDate } from "@/lib/utils"
 import { getStatusConfig } from "@/lib/status-config"
 
 export default function VendedorPedidosPage() {
@@ -152,7 +152,7 @@ export default function VendedorPedidosPage() {
                           <Clock className="h-3 w-3" />
                           <span>{order.products.length} productos</span>
                         </div>
-                        <p className="font-bold text-lg">{formatCurrency(order.total)}</p>
+                        <p className="font-bold text-lg">{formatCurrencyExact(order.total)}</p>
                       </div>
                     </Card>
                   </Link>

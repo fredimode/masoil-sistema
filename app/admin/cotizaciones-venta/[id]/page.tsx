@@ -18,7 +18,7 @@ import {
 } from "@/lib/supabase/queries"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 import { generateCotizacionPDF } from "@/lib/pdf/cotizacion-pdf"
-import { formatCurrency, formatDateStr } from "@/lib/utils"
+import { formatCurrencyExact, formatDateStr } from "@/lib/utils"
 
 const ESTADO_BADGES: Record<string, { label: string; cls: string }> = {
   pendiente: { label: "Pendiente", cls: "bg-amber-100 text-amber-800 border-amber-200" },
@@ -510,7 +510,7 @@ export default function CotizacionVentaDetallePage() {
     try {
       const url = await ensurePDFUrl()
       const text = encodeURIComponent(
-        `Hola, le enviamos la cotización ${cot.numero} por un total de ${formatCurrency(Number(cot.total) || 0)}.${url ? `\n${url}` : ""}`,
+        `Hola, le enviamos la cotización ${cot.numero} por un total de ${formatCurrencyExact(Number(cot.total) || 0)}.${url ? `\n${url}` : ""}`,
       )
       window.open(`https://wa.me/${tel}?text=${text}`, "_blank")
       await updateCotizacionVenta(cot.id, {
@@ -701,12 +701,12 @@ export default function CotizacionVentaDetallePage() {
                           onChange={(e) => setEditForm((f) => ({ ...f, precio_unitario: parseFloat(e.target.value) || 0 }))}
                           className="w-28 p-1 border rounded text-sm text-right"
                         />
-                      ) : formatCurrency(Number(i.precio_unitario) || 0)}
+                      ) : formatCurrencyExact(Number(i.precio_unitario) || 0)}
                     </td>
                     <td className="px-3 py-2 text-right font-medium">
                       {isEditing
-                        ? formatCurrency((Number(editForm.cantidad) || 0) * (Number(editForm.precio_unitario) || 0))
-                        : formatCurrency(Number(i.subtotal) || 0)}
+                        ? formatCurrencyExact((Number(editForm.cantidad) || 0) * (Number(editForm.precio_unitario) || 0))
+                        : formatCurrencyExact(Number(i.subtotal) || 0)}
                     </td>
                     {!parcialMode && cot.estado !== "convertida_pedido" && (
                       <td className="px-3 py-2 text-right">
@@ -754,13 +754,13 @@ export default function CotizacionVentaDetallePage() {
               })}
               <tr className="border-t bg-muted/50 font-semibold">
                 <td className="px-3 py-2" colSpan={parcialMode ? 5 : 4}>Total aprobado</td>
-                <td className="px-3 py-2 text-right">{formatCurrency(totalAprobado)}</td>
+                <td className="px-3 py-2 text-right">{formatCurrencyExact(totalAprobado)}</td>
                 {!parcialMode && cot.estado !== "convertida_pedido" && <td />}
               </tr>
               {parcialMode && totalNoAprobado > 0 && (
                 <tr className="bg-muted/30 text-muted-foreground">
                   <td className="px-3 py-2" colSpan={5}>Total no aprobado</td>
-                  <td className="px-3 py-2 text-right">{formatCurrency(totalNoAprobado)}</td>
+                  <td className="px-3 py-2 text-right">{formatCurrencyExact(totalNoAprobado)}</td>
                 </tr>
               )}
             </tbody>
@@ -866,7 +866,7 @@ export default function CotizacionVentaDetallePage() {
               </div>
             </div>
             <div className="text-sm text-right text-muted-foreground">
-              Subtotal: <span className="font-semibold text-gray-900">{formatCurrency(addCantidad * addPrecio)}</span>
+              Subtotal: <span className="font-semibold text-gray-900">{formatCurrencyExact(addCantidad * addPrecio)}</span>
             </div>
           </div>
           <DialogFooter>

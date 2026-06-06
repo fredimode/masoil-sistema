@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { fetchClientById, fetchOrders, fetchVendedores, updateClient, fetchFacturasByClient } from "@/lib/supabase/queries"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 import type { Client, Order, Vendedor } from "@/lib/types"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrencyExact, formatDate } from "@/lib/utils"
 import { getStatusConfig } from "@/lib/status-config"
 import { ArrowLeft, Edit, MessageCircle, Phone, Mail, MapPin, CreditCard, FileText, Globe, Save } from "lucide-react"
 import Link from "next/link"
@@ -273,7 +273,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card className="p-4">
               <p className="text-sm text-muted-foreground mb-1">Total Gastado</p>
-              <p className="text-2xl font-bold">{formatCurrency(totalSpent)}</p>
+              <p className="text-2xl font-bold">{formatCurrencyExact(totalSpent)}</p>
             </Card>
             <Card className="p-4">
               <p className="text-sm text-muted-foreground mb-1">Pedidos Totales</p>
@@ -310,7 +310,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
                         >
                           {statusConfig.icon} {statusConfig.label}
                         </Badge>
-                        <p className="font-semibold min-w-[100px] text-right">{formatCurrency(order.total)}</p>
+                        <p className="font-semibold min-w-[100px] text-right">{formatCurrencyExact(order.total)}</p>
                         <Button asChild size="sm" variant="ghost">
                           <Link href={`/admin/pedidos/${order.id}`}>
                             <FileText className="h-4 w-4" />
@@ -346,7 +346,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
                         <span className="font-mono">{comp}</span>
                         <span className="text-muted-foreground">{f.fecha ? formatDate(new Date(f.fecha)) : "-"}</span>
                       </div>
-                      <span className="font-semibold">{formatCurrency(Number(f.total) || 0)}</span>
+                      <span className="font-semibold">{formatCurrencyExact(Number(f.total) || 0)}</span>
                     </div>
                   )
                 })}
@@ -467,7 +467,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
                 <p className="text-sm text-muted-foreground mb-1">Límite de Crédito</p>
                 <div className="flex items-center gap-2">
                   <CreditCard className="h-4 w-4 text-muted-foreground" />
-                  <p className="font-semibold text-lg">{formatCurrency(client.creditLimit)}</p>
+                  <p className="font-semibold text-lg">{formatCurrencyExact(client.creditLimit)}</p>
                 </div>
               </div>
               <Separator />

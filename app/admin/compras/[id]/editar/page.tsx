@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { createClient } from "@/lib/supabase/client"
 import { updateOrdenCompraItems } from "@/lib/supabase/queries"
 import { ArrowLeft, Save } from "lucide-react"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrencyExact } from "@/lib/utils"
 
 interface EditItem {
   id: string
@@ -172,22 +172,22 @@ export default function OrdenCompraEditarPage() {
                               className="text-right h-8"
                             />
                           </td>
-                          <td className="p-2 text-right font-medium">{formatCurrency(lineSubtotal(it))}</td>
+                          <td className="p-2 text-right font-medium">{formatCurrencyExact(lineSubtotal(it))}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="border-t">
                         <td colSpan={5} className="text-right p-2 text-muted-foreground">Subtotal (neto)</td>
-                        <td className="text-right p-2">{formatCurrency(sumSub)}</td>
+                        <td className="text-right p-2">{formatCurrencyExact(sumSub)}</td>
                       </tr>
                       <tr>
                         <td colSpan={5} className="text-right p-2 text-muted-foreground">IVA 21%</td>
-                        <td className="text-right p-2">{formatCurrency(sumIva)}</td>
+                        <td className="text-right p-2">{formatCurrencyExact(sumIva)}</td>
                       </tr>
                       <tr className="font-medium">
                         <td colSpan={5} className="text-right p-2">Total</td>
-                        <td className="text-right p-2">{formatCurrency(Math.round((sumSub + sumIva) * 100) / 100)}</td>
+                        <td className="text-right p-2">{formatCurrencyExact(Math.round((sumSub + sumIva) * 100) / 100)}</td>
                       </tr>
                     </tfoot>
                   </table>

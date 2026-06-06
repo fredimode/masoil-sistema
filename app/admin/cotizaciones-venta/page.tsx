@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { Plus, Search, Eye, Printer, Send } from "lucide-react"
 import { fetchCotizacionesVenta, fetchVendedores, esVendedorComercial } from "@/lib/supabase/queries"
-import { formatCurrency, formatDateStr, normalizeSearch } from "@/lib/utils"
+import { formatCurrencyExact, formatDateStr, normalizeSearch } from "@/lib/utils"
 
 const ESTADO_BADGES: Record<string, { label: string; cls: string }> = {
   pendiente: { label: "Pendiente", cls: "bg-amber-100 text-amber-800 border-amber-200" },
@@ -160,7 +160,7 @@ export default function CotizacionesVentaPage() {
                       <td className="px-3 py-2">
                         <Badge variant="outline" className={est.cls}>{est.label}</Badge>
                       </td>
-                      <td className="px-3 py-2 text-right font-medium">{formatCurrency(Number(c.total) || 0)}</td>
+                      <td className="px-3 py-2 text-right font-medium">{formatCurrencyExact(Number(c.total) || 0)}</td>
                       <td className="px-3 py-2">
                         <div className="flex items-center justify-center gap-1">
                           <Link href={`/admin/cotizaciones-venta/${c.id}`} className="p-1 hover:bg-gray-200 rounded" title="Ver">

@@ -24,7 +24,7 @@ import {
   updateProveedorSucursal,
   deleteProveedorSucursal,
 } from "@/lib/supabase/queries"
-import { formatCurrency, formatDate } from "@/lib/utils"
+import { formatCurrencyExact, formatDate } from "@/lib/utils"
 import { ArrowLeft, Edit, MessageCircle, Save, Plus, Trash2, X, Check } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -276,7 +276,7 @@ export default function AdminProveedorDetailPage({
                       {c.articulo || "-"}
                     </TableCell>
                     <TableCell className="text-right">
-                      {c.total != null ? formatCurrency(Number(c.total)) : "-"}
+                      {c.total != null ? formatCurrencyExact(Number(c.total)) : "-"}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">{c.estado || "-"}</Badge>
@@ -309,7 +309,7 @@ export default function AdminProveedorDetailPage({
                 <TableRow key={i}>
                   <TableCell>{p.proveedor_nombre || "-"}</TableCell>
                   <TableCell>
-                    {p.importe != null ? formatCurrency(p.importe) : "-"}
+                    {p.importe != null ? formatCurrencyExact(p.importe) : "-"}
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">{p.estado_pago || "-"}</Badge>
