@@ -166,7 +166,12 @@ export default function NuevaCotizacionVentaPage() {
         productCode: p.code || "",
         productName: p.name,
         quantity: 1,
-        price: p.price,
+        // R.2: products.price se guarda CON IVA. El modelo de cotización trata
+        // precio_unitario como SIN IVA por definición (ver cotizacion-pdf.ts y la
+        // export XLSX: neto = Σ precio_unitario·cant, luego +21%). Por eso al
+        // agregar dividimos /1.21, igual que pedidos/nuevo. Antes se guardaba el
+        // precio con IVA y el PDF le sumaba 21% encima (total ~21% inflado).
+        price: Math.round((p.price / 1.21) * 100) / 100,
         stock: p.stock,
         tipoLinea: "producto",
       }])
@@ -191,7 +196,13 @@ export default function NuevaCotizacionVentaPage() {
     }])
   }
 
+  // R.2: discriminación de IVA igual que pedidos/nuevo. Los precios de línea son
+  // SIN IVA; el subtotal es el neto, el IVA 21% se calcula encima y el total es
+  // con IVA. El campo `total` que se persiste sigue siendo el neto (sin IVA),
+  // consistente con el detalle/PDF que recalculan el IVA a partir de los items.
   const subtotal = useMemo(() => items.reduce((s, i) => s + i.price * i.quantity, 0), [items])
+  const ivaCalculado = useMemo(() => Math.round(subtotal * 0.21 * 100) / 100, [subtotal])
+  const totalConIva = useMemo(() => Math.round((subtotal + ivaCalculado) * 100) / 100, [subtotal, ivaCalculado])
 
   async function handleSubmit() {
     if (!selectedClientId || items.length === 0) {
@@ -433,8 +444,8 @@ export default function NuevaCotizacionVentaPage() {
                     <th className="px-2 py-2 text-center w-20">Cant.</th>
                     <th className="px-2 py-2 text-center w-16">Stock</th>
                     <th className="px-2 py-2 text-left">Producto</th>
-                    <th className="px-2 py-2 text-right w-28">Precio Unit.</th>
-                    <th className="px-2 py-2 text-right w-32">Subtotal</th>
+                    <th className="px-2 py-2 text-right w-28">Precio s/IVA</th>
+                    <th className="px-2 py-2 text-right w-32">Subtotal s/IVA</th>
                     <th className="w-10" />
                   </tr>
                 </thead>
@@ -564,9 +575,20 @@ export default function NuevaCotizacionVentaPage() {
                   ))}
                 </tbody>
                 <tfoot>
+                  {/* R.2: discriminación de impuestos idéntica a pedidos/nuevo */}
+                  <tr className="bg-muted/50 border-t">
+                    <td colSpan={4} className="px-2 py-1.5 text-right text-sm text-muted-foreground">Subtotal (sin IVA)</td>
+                    <td className="px-2 py-1.5 text-right text-sm">{formatCurrency(subtotal)}</td>
+                    <td />
+                  </tr>
+                  <tr className="bg-muted/50">
+                    <td colSpan={4} className="px-2 py-1.5 text-right text-sm text-muted-foreground">IVA 21%</td>
+                    <td className="px-2 py-1.5 text-right text-sm">{formatCurrency(ivaCalculado)}</td>
+                    <td />
+                  </tr>
                   <tr className="bg-muted border-t">
                     <td colSpan={4} className="px-2 py-2 text-right font-semibold">Total</td>
-                    <td className="px-2 py-2 text-right text-xl font-bold">{formatCurrency(subtotal)}</td>
+                    <td className="px-2 py-2 text-right text-xl font-bold">{formatCurrency(totalConIva)}</td>
                     <td />
                   </tr>
                 </tfoot>
