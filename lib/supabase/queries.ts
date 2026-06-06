@@ -461,6 +461,64 @@ export async function removeOrderItem(orderId: string, itemId: string): Promise<
   }
 }
 
+// R.6: editar cantidad y/o precio de un item de un pedido existente. Recalcula
+// el total del pedido y ajusta el stock reservado por la diferencia de cantidad
+// (solo productos de catálogo). No permite editar items facturados (total o
+// parcial), igual que removeOrderItem.
+export async function updateOrderItem(
+  orderId: string,
+  itemId: string,
+  updates: { quantity?: number; price?: number }
+): Promise<void> {
+  const supabase = createSupabaseClient()
+
+  const { data: item, error: itemErr } = await supabase
+    .from("order_items")
+    .select("quantity, unit_price, product_id, tipo_linea, facturado, cantidad_facturada")
+    .eq("id", itemId)
+    .eq("order_id", orderId)
+    .single()
+  if (itemErr || !item) throw itemErr || new Error("Item no encontrado")
+  if (item.facturado || Number(item.cantidad_facturada || 0) > 0) {
+    throw new Error("No se puede editar un item que ya fue facturado (total o parcial)")
+  }
+
+  const newQty = updates.quantity != null ? updates.quantity : Number(item.quantity)
+  const newPrice = updates.price != null ? updates.price : Number(item.unit_price)
+  if (newQty <= 0) throw new Error("La cantidad debe ser mayor a 0")
+
+  // Ajustar stock por la diferencia de cantidad (solo catálogo).
+  if (item.tipo_linea === "producto" && item.product_id && newQty !== Number(item.quantity)) {
+    const delta = newQty - Number(item.quantity) // positivo = reservar más
+    const { data: product } = await supabase
+      .from("products")
+      .select("stock")
+      .eq("id", item.product_id)
+      .single()
+    if (product) {
+      const newStock = Math.max(0, (product.stock ?? 0) - delta)
+      await supabase.from("products").update({ stock: newStock }).eq("id", item.product_id)
+    }
+  }
+
+  const { error: updErr } = await supabase
+    .from("order_items")
+    .update({ quantity: newQty, unit_price: newPrice })
+    .eq("id", itemId)
+  if (updErr) throw updErr
+
+  // Recalcular total del pedido desde todos sus items.
+  const { data: allItems } = await supabase
+    .from("order_items")
+    .select("quantity, unit_price")
+    .eq("order_id", orderId)
+  const total = (allItems || []).reduce((s, i) => s + Number(i.quantity) * Number(i.unit_price), 0)
+  await supabase
+    .from("orders")
+    .update({ total, updated_at: new Date().toISOString() })
+    .eq("id", orderId)
+}
+
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function updateOrderStatus(

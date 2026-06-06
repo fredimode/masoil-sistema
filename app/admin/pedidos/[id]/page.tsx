@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { StatusTimeline } from "@/components/vendedor/status-timeline"
 import { CountdownWidget } from "@/components/vendedor/countdown-widget"
 import {
-  fetchOrderById, fetchClientById, updateOrderStatus, addItemsToOrder, removeOrderItem, fetchProducts,
+  fetchOrderById, fetchClientById, updateOrderStatus, addItemsToOrder, removeOrderItem, updateOrderItem, fetchProducts,
   fetchOrdenCompraArchivos, createOrdenCompraArchivo, deleteOrdenCompraArchivo,
   fetchClients, fetchVendedores, esVendedorComercial, updateOrder,
   type OrdenCompraArchivo,
@@ -23,7 +23,7 @@ import { formatCurrencyExact, formatDate, formatDateTime } from "@/lib/utils"
 import type { Order, Client, OrderStatus, Product, OrderProduct } from "@/lib/types"
 import { normalizeSearch } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ArrowLeft, Printer, MessageCircle, Phone, XCircle, FileText, Trash2 } from "lucide-react"
+import { ArrowLeft, Printer, MessageCircle, Phone, XCircle, FileText, Trash2, Pencil } from "lucide-react"
 import { CaiBanner, useCaiCanEmit } from "@/components/admin/cai-banner"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -82,6 +82,11 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [agregando, setAgregando] = useState(false)
   // Eliminar item del pedido (N.8). Guarda el id de la fila order_items en curso.
   const [quitandoItemId, setQuitandoItemId] = useState<string | null>(null)
+  // R.6: edición inline de cantidad/precio de un item del pedido.
+  const [editingItemId, setEditingItemId] = useState<string | null>(null)
+  const [editItemQty, setEditItemQty] = useState(0)
+  const [editItemPrice, setEditItemPrice] = useState(0)
+  const [savingItem, setSavingItem] = useState(false)
 
   // Editar pedido (item Excel #92, D.7)
   const [editOpen, setEditOpen] = useState(false)
@@ -865,6 +870,39 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     }
   }
 
+  // R.6: iniciar/guardar edición inline de cantidad y precio de un item.
+  function startEditItem(item: OrderProduct) {
+    if (!item.id) return
+    setEditingItemId(item.id)
+    setEditItemQty(item.quantity)
+    setEditItemPrice(item.price)
+  }
+
+  async function handleSaveItemEdit(item: OrderProduct) {
+    if (!order || !item.id) return
+    if (editItemQty <= 0) {
+      alert("La cantidad debe ser mayor a 0")
+      return
+    }
+    setSavingItem(true)
+    try {
+      await updateOrderItem(order.id, item.id, { quantity: editItemQty, price: editItemPrice })
+      setOrder((prev) => {
+        if (!prev) return prev
+        const products = prev.products.map((p) =>
+          p.id === item.id ? { ...p, quantity: editItemQty, price: editItemPrice } : p
+        )
+        const total = products.reduce((s, p) => s + p.price * p.quantity, 0)
+        return { ...prev, products, total }
+      })
+      setEditingItemId(null)
+    } catch (e: any) {
+      alert("Error al editar item: " + (e?.message || ""))
+    } finally {
+      setSavingItem(false)
+    }
+  }
+
   function openRemitoDialog() {
     const rs = (o.razonSocial || "").toLowerCase()
     const defaultEmpresa: "Aquiles" | "Conancap" = rs.includes("conancap") ? "Conancap" : "Aquiles"
@@ -1163,21 +1201,68 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                         </p>
                       )}
                     </div>
-                    <div className="flex items-center gap-4">
-                      <span className="text-sm text-muted-foreground">Cant: {product.quantity}</span>
-                      <span className="font-semibold">{formatCurrencyExact(product.price * product.quantity)}</span>
-                      {/* N.8: eliminar item (solo BORRADOR/INGRESADO y no facturado) */}
-                      {(["BORRADOR", "INGRESADO"] as string[]).includes(currentStatus) && cantFact === 0 && !product.facturado && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
-                          disabled={quitandoItemId === product.id}
-                          onClick={() => handleQuitarItem(product)}
-                          title="Eliminar item del pedido"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                    <div className="flex items-center gap-3">
+                      {/* R.6: edición inline de cantidad y precio. Solo
+                          BORRADOR/INGRESADO y items no facturados (matriz D.7). */}
+                      {editingItemId === product.id ? (
+                        <>
+                          <div className="flex items-center gap-1">
+                            <label className="text-[10px] uppercase text-muted-foreground">Cant.</label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={editItemQty}
+                              onChange={(e) => setEditItemQty(parseInt(e.target.value) || 0)}
+                              className="w-16 p-1 border rounded text-sm text-center"
+                            />
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <label className="text-[10px] uppercase text-muted-foreground">Precio</label>
+                            <input
+                              type="number"
+                              min={0}
+                              step={0.01}
+                              value={editItemPrice}
+                              onChange={(e) => setEditItemPrice(parseFloat(e.target.value) || 0)}
+                              className="w-24 p-1 border rounded text-sm text-right"
+                            />
+                          </div>
+                          <Button size="sm" onClick={() => handleSaveItemEdit(product)} disabled={savingItem}>
+                            {savingItem ? "..." : "Guardar"}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingItemId(null)} disabled={savingItem}>
+                            Cancelar
+                          </Button>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-sm text-muted-foreground">Cant: {product.quantity}</span>
+                          <span className="font-semibold">{formatCurrencyExact(product.price * product.quantity)}</span>
+                          {(["BORRADOR", "INGRESADO"] as string[]).includes(currentStatus) && cantFact === 0 && !product.facturado && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              onClick={() => startEditItem(product)}
+                              title="Editar cantidad y precio"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {/* N.8: eliminar item (solo BORRADOR/INGRESADO y no facturado) */}
+                          {(["BORRADOR", "INGRESADO"] as string[]).includes(currentStatus) && cantFact === 0 && !product.facturado && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                              disabled={quitandoItemId === product.id}
+                              onClick={() => handleQuitarItem(product)}
+                              title="Eliminar item del pedido"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
