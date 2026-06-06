@@ -15,6 +15,7 @@ import {
   fetchOrderById, fetchClientById, updateOrderStatus, addItemsToOrder, removeOrderItem, updateOrderItem, fetchProducts,
   fetchOrdenCompraArchivos, createOrdenCompraArchivo, deleteOrdenCompraArchivo,
   fetchClients, fetchVendedores, esVendedorComercial, updateOrder,
+  fetchMovableTargetOrders, moveOrderItemToOrder,
   type OrdenCompraArchivo,
 } from "@/lib/supabase/queries"
 import type { Vendedor } from "@/lib/types"
@@ -23,7 +24,7 @@ import { formatCurrencyExact, formatDate, formatDateTime } from "@/lib/utils"
 import type { Order, Client, OrderStatus, Product, OrderProduct } from "@/lib/types"
 import { normalizeSearch } from "@/lib/utils"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ArrowLeft, Printer, MessageCircle, Phone, XCircle, FileText, Trash2, Pencil } from "lucide-react"
+import { ArrowLeft, Printer, MessageCircle, Phone, XCircle, FileText, Trash2, Pencil, ArrowRightLeft } from "lucide-react"
 import { CaiBanner, useCaiCanEmit } from "@/components/admin/cai-banner"
 import Link from "next/link"
 import { notFound } from "next/navigation"
@@ -87,6 +88,11 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [editItemQty, setEditItemQty] = useState(0)
   const [editItemPrice, setEditItemPrice] = useState(0)
   const [savingItem, setSavingItem] = useState(false)
+  // R.9: mover un item pendiente a otro pedido del mismo cliente.
+  const [moverItem, setMoverItem] = useState<OrderProduct | null>(null)
+  const [moverTargets, setMoverTargets] = useState<{ id: string; orderNumber: string; status: string; total: number; createdAt: Date }[]>([])
+  const [moverLoadingTargets, setMoverLoadingTargets] = useState(false)
+  const [moviendo, setMoviendo] = useState(false)
 
   // Editar pedido (item Excel #92, D.7)
   const [editOpen, setEditOpen] = useState(false)
@@ -496,8 +502,9 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     doc.save(`Hoja-Ruta-${o.orderNumber}.pdf`)
   }
 
-  // Items available for invoicing (not yet fully invoiced)
-  const itemsPendientesFactura = o.products.filter((p) => !p.facturado)
+  // Items available for invoicing (not yet fully invoiced). R.9: los items
+  // movidos a otro pedido se facturan en el destino, no acá.
+  const itemsPendientesFactura = o.products.filter((p) => !p.facturado && !p.movido)
 
   function openFacturarDialog() {
     const initial: Record<string, boolean> = {}
@@ -903,6 +910,44 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     }
   }
 
+  // R.9: abrir el diálogo de "Mover a otro pedido" y cargar los pedidos destino.
+  async function openMoverDialog(item: OrderProduct) {
+    if (!order?.clientId) {
+      alert("El pedido no tiene cliente asignado.")
+      return
+    }
+    setMoverItem(item)
+    setMoverTargets([])
+    setMoverLoadingTargets(true)
+    try {
+      const targets = await fetchMovableTargetOrders(order.clientId, order.id)
+      setMoverTargets(targets)
+    } catch (e: any) {
+      alert("Error al buscar pedidos destino: " + (e?.message || ""))
+    } finally {
+      setMoverLoadingTargets(false)
+    }
+  }
+
+  async function handleMoverItem(toOrderId: string) {
+    if (!order || !moverItem?.id) return
+    setMoviendo(true)
+    try {
+      await moveOrderItemToOrder(moverItem.id, order.id, toOrderId)
+      setOrder((prev) => prev ? {
+        ...prev,
+        products: prev.products.map((p) =>
+          p.id === moverItem.id ? { ...p, movido: true, movidoAOrderId: toOrderId } : p
+        ),
+      } : prev)
+      setMoverItem(null)
+    } catch (e: any) {
+      alert("Error al mover el item: " + (e?.message || ""))
+    } finally {
+      setMoviendo(false)
+    }
+  }
+
   function openRemitoDialog() {
     const rs = (o.razonSocial || "").toLowerCase()
     const defaultEmpresa: "Aquiles" | "Conancap" = rs.includes("conancap") ? "Conancap" : "Aquiles"
@@ -1190,8 +1235,11 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                         {parcial && (
                           <Badge variant="outline" className="text-xs bg-amber-100 text-amber-700 border-amber-200">Parcial</Badge>
                         )}
-                        {!product.facturado && cantFact === 0 && (
+                        {!product.facturado && cantFact === 0 && !product.movido && (
                           <Badge variant="outline" className="text-xs bg-gray-100 text-gray-600 border-gray-200">Pendiente</Badge>
+                        )}
+                        {product.movido && (
+                          <Badge variant="outline" className="text-xs bg-purple-100 text-purple-700 border-purple-200">Movido a otro pedido</Badge>
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground font-mono">{product.productCode}</p>
@@ -1236,9 +1284,9 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                         </>
                       ) : (
                         <>
-                          <span className="text-sm text-muted-foreground">Cant: {product.quantity}</span>
-                          <span className="font-semibold">{formatCurrencyExact(product.price * product.quantity)}</span>
-                          {(["BORRADOR", "INGRESADO"] as string[]).includes(currentStatus) && cantFact === 0 && !product.facturado && (
+                          <span className={`text-sm text-muted-foreground ${product.movido ? "line-through" : ""}`}>Cant: {product.quantity}</span>
+                          <span className={`font-semibold ${product.movido ? "line-through text-muted-foreground" : ""}`}>{formatCurrencyExact(product.price * product.quantity)}</span>
+                          {(["BORRADOR", "INGRESADO"] as string[]).includes(currentStatus) && cantFact === 0 && !product.facturado && !product.movido && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1249,8 +1297,20 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                               <Pencil className="h-4 w-4" />
                             </Button>
                           )}
+                          {/* R.9: mover item pendiente a otro pedido del mismo cliente */}
+                          {cantFact === 0 && !product.facturado && !product.movido && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                              onClick={() => openMoverDialog(product)}
+                              title="Mover a otro pedido"
+                            >
+                              <ArrowRightLeft className="h-4 w-4" />
+                            </Button>
+                          )}
                           {/* N.8: eliminar item (solo BORRADOR/INGRESADO y no facturado) */}
-                          {(["BORRADOR", "INGRESADO"] as string[]).includes(currentStatus) && cantFact === 0 && !product.facturado && (
+                          {(["BORRADOR", "INGRESADO"] as string[]).includes(currentStatus) && cantFact === 0 && !product.facturado && !product.movido && (
                             <Button
                               variant="ghost"
                               size="icon"
@@ -1726,6 +1786,40 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
               {facturando ? "Generando factura..." : "Generar Factura"}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* R.9: Mover item a otro pedido Dialog */}
+      <Dialog open={moverItem !== null} onOpenChange={(open) => { if (!open) setMoverItem(null) }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Mover item a otro pedido</DialogTitle>
+            <DialogDescription>
+              {moverItem ? `"${moverItem.productName}" se moverá a otro pedido del mismo cliente (INGRESADO o BORRADOR) para poder facturar todo junto. Quedará marcado como "movido" en este pedido.` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+            {moverLoadingTargets ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">Buscando pedidos del cliente...</p>
+            ) : moverTargets.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">No hay otros pedidos del cliente en estado INGRESADO o BORRADOR.</p>
+            ) : (
+              moverTargets.map((t) => (
+                <div key={t.id} className="flex items-center justify-between border rounded-lg p-3">
+                  <div>
+                    <p className="font-medium">{t.orderNumber}</p>
+                    <p className="text-xs text-muted-foreground">{t.status} · {formatCurrencyExact(t.total)} · {formatDate(t.createdAt)}</p>
+                  </div>
+                  <Button size="sm" disabled={moviendo} onClick={() => handleMoverItem(t.id)}>
+                    {moviendo ? "Moviendo..." : "Mover acá"}
+                  </Button>
+                </div>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMoverItem(null)} disabled={moviendo}>Cerrar</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

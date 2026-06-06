@@ -46,6 +46,8 @@ function mapOrderItem(row: any): OrderProduct {
     cantidadFacturada: row.cantidad_facturada || 0,
     facturaId: row.factura_id || null,
     tipoLinea: (row.tipo_linea as "producto" | "libre" | "descuento") || "producto",
+    movido: row.movido || false,
+    movidoAOrderId: row.movido_a_order_id || null,
   }
 }
 
@@ -517,6 +519,96 @@ export async function updateOrderItem(
     .from("orders")
     .update({ total, updated_at: new Date().toISOString() })
     .eq("id", orderId)
+}
+
+// R.9: pedidos del mismo cliente a los que se puede mover un item (INGRESADO o
+// BORRADOR), excluyendo el pedido de origen.
+export async function fetchMovableTargetOrders(
+  clientId: string,
+  excludeOrderId: string
+): Promise<{ id: string; orderNumber: string; status: string; total: number; createdAt: Date }[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id, order_number_serial, order_number, status, total, created_at")
+    .eq("client_id", clientId)
+    .in("status", ["INGRESADO", "BORRADOR"])
+    .neq("id", excludeOrderId)
+    .order("created_at", { ascending: false })
+  if (error) throw error
+  return (data || []).map((o: any) => ({
+    id: o.id,
+    orderNumber: o.order_number_serial || o.order_number || o.id.slice(0, 8),
+    status: o.status,
+    total: Number(o.total) || 0,
+    createdAt: new Date(o.created_at),
+  }))
+}
+
+// R.9: mover un item pendiente de un pedido a otro del mismo cliente. El item se
+// copia al pedido destino (sumándose a su total) y en el origen queda marcado
+// como movido: NO se devuelve stock ni se recalcula el total del origen (el
+// stock ya estaba reservado y simplemente "viaja" con el item al destino).
+export async function moveOrderItemToOrder(
+  itemId: string,
+  fromOrderId: string,
+  toOrderId: string
+): Promise<void> {
+  const supabase = createSupabaseClient()
+  if (fromOrderId === toOrderId) throw new Error("El pedido destino debe ser distinto al de origen")
+
+  const { data: item, error: itemErr } = await supabase
+    .from("order_items")
+    .select("quantity, unit_price, product_id, tipo_linea, producto_nombre, producto_codigo, facturado, cantidad_facturada, movido")
+    .eq("id", itemId)
+    .eq("order_id", fromOrderId)
+    .single()
+  if (itemErr || !item) throw itemErr || new Error("Item no encontrado")
+  if (item.facturado || Number(item.cantidad_facturada || 0) > 0) {
+    throw new Error("No se puede mover un item ya facturado")
+  }
+  if (item.movido) throw new Error("El item ya fue movido a otro pedido")
+
+  // Validar que ambos pedidos sean del mismo cliente.
+  const { data: orders } = await supabase
+    .from("orders")
+    .select("id, client_id, total")
+    .in("id", [fromOrderId, toOrderId])
+  const fromOrder = (orders || []).find((o: any) => o.id === fromOrderId)
+  const toOrder = (orders || []).find((o: any) => o.id === toOrderId)
+  if (!fromOrder || !toOrder) throw new Error("Pedido no encontrado")
+  if (fromOrder.client_id !== toOrder.client_id) {
+    throw new Error("Solo se puede mover a un pedido del mismo cliente")
+  }
+
+  // Copiar el item al pedido destino (sin tocar stock: ya estaba reservado).
+  const { error: insErr } = await supabase.from("order_items").insert({
+    order_id: toOrderId,
+    product_id: item.product_id,
+    quantity: item.quantity,
+    unit_price: item.unit_price,
+    reservado: false,
+    reservado_at: new Date().toISOString(),
+    tipo_linea: item.tipo_linea || "producto",
+    producto_nombre: item.producto_nombre,
+    producto_codigo: item.producto_codigo,
+  })
+  if (insErr) throw insErr
+
+  // Sumar al total del pedido destino.
+  const nuevoTotalDestino = Number(toOrder.total || 0) + Number(item.quantity) * Number(item.unit_price)
+  await supabase
+    .from("orders")
+    .update({ total: nuevoTotalDestino, updated_at: new Date().toISOString() })
+    .eq("id", toOrderId)
+
+  // Marcar el item de origen como movido (no se devuelve stock ni se recalcula
+  // el total del origen, según R.9).
+  const { error: updErr } = await supabase
+    .from("order_items")
+    .update({ movido: true, movido_a_order_id: toOrderId })
+    .eq("id", itemId)
+  if (updErr) throw updErr
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

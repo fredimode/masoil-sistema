@@ -54,6 +54,10 @@ export interface OrderProduct {
   // libres ad-hoc para productos no catalogados ("libre") y descuentos
   // generales con precio negativo ("descuento"). Default backend: "producto".
   tipoLinea?: "producto" | "libre" | "descuento"
+  // R.9: item movido a otro pedido del mismo cliente (para facturar todo junto).
+  // Queda visible en el origen con badge pero no se factura ni afecta stock/total.
+  movido?: boolean
+  movidoAOrderId?: string | null
 }
 
 export interface StatusChange {
