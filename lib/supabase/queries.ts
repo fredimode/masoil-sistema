@@ -2395,7 +2395,7 @@ export async function createCotizacionVenta(cot: {
     cantidad: number
     precio_unitario: number
     subtotal: number
-    tipo_linea?: "producto" | "descuento"
+    tipo_linea?: "producto" | "descuento" | "libre"
   }[]
 }): Promise<string> {
   const supabase = createSupabaseClient()

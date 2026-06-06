@@ -196,6 +196,22 @@ export default function NuevaCotizacionVentaPage() {
     }])
   }
 
+  // R.3: línea libre = producto no catalogado (igual que pedidos/nuevo, Sprint
+  // C.1). product_id null, nombre/código/precio/cantidad editables, sin stock
+  // ni proveedores. Al persistir se manda product_id null (el id sintético
+  // "libre-…" no es UUID válido).
+  function addLineaLibre() {
+    setItems([...items, {
+      productId: `libre-${Date.now()}`,
+      productCode: "",
+      productName: "",
+      quantity: 1,
+      price: 0,
+      stock: 999999,
+      tipoLinea: "libre",
+    }])
+  }
+
   // R.2: discriminación de IVA igual que pedidos/nuevo. Los precios de línea son
   // SIN IVA; el subtotal es el neto, el IVA 21% se calcula encima y el total es
   // con IVA. El campo `total` que se persiste sigue siendo el neto (sin IVA),
@@ -247,10 +263,11 @@ export default function NuevaCotizacionVentaPage() {
         observaciones: observaciones || null,
         total: subtotal,
         items: items.map((i) => ({
-          // Líneas descuento usan productId sintético "desc-{timestamp}" en el
-          // form para tracking; al persistir lo enviamos como null para no
-          // romper la FK contra products(id).
-          product_id: i.tipoLinea === "descuento" ? null : i.productId,
+          // Líneas descuento/libre usan productId sintético "desc-…"/"libre-…"
+          // en el form para tracking; al persistir lo enviamos como null para no
+          // romper la FK contra products(id). Solo las líneas de catálogo guardan
+          // product_id real.
+          product_id: i.tipoLinea === "producto" || !i.tipoLinea ? i.productId : null,
           producto_nombre: i.productName,
           producto_codigo: i.productCode,
           cantidad: i.quantity,
@@ -381,6 +398,9 @@ export default function NuevaCotizacionVentaPage() {
               >
                 <History className="h-4 w-4 mr-1" /> Historial cliente
               </Button>
+              <Button type="button" variant="outline" size="sm" onClick={addLineaLibre}>
+                + Línea libre
+              </Button>
               <Button type="button" variant="outline" size="sm" onClick={addDescuento}>
                 + Línea de descuento
               </Button>
@@ -453,7 +473,7 @@ export default function NuevaCotizacionVentaPage() {
                   {items.map((item) => (
                     <tr
                       key={item.productId || item.productCode || item.productName}
-                      className={`border-t ${item.tipoLinea === "descuento" ? "bg-amber-50" : ""}`}
+                      className={`border-t ${item.tipoLinea === "descuento" ? "bg-amber-50" : item.tipoLinea === "libre" ? "bg-blue-50/60" : ""}`}
                     >
                       <td className="px-2 py-1.5">
                         <Input
@@ -483,16 +503,36 @@ export default function NuevaCotizacionVentaPage() {
                       </td>
                       <td className="px-2 py-1.5 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-mono text-xs text-muted-foreground">{item.productCode}</span>
-                          {item.tipoLinea === "descuento" ? (
-                            <Input
-                              value={item.productName}
-                              onChange={(e) => setItems(items.map((i) => (i.productId === item.productId ? { ...i, productName: e.target.value } : i)))}
-                              placeholder="Ej: Descuento por pago contado"
-                              className="h-7 text-sm flex-1 min-w-[200px]"
-                            />
+                          {item.tipoLinea === "libre" ? (
+                            <>
+                              {/* R.3: línea libre — código y descripción editables */}
+                              <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-300 text-xs">LIBRE</Badge>
+                              <Input
+                                value={item.productCode}
+                                onChange={(e) => setItems(items.map((i) => (i.productId === item.productId ? { ...i, productCode: e.target.value } : i)))}
+                                placeholder="Código (opcional)"
+                                className="h-7 text-xs font-mono w-32"
+                              />
+                              <Input
+                                value={item.productName}
+                                onChange={(e) => setItems(items.map((i) => (i.productId === item.productId ? { ...i, productName: e.target.value } : i)))}
+                                placeholder="Descripción del producto"
+                                className="h-7 text-sm flex-1 min-w-[200px]"
+                              />
+                            </>
+                          ) : item.tipoLinea === "descuento" ? (
+                            <>
+                              <span className="font-mono text-xs text-muted-foreground">{item.productCode}</span>
+                              <Input
+                                value={item.productName}
+                                onChange={(e) => setItems(items.map((i) => (i.productId === item.productId ? { ...i, productName: e.target.value } : i)))}
+                                placeholder="Ej: Descuento por pago contado"
+                                className="h-7 text-sm flex-1 min-w-[200px]"
+                              />
+                            </>
                           ) : (
                             <>
+                              <span className="font-mono text-xs text-muted-foreground">{item.productCode}</span>
                               {/* N.5: descripción editable por línea (default del catálogo) */}
                               <Input
                                 value={item.productName}
@@ -511,7 +551,7 @@ export default function NuevaCotizacionVentaPage() {
                               </button>
                             </>
                           )}
-                          {item.productId && item.tipoLinea !== "descuento" && (
+                          {item.productId && item.tipoLinea === "producto" && (
                             <TooltipProvider>
                               <Tooltip>
                                 <TooltipTrigger asChild>
