@@ -498,7 +498,10 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     itemsPendientesFactura.forEach((p) => {
       const pendiente = p.quantity - (p.cantidadFacturada || 0)
       initial[p.productId] = true
-      overrides[p.productId] = { nombre: p.productName, precio: p.price }
+      // R.10: el modal trabaja en precios SIN IVA. unit_price (p.price) está
+      // CON IVA, así que mostramos p.price/1.21. handleFacturar ya no vuelve a
+      // dividir (ver más abajo).
+      overrides[p.productId] = { nombre: p.productName, precio: Math.round((p.price / 1.21) * 100) / 100 }
       cantidades[p.productId] = pendiente > 0 ? pendiente : p.quantity
     })
     setFacturarItems(initial)
@@ -555,12 +558,14 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
       const items = selectedProducts.map((p) => {
         const ov = facturarOverrides[p.productId]
         const nombre = ov?.nombre || p.productName
-        const precio = ov?.precio ?? p.price
+        // R.10: el override.precio ya está SIN IVA (ver openFacturarDialog), no
+        // se vuelve a dividir.
+        const precio = ov?.precio ?? Math.round((p.price / 1.21) * 100) / 100
         const cant = facturarCantidades[p.productId] ?? p.quantity
         return {
           descripcion: `${p.productCode} - ${nombre}`,
           cantidad: cant,
-          precioUnitarioSinIva: Math.round((precio / 1.21) * 100) / 100,
+          precioUnitarioSinIva: Math.round(precio * 100) / 100,
           alicuota: 21 as const,
         }
       })
@@ -1507,7 +1512,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                           />
                         </div>
                         <div className="col-span-2">
-                          <label className="text-[10px] uppercase text-muted-foreground block">Precio</label>
+                          <label className="text-[10px] uppercase text-muted-foreground block">Precio s/IVA</label>
                           <input
                             type="number"
                             min={0}
@@ -1524,7 +1529,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                           />
                         </div>
                         <div className="col-span-1 text-right self-end">
-                          <span className="text-[10px] uppercase text-muted-foreground block">Subtotal</span>
+                          <span className="text-[10px] uppercase text-muted-foreground block">Subtotal s/IVA</span>
                           <span className="text-sm font-semibold">{formatCurrencyExact(subtotal)}</span>
                         </div>
                       </div>
@@ -1533,22 +1538,37 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                 )
               })}
             </div>
-            <div className="flex justify-between items-center pt-2 border-t">
-              <span className="font-semibold">Total a facturar</span>
-              <span className="text-lg font-bold">
-                {formatCurrencyExact(
-                  itemsPendientesFactura
-                    .filter((p) => facturarItems[p.productId])
-                    .reduce((sum, p) => {
-                      const ov = facturarOverrides[p.productId]
-                      const precio = ov?.precio ?? p.price
-                      const pendiente = p.quantity - (p.cantidadFacturada || 0)
-                      const c = facturarCantidades[p.productId] ?? (pendiente > 0 ? pendiente : p.quantity)
-                      return sum + precio * c
-                    }, 0)
-                )}
-              </span>
-            </div>
+            {/* R.10: desglose Neto / IVA 21% / Total. Los precios del modal son
+                SIN IVA, así que el subtotal de cada línea es el neto. */}
+            {(() => {
+              const neto = itemsPendientesFactura
+                .filter((p) => facturarItems[p.productId])
+                .reduce((sum, p) => {
+                  const ov = facturarOverrides[p.productId]
+                  const precio = ov?.precio ?? Math.round((p.price / 1.21) * 100) / 100
+                  const pendiente = p.quantity - (p.cantidadFacturada || 0)
+                  const c = facturarCantidades[p.productId] ?? (pendiente > 0 ? pendiente : p.quantity)
+                  return sum + precio * c
+                }, 0)
+              const iva = Math.round(neto * 0.21 * 100) / 100
+              const total = Math.round((neto + iva) * 100) / 100
+              return (
+                <div className="pt-2 border-t space-y-1">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">Neto (sin IVA)</span>
+                    <span>{formatCurrencyExact(neto)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">IVA 21%</span>
+                    <span>{formatCurrencyExact(iva)}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1 border-t">
+                    <span className="font-semibold">Total a facturar</span>
+                    <span className="text-lg font-bold">{formatCurrencyExact(total)}</span>
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Empresa / Modo / Observaciones */}
             <div className="grid grid-cols-2 gap-3 pt-2 border-t">
