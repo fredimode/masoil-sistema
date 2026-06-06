@@ -1936,8 +1936,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                     price: x.price,
                     tipoLinea: x.tipoLinea,
                   })))
-                  alert("Productos agregados. TODO: notificar a Matías")
-                  // TODO: notificación a Matías cuando se agrega productos a pedido existente
+                  // R.7: la notificación a Matías se dispara dentro de addItemsToOrder.
                   setAgregarOpen(false)
                   setProdToAdd([])
                   setProdSearch("")

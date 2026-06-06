@@ -170,6 +170,25 @@ export async function fetchOrdersByVendedor(vendedorId: string): Promise<Order[]
   return (data || []).map(mapOrder)
 }
 
+// R.7: dispara la notificación por email a Matías (vía API server-side, que
+// resuelve el envío según EMAIL_ENABLED). No bloquea ni rompe la operación si
+// falla — se ejecuta desde el browser tras crear/modificar el pedido.
+export async function notificarPedido(
+  orderId: string,
+  tipo: "creado" | "modificado",
+  itemsAgregados?: { nombre: string; cantidad: number }[]
+): Promise<void> {
+  try {
+    await fetch("/api/pedidos/notificar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orderId, tipo, itemsAgregados: itemsAgregados || [] }),
+    })
+  } catch (e) {
+    console.error("notificarPedido:", e)
+  }
+}
+
 export async function createOrder(order: {
   clientId: string
   clientName: string
@@ -360,6 +379,9 @@ export async function createOrder(order: {
     throw histError
   }
 
+  // R.7: notificar a Matías el pedido nuevo (no bloqueante).
+  await notificarPedido(orderData.id, "creado")
+
   return orderData.id
 }
 
@@ -414,6 +436,9 @@ export async function addItemsToOrder(
       await supabase.from("products").update({ stock: newStock }).eq("id", item.productId)
     }
   }
+
+  // R.7: notificar a Matías los productos agregados al pedido (no bloqueante).
+  await notificarPedido(orderId, "modificado", items.map((i) => ({ nombre: i.productName, cantidad: i.quantity })))
 }
 
 // Eliminar un item del pedido. Simetrico a addItemsToOrder: devuelve el stock
