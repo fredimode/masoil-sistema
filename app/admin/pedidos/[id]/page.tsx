@@ -1446,15 +1446,17 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
 
       {/* Facturar Dialog */}
       <Dialog open={facturarOpen} onOpenChange={setFacturarOpen}>
-        <DialogContent className="max-w-3xl">
+        {/* R.12: alto máximo + flex-col para que el cuerpo scrollee y los botones
+            queden siempre fijos al pie, aunque el pedido tenga muchos items. */}
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Facturar Pedido {o.orderNumber}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
+          <div className="space-y-4 pt-2 flex-1 overflow-y-auto pr-1">
             <p className="text-sm text-muted-foreground">
               Seleccioná los items a facturar y editá nombre o precio si es necesario. El código no se puede modificar. Si no facturás todos, el pedido quedará en estado "Facturado Parcial".
             </p>
-            <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+            <div className="space-y-2">
               {itemsPendientesFactura.map((product) => {
                 const override = facturarOverrides[product.productId] || { nombre: product.productName, precio: product.price }
                 const cantPendiente = product.quantity - (product.cantidadFacturada || 0)
@@ -1624,16 +1626,17 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
               />
             </div>
 
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setFacturarOpen(false)}>Cancelar</Button>
-              <Button
-                className="bg-purple-600 hover:bg-purple-700"
-                onClick={handleFacturar}
-                disabled={facturando || !Object.values(facturarItems).some(Boolean)}
-              >
-                {facturando ? "Generando factura..." : "Generar Factura"}
-              </Button>
-            </div>
+          </div>
+          {/* R.12: footer fijo fuera del área scrolleable */}
+          <div className="flex gap-2 justify-end pt-3 border-t shrink-0">
+            <Button variant="outline" onClick={() => setFacturarOpen(false)}>Cancelar</Button>
+            <Button
+              className="bg-purple-600 hover:bg-purple-700"
+              onClick={handleFacturar}
+              disabled={facturando || !Object.values(facturarItems).some(Boolean)}
+            >
+              {facturando ? "Generando factura..." : "Generar Factura"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
