@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Search, Trash2, Truck, History } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { HistorialVentasDialog } from "@/components/historial-ventas-dialog"
@@ -17,6 +18,7 @@ import {
   createCotizacionVenta, getNextCotizacionVentaNumero, esVendedorComercial,
   fetchProveedoresByProducto,
 } from "@/lib/supabase/queries"
+import { createClient } from "@/lib/supabase/client"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import type { Client, Product, Vendedor } from "@/lib/types"
 import { formatCurrency, normalizeSearch } from "@/lib/utils"
@@ -27,7 +29,10 @@ interface CotItem {
   productName: string
   quantity: number
   price: number
-  tipoLinea?: "producto" | "descuento"
+  // R.1: stock del producto al momento de agregarlo (igual que en pedidos/nuevo).
+  // Líneas sin catálogo (descuento/libre) usan 999999 = no aplica.
+  stock: number
+  tipoLinea?: "producto" | "descuento" | "libre"
 }
 
 const PLAZOS = [
@@ -65,6 +70,7 @@ function defaultValidez(): string {
 
 export default function NuevaCotizacionVentaPage() {
   const router = useRouter()
+  const supabase = createClient()
   const { vendedor: currentUser } = useCurrentVendedor()
 
   const [clients, setClients] = useState<Client[]>([])
@@ -87,6 +93,22 @@ export default function NuevaCotizacionVentaPage() {
   const [observaciones, setObservaciones] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [provsByProduct, setProvsByProduct] = useState<Record<string, any[]>>({})
+
+  // R.1: indicador de stock idéntico a pedidos/nuevo. pendingOCProducts marca
+  // los productos con OC en camino (🟡) cuando el stock está bajo.
+  const [pendingOCProducts, setPendingOCProducts] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    supabase
+      .from("compras")
+      .select("articulo")
+      .in("estado", ["Pendiente", "Realizado"])
+      .then(({ data }) => {
+        if (data) {
+          setPendingOCProducts(new Set(data.map((c: any) => (c.articulo || "").toLowerCase())))
+        }
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function loadProveedoresProducto(productId: string) {
     if (provsByProduct[productId]) return
@@ -145,6 +167,7 @@ export default function NuevaCotizacionVentaPage() {
         productName: p.name,
         quantity: 1,
         price: p.price,
+        stock: p.stock,
         tipoLinea: "producto",
       }])
     }
@@ -163,6 +186,7 @@ export default function NuevaCotizacionVentaPage() {
       productName: "Descuento",
       quantity: 1,
       price: 0,
+      stock: 999999,
       tipoLinea: "descuento",
     }])
   }
@@ -362,21 +386,41 @@ export default function NuevaCotizacionVentaPage() {
             />
             {showProductResults && filteredProducts.length > 0 && (
               <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-64 overflow-y-auto">
-                {filteredProducts.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => addProduct(p)}
-                    className="w-full text-left px-4 py-2 hover:bg-gray-50 border-b last:border-b-0"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="font-medium">{p.name}</span>
-                        <span className="text-xs text-muted-foreground ml-2">{p.code}</span>
+                {filteredProducts.map((p) => {
+                  // R.1: indicador de stock idéntico a pedidos/nuevo
+                  const noStock = p.stock <= 0
+                  const hasOCPending = pendingOCProducts.has((p.name || "").toLowerCase()) || pendingOCProducts.has((p.code || "").toLowerCase())
+                  const stockColor = noStock
+                    ? "bg-red-100 text-red-700 border-red-200"
+                    : hasOCPending && p.stock < 10
+                    ? "bg-amber-100 text-amber-700 border-amber-200"
+                    : "bg-green-100 text-green-700 border-green-200"
+                  const stockIcon = noStock ? "🔴" : hasOCPending && p.stock < 10 ? "🟡" : "🟢"
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => addProduct(p)}
+                      className="w-full text-left px-4 py-2 hover:bg-gray-50 border-b last:border-b-0"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="font-medium">{p.name}</span>
+                          <span className="text-xs text-muted-foreground ml-2">{p.code}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs">{stockIcon}</span>
+                          <Badge variant="outline" className={`${stockColor} text-xs`}>
+                            {noStock ? "Sin stock" : `Stock: ${p.stock}`}
+                          </Badge>
+                          <span className="text-sm font-medium">{formatCurrency(p.price)}</span>
+                        </div>
                       </div>
-                      <span className="text-sm font-medium">{formatCurrency(p.price)}</span>
-                    </div>
-                  </button>
-                ))}
+                      {hasOCPending && (
+                        <div className="mt-1 text-xs text-amber-600">Mercadería en camino</div>
+                      )}
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -387,6 +431,7 @@ export default function NuevaCotizacionVentaPage() {
                 <thead className="bg-muted text-xs font-medium">
                   <tr>
                     <th className="px-2 py-2 text-center w-20">Cant.</th>
+                    <th className="px-2 py-2 text-center w-16">Stock</th>
                     <th className="px-2 py-2 text-left">Producto</th>
                     <th className="px-2 py-2 text-right w-28">Precio Unit.</th>
                     <th className="px-2 py-2 text-right w-32">Subtotal</th>
@@ -412,6 +457,18 @@ export default function NuevaCotizacionVentaPage() {
                           }}
                           className="h-8 text-center text-sm"
                         />
+                      </td>
+                      <td className="px-2 py-1.5 text-center">
+                        {item.tipoLinea === "producto" || !item.tipoLinea ? (
+                          <Badge
+                            variant="outline"
+                            className={`text-xs ${item.stock >= item.quantity ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}
+                          >
+                            {item.stock}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
                       </td>
                       <td className="px-2 py-1.5 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -508,7 +565,7 @@ export default function NuevaCotizacionVentaPage() {
                 </tbody>
                 <tfoot>
                   <tr className="bg-muted border-t">
-                    <td colSpan={3} className="px-2 py-2 text-right font-semibold">Total</td>
+                    <td colSpan={4} className="px-2 py-2 text-right font-semibold">Total</td>
                     <td className="px-2 py-2 text-right text-xl font-bold">{formatCurrency(subtotal)}</td>
                     <td />
                   </tr>
