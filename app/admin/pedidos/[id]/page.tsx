@@ -1480,7 +1480,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                             </Badge>
                           )}
                         </div>
-                        <div className="col-span-6">
+                        <div className="col-span-5">
                           <label className="text-[10px] uppercase text-muted-foreground block">Nombre/descripción</label>
                           <input
                             type="text"
@@ -1495,7 +1495,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                             className="w-full p-1 border rounded text-sm"
                           />
                         </div>
-                        <div className="col-span-1">
+                        <div className="col-span-2">
                           <label className="text-[10px] uppercase text-muted-foreground block">Cant.</label>
                           <input
                             type="number"
