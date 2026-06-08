@@ -198,7 +198,7 @@ export default function NuevaFacturaPage() {
       // Get last 5 invoices for this product to this client
       const { data } = await supabase
         .from("order_items")
-        .select("unit_price, created_at, orders!inner(client_id)")
+        .select("unit_price, created_at, orders!order_items_order_id_fkey!inner(client_id)")
         .eq("product_id", productId)
         .eq("orders.client_id", clienteSeleccionado.id)
         .order("created_at", { ascending: false })

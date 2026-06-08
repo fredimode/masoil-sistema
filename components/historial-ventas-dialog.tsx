@@ -61,7 +61,7 @@ export function HistorialVentas({ clientId, productId }: HistorialVentasProps) {
         .select(`
           id, quantity, unit_price, tipo_linea, producto_nombre, producto_codigo,
           products(code, name),
-          orders!inner(client_id, factura_id, facturas(numero, comprobante_nro, fecha, tipo))
+          orders!order_items_order_id_fkey!inner(client_id, factura_id, facturas(numero, comprobante_nro, fecha, tipo))
         `)
         .eq("orders.client_id", clientId)
         .not("orders.factura_id", "is", null)

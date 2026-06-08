@@ -262,7 +262,7 @@ async function testCreateOrder() {
 
   const { data: check } = await supabase
     .from("orders")
-    .select("id, status, order_items(id), order_status_history(id)")
+    .select("id, status, order_items!order_items_order_id_fkey(id), order_status_history(id)")
     .eq("id", orderId)
     .single()
   assert(check?.status === "INGRESADO", "estado orden incorrecto")

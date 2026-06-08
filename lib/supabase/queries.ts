@@ -137,7 +137,7 @@ export async function fetchOrders(): Promise<Order[]> {
   const supabase = createSupabaseClient()
   const { data, error } = await supabase
     .from("orders")
-    .select("*, order_items(*, products(code, name)), order_status_history(*)")
+    .select("*, order_items!order_items_order_id_fkey(*, products(code, name)), order_status_history(*)")
     .order("created_at", { ascending: false })
     .limit(50000)
 
@@ -149,7 +149,7 @@ export async function fetchOrderById(id: string): Promise<Order | null> {
   const supabase = createSupabaseClient()
   const { data, error } = await supabase
     .from("orders")
-    .select("*, order_items(*, products(code, name)), order_status_history(*)")
+    .select("*, order_items!order_items_order_id_fkey(*, products(code, name)), order_status_history(*)")
     .eq("id", id)
     .single()
 
@@ -161,7 +161,7 @@ export async function fetchOrdersByVendedor(vendedorId: string): Promise<Order[]
   const supabase = createSupabaseClient()
   const { data, error } = await supabase
     .from("orders")
-    .select("*, order_items(*, products(code, name)), order_status_history(*)")
+    .select("*, order_items!order_items_order_id_fkey(*, products(code, name)), order_status_history(*)")
     .eq("vendedor_id", vendedorId)
     .order("created_at", { ascending: false })
     .limit(50000)
@@ -1675,7 +1675,7 @@ export async function fetchVentasByProducto(productId: string, limit: number = 2
     .from("order_items")
     .select(`
       id, quantity, unit_price, created_at,
-      orders!inner(id, order_number, order_number_serial, client_id, client_name, factura_id, created_at)
+      orders!order_items_order_id_fkey!inner(id, order_number, order_number_serial, client_id, client_name, factura_id, created_at)
     `)
     .eq("product_id", productId)
     .order("created_at", { ascending: false })
