@@ -363,6 +363,22 @@ export async function createOrder(order: {
     }
   }
 
+  // T.3: marcar el pedido como Incompleto si algún ítem no tenía stock
+  // suficiente. Antes esto solo se hacía en el form de Nuevo Pedido (después de
+  // createOrder), por lo que la conversión Cotización→Pedido se salteaba el
+  // chequeo: el pedido quedaba sin es_incompleto y se podía facturar/repartir
+  // sin aviso. Al hacerlo acá, TODOS los caminos de creación quedan cubiertos.
+  // No bloquea la creación, solo avisa y marca.
+  if (shortages.length > 0) {
+    await supabase
+      .from("orders")
+      .update({
+        es_incompleto: true,
+        observaciones_incompleto: `Stock insuficiente para: ${shortages.map((s) => s.name).join(", ")}`,
+      })
+      .eq("id", orderData.id)
+  }
+
   // Insert initial status history
   const { error: histError } = await supabase.from("order_status_history").insert({
     order_id: orderData.id,
