@@ -542,14 +542,21 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
       alert("El pedido no tiene cliente asignado.")
       return
     }
-    // Validar precios > 0 (sobre los seleccionados con su override aplicado)
-    const itemsPrecioCero = selectedProducts.filter((p) => {
+    // Validar precios (sobre los seleccionados con su override aplicado).
+    // S.1: las líneas de descuento (y las libres que el usuario use como
+    // descuento) llevan precio NEGATIVO legítimo — TusFacturas las acepta. Solo
+    // un precio de 0 o no finito es inválido para esas líneas. Para productos de
+    // catálogo el precio debe ser estrictamente > 0.
+    const itemsPrecioInvalido = selectedProducts.filter((p) => {
       const ov = facturarOverrides[p.productId]
       const precio = ov?.precio ?? p.price
+      if (p.tipoLinea === "descuento" || p.tipoLinea === "libre") {
+        return !Number.isFinite(precio) || precio === 0
+      }
       return !precio || precio <= 0
     })
-    if (itemsPrecioCero.length > 0) {
-      alert(`Hay items con precio en 0 o inválido: ${itemsPrecioCero.map((p) => p.productCode).join(", ")}`)
+    if (itemsPrecioInvalido.length > 0) {
+      alert(`Hay items con precio en 0 o inválido: ${itemsPrecioInvalido.map((p) => p.productCode).join(", ")}`)
       return
     }
 
