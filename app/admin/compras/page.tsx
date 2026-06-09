@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import * as XLSX from "xlsx"
 import { formatCurrencyExact, formatDate, normalizeSearch } from "@/lib/utils"
@@ -101,6 +101,9 @@ export default function ComprasPage() {
   const [viewingOrdenItems, setViewingOrdenItems] = useState<any[]>([])
   const [editingOrden, setEditingOrden] = useState<any | null>(null)
   const [editOrdenForm, setEditOrdenForm] = useState<any>({})
+  // T.2: buscador de proveedor en el modal de edición de OC.
+  const [editProvSearch, setEditProvSearch] = useState("")
+  const [showEditProvDropdown, setShowEditProvDropdown] = useState(false)
   const [deletingOrden, setDeletingOrden] = useState<any | null>(null)
   // G2.3 (Sprint H) — dialog informativo cuando una OC pasa a "Recibido
   // Completo". Lista los pedidos venta vinculados para que el operador
@@ -225,6 +228,19 @@ export default function ComprasPage() {
       console.error("Error eliminando orden:", err)
     }
   }
+
+  // T.2: filtrar la base de proveedores (ya cargada en loadData) para el
+  // autocomplete del modal de edición de OC.
+  const filteredEditProveedores = useMemo(() => {
+    if (!editProvSearch.trim()) return []
+    const q = normalizeSearch(editProvSearch)
+    return proveedores.filter((p) =>
+      normalizeSearch(p.nombre || "").includes(q) ||
+      normalizeSearch(p.razon_social || "").includes(q) ||
+      normalizeSearch(p.cuit || "").includes(q) ||
+      normalizeSearch(p.empresa || "").includes(q)
+    ).slice(0, 15)
+  }, [editProvSearch, proveedores])
 
   async function handleEditOrden() {
     if (!editingOrden) return
@@ -1021,7 +1037,10 @@ export default function ComprasPage() {
                             <button
                               onClick={() => {
                                 setEditingOrden(o)
+                                setEditProvSearch(o.proveedor_nombre || "")
+                                setShowEditProvDropdown(false)
                                 setEditOrdenForm({
+                                  proveedor_id: o.proveedor_id || "",
                                   proveedor_nombre: o.proveedor_nombre || "",
                                   estado: o.estado || "",
                                   nro_oc: o.nro_oc || "",
@@ -1232,9 +1251,49 @@ export default function ComprasPage() {
             <DialogTitle>Editar Orden de Compra</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <div>
+            <div className="relative">
               <label className="text-sm text-gray-600 block mb-1">Proveedor</label>
-              <input type="text" value={editOrdenForm.proveedor_nombre || ""} onChange={(e) => setEditOrdenForm((f: any) => ({ ...f, proveedor_nombre: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+              <input
+                type="text"
+                placeholder="Buscar proveedor por nombre, CUIT o empresa..."
+                value={editProvSearch}
+                onChange={(e) => {
+                  setEditProvSearch(e.target.value)
+                  setShowEditProvDropdown(true)
+                  // Mantener el nombre escrito libre por si no selecciona de la lista.
+                  setEditOrdenForm((f: any) => ({ ...f, proveedor_nombre: e.target.value, proveedor_id: "" }))
+                }}
+                onFocus={() => editProvSearch.trim() && setShowEditProvDropdown(true)}
+                autoComplete="off"
+                className="w-full p-2 border rounded-lg text-sm"
+              />
+              {showEditProvDropdown && filteredEditProveedores.length > 0 && (
+                <div className="absolute z-50 top-full left-0 right-0 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto mt-1">
+                  {filteredEditProveedores.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="w-full text-left px-3 py-2 hover:bg-gray-100 text-sm border-b last:border-b-0"
+                      onClick={() => {
+                        const nombre = p.nombre || p.razon_social || ""
+                        setEditOrdenForm((f: any) => ({
+                          ...f,
+                          proveedor_id: p.id || "",
+                          proveedor_nombre: nombre,
+                          razon_social: p.razon_social || f.razon_social,
+                          email_comercial: p.email_comercial || f.email_comercial,
+                        }))
+                        setEditProvSearch(nombre)
+                        setShowEditProvDropdown(false)
+                      }}
+                    >
+                      <span className="font-medium">{p.nombre || p.razon_social}</span>
+                      {p.cuit && <span className="text-gray-500 ml-2">CUIT: {p.cuit}</span>}
+                      {p.empresa && <span className="text-gray-400 ml-2">({p.empresa})</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div>
               <label className="text-sm text-gray-600 block mb-1">Importe Total</label>
