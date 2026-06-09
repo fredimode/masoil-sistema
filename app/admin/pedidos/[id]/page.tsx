@@ -1904,8 +1904,12 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                       }}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 border-b"
                     >
-                      <div className="flex justify-between">
-                        <span>{p.name} <span className="text-xs text-gray-500">{p.code}</span></span>
+                      <div className="flex justify-between items-center gap-2">
+                        <span className="flex-1">{p.name} <span className="text-xs text-gray-500">{p.code}</span></span>
+                        {/* S.4: mostrar stock existente al agregar producto (igual que en pedido nuevo / cotización) */}
+                        <Badge variant="outline" className={`text-[10px] ${p.stock <= 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-green-50 text-green-700 border-green-200"}`}>
+                          {p.stock <= 0 ? "Sin stock" : `Stock: ${p.stock}`}
+                        </Badge>
                         <span className="font-medium">{formatCurrencyExact(p.price)}</span>
                       </div>
                     </button>
