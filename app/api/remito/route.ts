@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createServiceClient } from "@/lib/supabase/server"
+import { estamparRemitoEnFacturaPDF } from "@/lib/supabase-storage"
 import { generarRemitoPDF } from "@/lib/pdf/remito-masoil"
 import { getCaiConfig, shouldBlockOnExpired } from "@/lib/cai-status"
 import type { Empresa } from "@/lib/tusfacturas"
@@ -54,6 +55,18 @@ export async function POST(request: NextRequest) {
 
   if (orderError || !order) {
     return fail("cliente", `Pedido ${orderId} no encontrado`, undefined, 404)
+  }
+
+  // S.6: factura asociada al pedido (para cruzar números en ambos comprobantes).
+  type FacturaRef = { id: number | string; numero: string; tipo: string; empresa: string; fecha: string }
+  let factura: FacturaRef | null = null
+  if (order.factura_id) {
+    const { data: f } = await supabase
+      .from("facturas")
+      .select("id, numero, tipo, empresa, fecha")
+      .eq("id", order.factura_id)
+      .maybeSingle()
+    if (f) factura = f as unknown as FacturaRef
   }
 
   let cliente: { razonSocial: string; cuit: string; domicilio: string } = {
@@ -176,6 +189,7 @@ export async function POST(request: NextRequest) {
       sector: order.sector || null,
       recibe: order.recibe || null,
       caiVencido,
+      facturaNumero: factura?.numero || null,
     })
     console.log("Step 4: PDF generado, bytes:", pdfBytes.length)
   } catch (e) {
@@ -237,6 +251,35 @@ export async function POST(request: NextRequest) {
       pdfUrl,
       numero: numeroFormateado,
     })
+  }
+
+  // ───────── PASO 7: sellar la factura con el N° de remito (S.6) ─────────
+  // La factura ya estaba emitida (PDF sin remito). Le estampamos el N° de
+  // remito recién creado. Solo si es el PRIMER remito de la factura, para no
+  // sobre-escribir el sello con números distintos. No es crítico: si falla, el
+  // remito ya quedó emitido igual.
+  if (factura) {
+    try {
+      const { count } = await supabase
+        .from("remitos")
+        .select("id", { count: "exact", head: true })
+        .eq("factura_id", factura.id)
+      if ((count ?? 1) <= 1) {
+        const nuevaUrl = await estamparRemitoEnFacturaPDF({
+          empresa: factura.empresa,
+          tipoFactura: factura.tipo,
+          numeroFactura: factura.numero,
+          fechaFactura: factura.fecha,
+          remitoNumero: numeroFormateado,
+        })
+        if (nuevaUrl) {
+          await supabase.from("facturas").update({ pdf_url: nuevaUrl }).eq("id", factura.id)
+          console.log("Step 7: Factura sellada con N° de remito →", numeroFormateado)
+        }
+      }
+    } catch (e) {
+      console.error("Step 7: error sellando factura con remito (no crítico):", e)
+    }
   }
 
   return NextResponse.json({

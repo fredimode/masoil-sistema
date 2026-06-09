@@ -52,6 +52,9 @@ export interface RemitoPDFData {
   sector?: string | null
   recibe?: string | null
   caiVencido?: boolean
+  // S.6: número de la factura asociada (si el remito proviene de un pedido ya
+  // facturado). Se imprime en el remito para cruzar ambos comprobantes.
+  facturaNumero?: string | null
 }
 
 const PAGE_W = 595.28
@@ -180,6 +183,13 @@ export async function generarRemitoPDF(data: RemitoPDFData): Promise<Uint8Array>
     x: COL3_X + 8, y: HEADER_TOP - 66,
     size: 9, font: fontReg, color: black,
   })
+  // S.6: factura asociada (cruce de comprobantes).
+  if (data.facturaNumero) {
+    page.drawText(`Factura Nº: ${data.facturaNumero}`, {
+      x: COL3_X + 8, y: HEADER_TOP - 80,
+      size: 8, font: fontBold, color: black,
+    })
+  }
 
   let y = HEADER_BOTTOM - 16
 
