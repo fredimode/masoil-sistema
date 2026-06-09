@@ -38,12 +38,14 @@ interface BodyInput {
   observaciones?: string
   tipoComprobante?: TipoFactura
   comprobanteAsociado?: ComprobanteAsociado
-  // IDs de productos que se están facturando en esta emisión (para parciales).
+  // IDs de fila order_items que se están facturando en esta emisión (parciales).
   // Si vienen, el endpoint marca esos order_items como facturados y los asocia
   // a esta factura. Sin esto, una segunda parcial sobre el mismo pedido
   // mostraría los mismos items en el detalle.
-  productIdsFacturados?: string[]
-  // Cantidad facturada por producto, paralela a productIdsFacturados (mismo orden).
+  // S.2: se usa el id de la fila (no product_id, que es null en líneas
+  // libre/descuento y marcaba todas las líneas sin catálogo a la vez).
+  orderItemIds?: string[]
+  // Cantidad facturada por item, paralela a orderItemIds (mismo orden).
   // Si no se pasa, se asume "cantidad pedida" (caso facturación total).
   cantidadesFacturadas?: number[]
 }
@@ -78,7 +80,7 @@ export async function POST(request: NextRequest) {
     return fail("parse", "JSON inválido", undefined, undefined, 400)
   }
 
-  const { empresa, modo, orderId, clientId, items, observaciones, tipoComprobante, comprobanteAsociado, productIdsFacturados, cantidadesFacturadas } = body
+  const { empresa, modo, orderId, clientId, items, observaciones, tipoComprobante, comprobanteAsociado, orderItemIds, cantidadesFacturadas } = body
 
   console.log('Body recibido:', {
     empresa,
@@ -400,11 +402,12 @@ export async function POST(request: NextRequest) {
 
     // Marcar items como facturados acá (no en el frontend) garantiza que el
     // tracking de parciales no se pierda si el cliente cierra el browser entre
-    // AFIP-OK y el UPDATE. Si productIdsFacturados no vino, no hacemos nada —
+    // AFIP-OK y el UPDATE. Si orderItemIds no vino, no hacemos nada —
     // facturas legacy o emisiones manuales no requieren tracking per-item.
-    if (productIdsFacturados && productIdsFacturados.length > 0) {
-      for (let i = 0; i < productIdsFacturados.length; i++) {
-        const productId = productIdsFacturados[i]
+    if (orderItemIds && orderItemIds.length > 0) {
+      for (let i = 0; i < orderItemIds.length; i++) {
+        const orderItemId = orderItemIds[i]
+        if (!orderItemId) continue
         const cantidad = cantidadesFacturadas?.[i]
         const updateFields: Record<string, unknown> = {
           facturado: true,
@@ -413,16 +416,19 @@ export async function POST(request: NextRequest) {
         if (typeof cantidad === "number" && cantidad > 0) {
           updateFields.cantidad_facturada = cantidad
         }
+        // S.2: marcamos por id de fila (único). Antes era por product_id, que
+        // es null en líneas libre/descuento → el .eq fallaba silenciosamente y
+        // esas líneas reaparecían como pendientes en la próxima parcial.
         const { error: oiErr } = await supabase
           .from("order_items")
           .update(updateFields)
           .eq("order_id", orderId)
-          .eq("product_id", productId)
+          .eq("id", orderItemId)
         if (oiErr) {
           console.error("Step 11c: ERROR marcando order_item facturado:", {
             facturaId: factura.id,
             orderId,
-            productId,
+            orderItemId,
             error: oiErr,
           })
         }

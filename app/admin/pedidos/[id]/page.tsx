@@ -511,13 +511,18 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     const overrides: Record<string, { nombre: string; precio: number }> = {}
     const cantidades: Record<string, number> = {}
     itemsPendientesFactura.forEach((p) => {
+      // S.2: keyear por el id de la fila order_items (único). product_id es null
+      // en líneas libre/descuento, así que keyear por productId hacía colisionar
+      // todas esas líneas en una sola entrada (se pisaban nombre/precio/cantidad
+      // y al tildar una se tildaban todas).
+      const k = p.id ?? p.productId
       const pendiente = p.quantity - (p.cantidadFacturada || 0)
-      initial[p.productId] = true
+      initial[k] = true
       // R.10: el modal trabaja en precios SIN IVA. unit_price (p.price) está
       // CON IVA, así que mostramos p.price/1.21. handleFacturar ya no vuelve a
       // dividir (ver más abajo).
-      overrides[p.productId] = { nombre: p.productName, precio: Math.round((p.price / 1.21) * 100) / 100 }
-      cantidades[p.productId] = pendiente > 0 ? pendiente : p.quantity
+      overrides[k] = { nombre: p.productName, precio: Math.round((p.price / 1.21) * 100) / 100 }
+      cantidades[k] = pendiente > 0 ? pendiente : p.quantity
     })
     setFacturarItems(initial)
     setFacturarOverrides(overrides)
@@ -533,7 +538,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   }
 
   async function handleFacturar() {
-    const selectedProducts = itemsPendientesFactura.filter((p) => facturarItems[p.productId])
+    const selectedProducts = itemsPendientesFactura.filter((p) => facturarItems[p.id ?? p.productId])
     if (selectedProducts.length === 0) {
       alert("Seleccioná al menos un item para facturar")
       return
@@ -548,7 +553,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     // un precio de 0 o no finito es inválido para esas líneas. Para productos de
     // catálogo el precio debe ser estrictamente > 0.
     const itemsPrecioInvalido = selectedProducts.filter((p) => {
-      const ov = facturarOverrides[p.productId]
+      const ov = facturarOverrides[p.id ?? p.productId]
       const precio = ov?.precio ?? p.price
       if (p.tipoLinea === "descuento" || p.tipoLinea === "libre") {
         return !Number.isFinite(precio) || precio === 0
@@ -579,12 +584,13 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
       // TODO: alícuota hardcoded a 21% — agregar campo products.alicuota_iva
       // TODO: precio_sin_iva calculado como precio/1.21 — asume todo 21%
       const items = selectedProducts.map((p) => {
-        const ov = facturarOverrides[p.productId]
+        const k = p.id ?? p.productId
+        const ov = facturarOverrides[k]
         const nombre = ov?.nombre || p.productName
         // R.10: el override.precio ya está SIN IVA (ver openFacturarDialog), no
         // se vuelve a dividir.
         const precio = ov?.precio ?? Math.round((p.price / 1.21) * 100) / 100
-        const cant = facturarCantidades[p.productId] ?? p.quantity
+        const cant = facturarCantidades[k] ?? p.quantity
         return {
           descripcion: `${p.productCode} - ${nombre}`,
           cantidad: cant,
@@ -619,8 +625,10 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           // AFIP-OK, lo cual era frágil: si el browser se cerraba entre el
           // response y el UPDATE, los items quedaban sin tracking y la próxima
           // parcial los repetía.
-          productIdsFacturados: selectedProducts.map((p) => p.productId),
-          cantidadesFacturadas: selectedProducts.map((p) => facturarCantidades[p.productId] ?? p.quantity),
+          // S.2: enviamos los ids de fila order_items (no product_id, que es
+          // null en líneas libre/descuento y marcaba todas a la vez).
+          orderItemIds: selectedProducts.map((p) => p.id),
+          cantidadesFacturadas: selectedProducts.map((p) => facturarCantidades[p.id ?? p.productId] ?? p.quantity),
         }),
       })
       const data = await res.json()
@@ -637,12 +645,12 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
 
         // Reflejar en estado local (sino el botón "Facturar" sigue visible
         // hasta el próximo refresh de la página).
-        const facturadosIds = new Set(selectedProducts.map((sp) => sp.productId))
+        const facturadosIds = new Set(selectedProducts.map((sp) => sp.id ?? sp.productId))
         setOrder((prev) => prev ? {
           ...prev,
           products: prev.products.map((p) => {
-            if (!facturadosIds.has(p.productId)) return p
-            const cantFacturada = (p.cantidadFacturada || 0) + (facturarCantidades[p.productId] ?? p.quantity)
+            if (!facturadosIds.has(p.id ?? p.productId)) return p
+            const cantFacturada = (p.cantidadFacturada || 0) + (facturarCantidades[p.id ?? p.productId] ?? p.quantity)
             return { ...p, facturado: cantFacturada >= p.quantity, cantidadFacturada: cantFacturada, facturaId: data.facturaId }
           }),
         } : prev)
@@ -1615,24 +1623,38 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             </p>
             <div className="space-y-2">
               {itemsPendientesFactura.map((product) => {
-                const override = facturarOverrides[product.productId] || { nombre: product.productName, precio: product.price }
+                // S.2: key por id de fila order_items (product_id es null en
+                // líneas libre/descuento y las hacía colisionar entre sí).
+                const k = product.id ?? product.productId
+                const override = facturarOverrides[k] || { nombre: product.productName, precio: product.price }
                 const cantPendiente = product.quantity - (product.cantidadFacturada || 0)
-                const cant = facturarCantidades[product.productId] ?? (cantPendiente > 0 ? cantPendiente : product.quantity)
+                const cant = facturarCantidades[k] ?? (cantPendiente > 0 ? cantPendiente : product.quantity)
                 const subtotal = (Number(override.precio) || 0) * cant
-                const isChecked = facturarItems[product.productId] || false
+                const isChecked = facturarItems[k] || false
+                const esLineaSinCatalogo = product.tipoLinea === "descuento" || product.tipoLinea === "libre"
                 return (
-                  <div key={product.productId} className={`p-3 border rounded-lg ${isChecked ? "bg-white" : "bg-red-50/40 border-red-200"}`}>
+                  <div key={k} className={`p-3 border rounded-lg ${isChecked ? "bg-white" : "bg-red-50/40 border-red-200"}`}>
                     <div className="flex items-start gap-3">
                       <Checkbox
                         checked={isChecked}
                         onCheckedChange={(checked) =>
-                          setFacturarItems((prev) => ({ ...prev, [product.productId]: checked === true }))
+                          setFacturarItems((prev) => ({ ...prev, [k]: checked === true }))
                         }
                         className="mt-1"
                       />
                       <div className="flex-1 grid grid-cols-12 gap-2">
                         <div className="col-span-2 text-xs font-mono text-muted-foreground self-center">
                           {product.productCode}
+                          {product.tipoLinea === "libre" && (
+                            <Badge variant="outline" className="ml-1 text-[10px] bg-blue-50 text-blue-700 border-blue-200">
+                              Libre
+                            </Badge>
+                          )}
+                          {product.tipoLinea === "descuento" && (
+                            <Badge variant="outline" className="ml-1 text-[10px] bg-amber-50 text-amber-700 border-amber-200">
+                              Descuento
+                            </Badge>
+                          )}
                           {!isChecked && (
                             <Badge variant="outline" className="ml-1 text-[10px] bg-red-100 text-red-700 border-red-300">
                               Excluido
@@ -1647,7 +1669,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                             onChange={(e) =>
                               setFacturarOverrides((prev) => ({
                                 ...prev,
-                                [product.productId]: { ...override, nombre: e.target.value },
+                                [k]: { ...override, nombre: e.target.value },
                               }))
                             }
                             disabled={!isChecked}
@@ -1664,7 +1686,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                             onChange={(e) => {
                               const max = cantPendiente > 0 ? cantPendiente : product.quantity
                               const v = Math.min(Math.max(1, parseInt(e.target.value) || 1), max)
-                              setFacturarCantidades((prev) => ({ ...prev, [product.productId]: v }))
+                              setFacturarCantidades((prev) => ({ ...prev, [k]: v }))
                             }}
                             disabled={!isChecked}
                             className="w-full p-1 border rounded text-sm text-center"
@@ -1674,13 +1696,13 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                           <label className="text-[10px] uppercase text-muted-foreground block">Precio s/IVA</label>
                           <input
                             type="number"
-                            min={0}
+                            min={esLineaSinCatalogo ? undefined : 0}
                             step={0.01}
                             value={override.precio}
                             onChange={(e) =>
                               setFacturarOverrides((prev) => ({
                                 ...prev,
-                                [product.productId]: { ...override, precio: parseFloat(e.target.value) || 0 },
+                                [k]: { ...override, precio: parseFloat(e.target.value) || 0 },
                               }))
                             }
                             disabled={!isChecked}
@@ -1701,12 +1723,12 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                 SIN IVA, así que el subtotal de cada línea es el neto. */}
             {(() => {
               const neto = itemsPendientesFactura
-                .filter((p) => facturarItems[p.productId])
+                .filter((p) => facturarItems[p.id ?? p.productId])
                 .reduce((sum, p) => {
-                  const ov = facturarOverrides[p.productId]
+                  const ov = facturarOverrides[p.id ?? p.productId]
                   const precio = ov?.precio ?? Math.round((p.price / 1.21) * 100) / 100
                   const pendiente = p.quantity - (p.cantidadFacturada || 0)
-                  const c = facturarCantidades[p.productId] ?? (pendiente > 0 ? pendiente : p.quantity)
+                  const c = facturarCantidades[p.id ?? p.productId] ?? (pendiente > 0 ? pendiente : p.quantity)
                   return sum + precio * c
                 }, 0)
               const iva = Math.round(neto * 0.21 * 100) / 100
