@@ -1,0 +1,12 @@
+-- ============================================================
+-- Migración: T.1 — columna clients.sucursal faltante en prod
+-- Fecha: 2026-06-09
+-- ============================================================
+-- La sección D de la migración 20260324_reestructuracion.sql
+-- (ALTER TABLE clients ADD COLUMN sucursal) nunca llegó a aplicarse en
+-- producción, por lo que al guardar la ficha de Información de Contacto el
+-- update fallaba con "column clients.sucursal does not exist" (42703) y se
+-- mostraba "Error al guardar".
+--
+-- Idempotente: re-ejecutarla es seguro.
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS sucursal TEXT;

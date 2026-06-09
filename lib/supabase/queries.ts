@@ -829,8 +829,27 @@ export async function fetchClientById(id: string): Promise<Client | null> {
 
 export async function updateClient(id: string, updates: Record<string, any>): Promise<void> {
   const supabase = createSupabaseClient()
-  const { error } = await supabase.from("clients").update(updates).eq("id", id)
-  if (error) throw error
+  // T.1: tolerar drift de schema. En producción faltaba la columna
+  // `clients.sucursal` (la migración 20260324 sección D nunca se aplicó), así
+  // que cualquier update que la incluyera fallaba con "Error al guardar" y
+  // bloqueaba la edición de la ficha del cliente. Si el insert/update falla con
+  // 42703 (columna inexistente), removemos esa columna y reintentamos, en vez
+  // de tirar todo el guardado abajo por un campo opcional ausente.
+  let payload: Record<string, any> = { ...updates }
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const { error } = await supabase.from("clients").update(payload).eq("id", id)
+    if (!error) return
+    if (error.code === "42703") {
+      const m = /column "?(?:[\w]+\.)?([\w]+)"? does not exist/i.exec(error.message || "")
+      const col = m?.[1]
+      if (col && col in payload) {
+        console.warn(`updateClient: columna '${col}' inexistente en clients, se omite y se reintenta`, error.message)
+        delete payload[col]
+        continue
+      }
+    }
+    throw error
+  }
 }
 
 export async function fetchClientsByVendedor(vendedorId: string): Promise<Client[]> {
