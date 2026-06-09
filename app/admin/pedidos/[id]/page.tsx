@@ -79,7 +79,7 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   // R.8: prodToAdd soporta líneas de catálogo y de descuento (igual que el
   // form de pedido nuevo). Las de descuento van con product null y precio que
   // se coacciona a negativo.
-  const [prodToAdd, setProdToAdd] = useState<{ product: Product | null; tipoLinea: "producto" | "descuento"; nombre: string; codigo: string; qty: number; price: number }[]>([])
+  const [prodToAdd, setProdToAdd] = useState<{ product: Product | null; tipoLinea: "producto" | "descuento" | "libre"; nombre: string; codigo: string; qty: number; price: number }[]>([])
   const [agregando, setAgregando] = useState(false)
   // Eliminar item del pedido (N.8). Guarda el id de la fila order_items en curso.
   const [quitandoItemId, setQuitandoItemId] = useState<string | null>(null)
@@ -1873,6 +1873,14 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                 type="button"
                 variant="outline"
                 size="sm"
+                onClick={() => setProdToAdd([...prodToAdd, { product: null, tipoLinea: "libre", nombre: "", codigo: "LIBRE", qty: 1, price: 0 }])}
+              >
+                + Línea Libre
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => setProdToAdd([...prodToAdd, { product: null, tipoLinea: "descuento", nombre: "Descuento", codigo: "DESCUENTO", qty: 1, price: 0 }])}
               >
                 + Descuento
@@ -1910,13 +1918,13 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                   <span>Producto</span><span>Cant.</span><span>Precio</span><span></span>
                 </div>
                 {prodToAdd.map((it, i) => (
-                  <div key={it.product?.id ?? `linea-${i}`} className={`grid grid-cols-[1fr,80px,120px,40px] gap-2 p-2 border-t items-center ${it.tipoLinea === "descuento" ? "bg-amber-50" : ""}`}>
-                    {it.tipoLinea === "descuento" ? (
+                  <div key={it.product?.id ?? `linea-${i}`} className={`grid grid-cols-[1fr,80px,120px,40px] gap-2 p-2 border-t items-center ${it.tipoLinea === "descuento" ? "bg-amber-50" : it.tipoLinea === "libre" ? "bg-blue-50" : ""}`}>
+                    {it.tipoLinea !== "producto" ? (
                       <input
                         type="text"
                         value={it.nombre}
                         onChange={(e) => setProdToAdd(prodToAdd.map((x, j) => j === i ? { ...x, nombre: e.target.value } : x))}
-                        placeholder="Ej: Descuento por pago contado"
+                        placeholder={it.tipoLinea === "descuento" ? "Ej: Descuento por pago contado" : "Descripción del ítem (línea libre)"}
                         className="p-1 border rounded text-sm"
                       />
                     ) : (
