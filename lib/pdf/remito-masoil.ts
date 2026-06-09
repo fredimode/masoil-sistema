@@ -48,8 +48,9 @@ export interface RemitoPDFData {
     cantidad: number
   }>
   observaciones?: string
-  // R.13: sector y receptor cargados en el pedido se imprimen en el remito.
+  // R.13: Sector/Solicita/Recibe cargados en el pedido se imprimen en el remito.
   sector?: string | null
+  solicita?: string | null
   recibe?: string | null
   caiVencido?: boolean
   // S.6: número de la factura asociada (si el remito proviene de un pedido ya
@@ -275,6 +276,11 @@ export async function generarRemitoPDF(data: RemitoPDFData): Promise<Uint8Array>
   if (data.sector) {
     page.drawText("Sector:", { x: LEFT, y, size: 8, font: fontBold, color: black })
     page.drawText(String(data.sector).slice(0, 80), { x: LEFT + 40, y, size: 8, font: fontReg, color: black })
+    y -= 11
+  }
+  if (data.solicita) {
+    page.drawText("Solicita:", { x: LEFT, y, size: 8, font: fontBold, color: black })
+    page.drawText(String(data.solicita).slice(0, 80), { x: LEFT + 40, y, size: 8, font: fontReg, color: black })
     y -= 11
   }
   if (data.recibe) {

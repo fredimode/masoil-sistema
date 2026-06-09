@@ -48,8 +48,8 @@ export async function POST(request: NextRequest) {
   // ───────── PASO 2: pedido + cliente + items ─────────
   const { data: order, error: orderError } = await supabase
     .from("orders")
-    // R.13: sector y receptor del pedido para imprimirlos en el remito.
-    .select("id, client_id, client_name, status, factura_id, sector, recibe")
+    // R.13: Sector/Solicita/Recibe del pedido para imprimirlos en el remito.
+    .select("id, client_id, client_name, status, factura_id, sector, solicita, recibe")
     .eq("id", orderId)
     .single()
 
@@ -187,6 +187,7 @@ export async function POST(request: NextRequest) {
       items,
       observaciones,
       sector: order.sector || null,
+      solicita: order.solicita || null,
       recibe: order.recibe || null,
       caiVencido,
       facturaNumero: factura?.numero || null,

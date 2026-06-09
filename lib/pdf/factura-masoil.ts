@@ -32,6 +32,11 @@ export interface FacturaPDFData {
   vencimientoCae?: string | null    // formato AAAA-MM-DD
   observaciones?: string
   pedidoNumero?: string | null      // N° de pedido origen si la FC proviene de uno (item Excel #42)
+  // R.13 v2: datos de entrega cargados en el pedido. Se imprimen como sección
+  // "Datos adicionales" debajo del detalle (AFIP no tiene campos nativos).
+  sector?: string | null
+  solicita?: string | null
+  recibe?: string | null
   comprobanteAsociado?: {
     tipo: string                    // ej "FACTURA B"
     puntoVenta: number | string
@@ -429,6 +434,24 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<Uint8Arra
     const leyenda = `Asociado a ${ca.tipo} Nº ${pvFmt}-${nroFmt}`
     page.drawText(leyenda, { x: LEFT, y, size: 9, font: fontBold, color: black })
     y -= 14
+  }
+
+  // ════════════════ DATOS ADICIONALES (R.13 v2) ════════════════
+  // Sector / Solicita / Recibe cargados en el pedido. AFIP no tiene campos
+  // nativos, así que se imprimen como datos del comprobante debajo del detalle.
+  const datosAdicionales: Array<[string, string]> = []
+  if (data.sector) datosAdicionales.push(["Sector:", String(data.sector)])
+  if (data.solicita) datosAdicionales.push(["Solicita:", String(data.solicita)])
+  if (data.recibe) datosAdicionales.push(["Recibe:", String(data.recibe)])
+  if (datosAdicionales.length > 0) {
+    page.drawText("Datos adicionales:", { x: LEFT, y, size: 8, font: fontBold, color: black })
+    y -= 11
+    for (const [label, value] of datosAdicionales) {
+      page.drawText(label, { x: LEFT, y, size: 8, font: fontBold, color: black })
+      page.drawText(value.slice(0, 90), { x: LEFT + 50, y, size: 8, font: fontReg, color: black })
+      y -= 11
+    }
+    y -= 4
   }
 
   // ════════════════ OBSERVACIONES ════════════════

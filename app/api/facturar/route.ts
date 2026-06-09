@@ -154,13 +154,14 @@ export async function POST(request: NextRequest) {
   let cotizacionNumero: string | null = null
   let pedidoNumero: string | null = null
   let pedidoVendedorId: string | null = null
-  // R.13: sector y receptor cargados en el pedido deben impactar en la FC.
+  // R.13: Sector/Solicita/Recibe cargados en el pedido deben impactar en la FC.
   let pedidoSector: string | null = null
+  let pedidoSolicita: string | null = null
   let pedidoRecibe: string | null = null
   if (orderId) {
     const { data: order, error: orderError } = await supabase
       .from("orders")
-      .select("id, order_number_serial, order_number, vendedor_id, sector, recibe")
+      .select("id, order_number_serial, order_number, vendedor_id, sector, solicita, recibe")
       .eq("id", orderId)
       .single()
 
@@ -170,6 +171,7 @@ export async function POST(request: NextRequest) {
     pedidoNumero = order.order_number_serial || order.order_number || null
     pedidoVendedorId = order.vendedor_id || null
     pedidoSector = order.sector || null
+    pedidoSolicita = order.solicita || null
     pedidoRecibe = order.recibe || null
 
     // Lookup automático: si hay cotización con order_id = orderId, asociarla.
@@ -211,14 +213,17 @@ export async function POST(request: NextRequest) {
   }
   console.log(`Step 4: tipoFactura → ${tipoFactura}`)
 
-  // R.13: combinar observaciones del modal con Sector/Receptor del pedido para
-  // que impacten en la FC (AFIP no tiene campos nativos de sector/receptor, van
-  // como leyenda/observaciones del comprobante y del PDF).
+  // R.13 v2: Sector/Solicita/Recibe del pedido impactan en la FC. En el PDF van
+  // como campos discretos (sección "Datos adicionales"); en el comprobante AFIP
+  // van además dentro de observaciones (AFIP no tiene campos nativos para esto),
+  // así quedan registrados en TusFacturas.
   const datosEntrega = [
     pedidoSector ? `Sector: ${pedidoSector}` : null,
+    pedidoSolicita ? `Solicita: ${pedidoSolicita}` : null,
     pedidoRecibe ? `Recibe: ${pedidoRecibe}` : null,
   ].filter(Boolean).join(" | ")
-  const observacionesFinal = [observaciones, datosEntrega || null].filter(Boolean).join(" | ") || undefined
+  // observacionesComprobante: lo que se manda a AFIP/TusFacturas (todo junto).
+  const observacionesComprobante = [observaciones, datosEntrega || null].filter(Boolean).join(" | ") || undefined
 
   // ───────────────── PASO 5: bases + totales ─────────────────
   const { bases, totalNeto, totalIVA, total } = calcularBasesYTotales(items)
@@ -240,7 +245,7 @@ export async function POST(request: NextRequest) {
       },
       items,
       total,
-      observaciones: observacionesFinal,
+      observaciones: observacionesComprobante,
       comprobanteAsociado,
     })
   } catch (e) {
@@ -294,10 +299,11 @@ export async function POST(request: NextRequest) {
   console.log('Step 9: Iniciando generación de PDF...')
   let pdfBytes: Uint8Array
   try {
-    // Si la factura proviene de una cotización, agregamos esa info al final
-    // de observaciones para que aparezca en el PDF (item Excel #89).
+    // En el PDF, Observaciones muestra solo el texto libre + la cotización;
+    // Sector/Solicita/Recibe van como campos discretos en "Datos adicionales"
+    // (no se duplican en esta línea).
     const observacionesPDF = [
-      observacionesFinal,
+      observaciones,
       cotizacionNumero ? `Cotización N° ${cotizacionNumero}` : null,
     ].filter(Boolean).join(" | ") || undefined
 
@@ -325,6 +331,10 @@ export async function POST(request: NextRequest) {
       vencimientoCae,
       observaciones: observacionesPDF,
       pedidoNumero,
+      // R.13 v2: campos discretos del pedido para la sección "Datos adicionales".
+      sector: pedidoSector,
+      solicita: pedidoSolicita,
+      recibe: pedidoRecibe,
       comprobanteAsociado: comprobanteAsociado
         ? {
             tipo: String(comprobanteAsociado.tipo),
