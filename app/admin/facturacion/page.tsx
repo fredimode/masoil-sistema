@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { normalizeSearch, formatMoney, formatDateStr } from "@/lib/utils"
-import { fetchFacturasGestionpro, fetchFacturasGestionproCount, fetchFacturas } from "@/lib/supabase/queries"
+import { fetchFacturasGestionpro, fetchFacturasGestionproCount, fetchFacturas, fetchRemitos, getRemitoPdfUrl } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/client"
 import { fetchCuentaCorrienteCliente } from "@/lib/supabase/queries"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
@@ -55,6 +55,11 @@ export default function FacturacionPage() {
   const [asociadas, setAsociadas] = useState<any[]>([])  // NC/ND que referencian esta factura
   const [facturaOrigen, setFacturaOrigen] = useState<any | null>(null)  // FC origen si viewingFactura es NC/ND
   const [ccData, setCcData] = useState<any[]>([])  // cuenta corriente for deuda calculation
+  // T.4: remitos emitidos
+  const [remitos, setRemitos] = useState<any[]>([])
+  const [remSearch, setRemSearch] = useState("")
+  const [remPage, setRemPage] = useState(1)
+  const [openingRemito, setOpeningRemito] = useState<string | null>(null)
 
   useEffect(() => {
     if (!viewingFactura) {
@@ -147,16 +152,18 @@ export default function FacturacionPage() {
     async function load() {
       setLoading(true)
       try {
-        const [data, count, facturasEmitidas, ccAll] = await Promise.all([
+        const [data, count, facturasEmitidas, ccAll, remitosData] = await Promise.all([
           fetchFacturasGestionpro(),
           fetchFacturasGestionproCount(),
           fetchFacturas(),
           fetchCuentaCorrienteCliente(),
+          fetchRemitos(),
         ])
         setGpData(data as FacturaGP[])
         setTotalCount(count)
         setEmitidas(facturasEmitidas)
         setCcData(ccAll)
+        setRemitos(remitosData)
       } catch (error) {
         console.error("Error cargando facturas:", error)
       } finally {
@@ -271,6 +278,36 @@ export default function FacturacionPage() {
   const emPagination = usePagination(emitidasFiltered, 50)
   const emPageData = emPagination.getPage(emPage)
 
+  // T.4: remitos emitidos — filtrado por cliente o número y paginado
+  const remitosFiltered = useMemo(() => {
+    if (!remSearch.trim()) return remitos
+    const q = normalizeSearch(remSearch)
+    return remitos.filter((r: any) =>
+      normalizeSearch(r.cliente_nombre || "").includes(q) ||
+      normalizeSearch(r.numero || "").includes(q) ||
+      normalizeSearch(r.pedido_numero || "").includes(q)
+    )
+  }, [remitos, remSearch])
+
+  const remPagination = usePagination(remitosFiltered, 50)
+  const remPageData = remPagination.getPage(remPage)
+
+  useEffect(() => { setRemPage(1) }, [remSearch])
+
+  async function handleVerRemito(r: any) {
+    setOpeningRemito(r.id)
+    try {
+      const url = await getRemitoPdfUrl(r)
+      if (url) window.open(url, "_blank")
+      else alert("Este remito no tiene PDF disponible")
+    } catch (err) {
+      console.error("Error abriendo PDF de remito:", err)
+      alert("No se pudo abrir el PDF del remito")
+    } finally {
+      setOpeningRemito(null)
+    }
+  }
+
   function exportXlsx() {
     const rows = gpFiltered.map((f) => ({
       Fecha: f.fecha ? formatDateStr(f.fecha) : "",
@@ -354,6 +391,7 @@ export default function FacturacionPage() {
         <TabsList className="mb-4">
           <TabsTrigger value="emitidas">Facturas Emitidas ({emitidas.length})</TabsTrigger>
           <TabsTrigger value="historial">Historial GestionPro ({totalCount || gpData.length})</TabsTrigger>
+          <TabsTrigger value="remitos">Remitos Emitidos ({remitos.length})</TabsTrigger>
         </TabsList>
 
         {/* Tab Facturas Emitidas */}
@@ -616,6 +654,70 @@ export default function FacturacionPage() {
           </>
         )}
       </div>
+        </TabsContent>
+
+        {/* T.4: Tab Remitos Emitidos */}
+        <TabsContent value="remitos">
+          <div className="bg-white rounded-lg shadow p-4 mb-4">
+            <input
+              type="text"
+              placeholder="Buscar por cliente, número de remito o pedido..."
+              value={remSearch}
+              onChange={(e) => setRemSearch(e.target.value)}
+              className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm w-80"
+            />
+          </div>
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            {remitosFiltered.length === 0 ? (
+              <div className="p-8 text-center text-gray-500">No hay remitos emitidos.</div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 border-b">
+                      <tr className="text-left text-gray-600">
+                        <th className="px-4 py-3 font-medium">Fecha</th>
+                        <th className="px-4 py-3 font-medium">N° Remito</th>
+                        <th className="px-4 py-3 font-medium">Empresa</th>
+                        <th className="px-4 py-3 font-medium">Cliente</th>
+                        <th className="px-4 py-3 font-medium">Pedido</th>
+                        <th className="px-4 py-3 font-medium text-right">PDF</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {remPageData.map((r: any) => (
+                        <tr key={r.id} className="border-b hover:bg-gray-50">
+                          <td className="px-4 py-3">{r.fecha_emision ? formatDateStr(r.fecha_emision) : "-"}</td>
+                          <td className="px-4 py-3 font-mono">{r.numero || "-"}</td>
+                          <td className="px-4 py-3">{r.empresa || "-"}</td>
+                          <td className="px-4 py-3">{r.cliente_nombre || "-"}</td>
+                          <td className="px-4 py-3">{r.pedido_numero || "-"}</td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => handleVerRemito(r)}
+                              disabled={openingRemito === r.id}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-blue-600 hover:bg-blue-50 rounded disabled:opacity-50"
+                              title="Ver PDF"
+                            >
+                              <FileText className="h-4 w-4" />
+                              {openingRemito === r.id ? "Abriendo..." : "Ver PDF"}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <TablePagination
+                  currentPage={remPage}
+                  totalPages={remPagination.totalPages}
+                  totalItems={remPagination.totalItems}
+                  pageSize={remPagination.pageSize}
+                  onPageChange={setRemPage}
+                />
+              </>
+            )}
+          </div>
         </TabsContent>
       </Tabs>
 

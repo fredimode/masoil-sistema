@@ -1696,6 +1696,31 @@ export async function fetchFacturas(): Promise<any[]> {
   return data || []
 }
 
+// T.4: listado de remitos emitidos para la pestaña de Facturación.
+export async function fetchRemitos(): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("remitos")
+    .select("*, orders(order_number_serial, order_number)")
+    .order("created_at", { ascending: false })
+    .limit(50000)
+  if (error) throw error
+  return (data || []).map((r: any) => ({
+    ...r,
+    pedido_numero: r.orders?.order_number_serial || r.orders?.order_number || null,
+  }))
+}
+
+// T.4: genera una signed URL fresca para ver el PDF del remito (bucket privado).
+export async function getRemitoPdfUrl(remito: { storage_path?: string | null; pdf_url?: string | null }): Promise<string | null> {
+  if (remito.storage_path) {
+    const supabase = createSupabaseClient()
+    const { data } = await supabase.storage.from("remitos").createSignedUrl(remito.storage_path, 60 * 60)
+    if (data?.signedUrl) return data.signedUrl
+  }
+  return remito.pdf_url || null
+}
+
 export async function fetchProductById(id: string): Promise<Product | null> {
   const supabase = createSupabaseClient()
   const { data, error } = await supabase.from("products").select("*").eq("id", id).single()
