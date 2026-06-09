@@ -517,12 +517,19 @@ export default function FacturasProveedorPage() {
         await createFacturaProveedorItems(itemsData)
       }
 
-      // Upload file if present
+      // Upload file if present. T.5: la factura YA quedó guardada arriba, así que
+      // un fallo de storage no debe reportarse como "Error al guardar la factura"
+      // ni hacer que el operador la recargue (duplicándola). Es no bloqueante.
       if (archivo && id) {
-        const ext = archivo.name.split(".").pop() || "pdf"
-        const path = `facturas/${id}/${Date.now()}.${ext}`
-        const supabase = createClient()
-        await supabase.storage.from("comprobantes").upload(path, archivo)
+        try {
+          const ext = archivo.name.split(".").pop() || "pdf"
+          const path = `facturas/${id}/${Date.now()}.${ext}`
+          const supabase = createClient()
+          const { error: upErr } = await supabase.storage.from("comprobantes").upload(path, archivo)
+          if (upErr) console.error("Error subiendo comprobante (no bloqueante):", upErr)
+        } catch (err) {
+          console.error("Error subiendo comprobante (no bloqueante):", err)
+        }
       }
 
       // If linked to OC, update OC estado
@@ -545,9 +552,13 @@ export default function FacturasProveedorPage() {
       setStep(1)
       setDialogOpen(false)
       await loadData()
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error guardando factura:", err)
-      setErrorMsg("Error al guardar la factura")
+      // T.5: mostrar el error real (mensaje/código de Postgres) en vez del
+      // genérico, para poder diagnosticar la causa exacta desde la UI.
+      const detalle = err?.message || err?.error_description || (typeof err === "string" ? err : "")
+      const codigo = err?.code ? ` [${err.code}]` : ""
+      setErrorMsg(`Error al guardar la factura${codigo}${detalle ? ": " + detalle : ""}`)
     } finally {
       setGuardando(false)
     }

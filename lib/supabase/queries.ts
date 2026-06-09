@@ -2146,7 +2146,16 @@ export async function createFacturaProveedor(factura: Record<string, any>): Prom
     .insert(factura)
     .select("id")
     .single()
-  if (error) throw error
+  if (error) {
+    // T.5: loguear los campos del error de Postgres para diagnosticar.
+    console.error("createFacturaProveedor: insert failed", {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    })
+    throw error
+  }
   return data.id
 }
 
@@ -2246,7 +2255,15 @@ export async function createMovimientoCuentaCorrienteProveedor(mov: Record<strin
     .insert(mov)
     .select("id")
     .single()
-  if (error) throw error
+  if (error) {
+    console.error("createMovimientoCuentaCorrienteProveedor: insert failed", {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    })
+    throw error
+  }
   return data.id
 }
 
