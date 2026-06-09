@@ -76,20 +76,50 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Items del pedido
+  // Items del remito: SOLO los facturados en esta factura específica, no todo
+  // el pedido.
+  // S.5: en una facturación parcial, los artículos excluidos de la emisión no
+  // deben aparecer en el remito de esa factura. Filtramos por factura_id
+  // (= order.factura_id, la última factura del pedido). Fallback legacy: si
+  // ningún item tiene factura_id (facturas previas al tracking per-item) se
+  // incluye todo el pedido. Las líneas de descuento se omiten: el remito
+  // documenta entrega física, no ajustes de precio.
   const { data: orderItems } = await supabase
     .from("order_items")
-    .select("quantity, products(name, code)")
+    .select("quantity, cantidad_facturada, factura_id, tipo_linea, producto_nombre, producto_codigo, products(name, code)")
     .eq("order_id", orderId)
 
-  type OrderItemRow = { quantity: number; products: { name?: string | null; code?: string | null } | null }
-  const items = ((orderItems || []) as unknown as OrderItemRow[]).map((oi) => ({
-    descripcion: `${oi.products?.code || ""} - ${oi.products?.name || "Producto"}`.replace(/^ - /, ""),
-    cantidad: oi.quantity,
-  }))
+  type OrderItemRow = {
+    quantity: number
+    cantidad_facturada: number | null
+    factura_id: number | string | null
+    tipo_linea: string | null
+    producto_nombre: string | null
+    producto_codigo: string | null
+    products: { name?: string | null; code?: string | null } | null
+  }
+  const allRows = (orderItems || []) as unknown as OrderItemRow[]
+  const facturaId = order.factura_id != null ? String(order.factura_id) : null
+  const rowsDeFactura = facturaId
+    ? allRows.filter((oi) => oi.factura_id != null && String(oi.factura_id) === facturaId)
+    : []
+  const baseRows = rowsDeFactura.length > 0 ? rowsDeFactura : allRows
+  const items = baseRows
+    .filter((oi) => oi.tipo_linea !== "descuento")
+    .map((oi) => {
+      const code = oi.products?.code || oi.producto_codigo || ""
+      const name = oi.products?.name || oi.producto_nombre || "Producto"
+      // Cantidad efectivamente facturada en esta emisión (parcial); si no hay
+      // tracking per-item, cae a la cantidad pedida.
+      const cant = oi.cantidad_facturada && oi.cantidad_facturada > 0 ? oi.cantidad_facturada : oi.quantity
+      return {
+        descripcion: `${code} - ${name}`.replace(/^ - /, ""),
+        cantidad: cant,
+      }
+    })
 
   if (items.length === 0) {
-    return fail("cliente", "El pedido no tiene items", undefined, 400)
+    return fail("cliente", "El pedido no tiene items para remitir", undefined, 400)
   }
 
   // ───────── PASO 3: número siguiente ─────────
