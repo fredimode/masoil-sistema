@@ -1850,8 +1850,8 @@ export async function ensureRepartoForFecha(fechaISO: string): Promise<string> {
   const supabase = createSupabaseClient()
   const existing = await fetchRepartoByFecha(fechaISO)
   if (existing) return existing.id
-  const fecha = new Date(fechaISO)
-  const numero = formatNumeroReparto(fecha)
+  // Derivar el N° del string ISO directamente (TZ-safe, ver formatNumeroReparto).
+  const numero = formatNumeroReparto(fechaISO)
   const { data, error } = await supabase
     .from("repartos")
     .insert({ numero_reparto: numero, fecha: fechaISO, estado: "pendiente" })
@@ -1994,7 +1994,7 @@ export async function assignOrderToNextReparto(orderId: string): Promise<void> {
 
   const updateFields: Record<string, unknown> = {
     reparto_id: repartoId,
-    numero_reparto: formatNumeroReparto(fecha),
+    numero_reparto: formatNumeroReparto(fechaISO),
   }
   if (shouldTransition) {
     updateFields.status = "EN_PROCESO_ENTREGA"
@@ -2009,7 +2009,7 @@ export async function assignOrderToNextReparto(orderId: string): Promise<void> {
       status: "EN_PROCESO_ENTREGA",
       changed_by: "sistema",
       user_name: "Sistema",
-      notes: `Auto: asignacion a reparto ${formatNumeroReparto(fecha)}`,
+      notes: `Auto: asignacion a reparto ${formatNumeroReparto(fechaISO)}`,
     })
   }
 }

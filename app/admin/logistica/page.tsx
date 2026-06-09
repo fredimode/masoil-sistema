@@ -118,7 +118,12 @@ export default function LogisticaPage() {
     [items, mostrarCompletados]
   )
   const completadosCount = useMemo(() => items.filter((i) => isCompletado(i.estado_entrega)).length, [items])
-  const numeroActual = currentRepartoId ? repartos.find((r) => r.id === currentRepartoId)?.numero_reparto : formatNumeroReparto(new Date(selectedFecha))
+  // T.6: el N° de reparto SIEMPRE se deriva de la fecha (DDMMYYYY). No usamos el
+  // numero_reparto almacenado para no arrastrar valores viejos corridos por TZ;
+  // y pasamos el string ISO (no `new Date(...)`) para evitar el corrimiento de día.
+  const numeroActual = formatNumeroReparto(
+    (currentRepartoId ? repartos.find((r) => r.id === currentRepartoId)?.fecha : null) || selectedFecha
+  )
 
   function handlePrint() {
     const w = window.open("", "_blank")
