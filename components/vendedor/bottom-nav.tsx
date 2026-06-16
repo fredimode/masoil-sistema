@@ -3,11 +3,12 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Home, FileText, Users, Package, User } from "lucide-react"
+import { Home, ShoppingCart, FileText, Users, Package, User } from "lucide-react"
 
 const navItems = [
   { href: "/vendedor", label: "Inicio", icon: Home },
-  { href: "/vendedor/pedidos", label: "Pedidos", icon: FileText },
+  { href: "/vendedor/pedidos", label: "Pedidos", icon: ShoppingCart },
+  { href: "/vendedor/cotizaciones", label: "Cotiz.", icon: FileText },
   { href: "/vendedor/clientes", label: "Clientes", icon: Users },
   { href: "/vendedor/stock", label: "Stock", icon: Package },
   { href: "/vendedor/perfil", label: "Perfil", icon: User },

@@ -137,6 +137,14 @@ export default function VendedorHistorialPage() {
                     <Badge variant="outline" className="text-xs mt-1">{c.estado}</Badge>
                   </div>
                 </div>
+                <div className="mt-2 pt-2 border-t flex justify-end">
+                  <Link
+                    href={`/vendedor/cotizaciones/${c.id}`}
+                    className="text-xs text-blue-600 hover:underline font-medium"
+                  >
+                    Ver detalle →
+                  </Link>
+                </div>
               </Card>
             ))}
           </TabsContent>
