@@ -14,7 +14,7 @@ import {
   fetchCotizacionVentaById, fetchCotizacionVentaItems, updateCotizacionVenta,
   updateCotizacionVentaItemAprobado, fetchClientById, createOrder,
   updateCotizacionVentaItem, createCotizacionVentaItem, deleteCotizacionVentaItem,
-  fetchProducts, fetchClients, fetchVendedores, esVendedorComercial,
+  fetchProducts, fetchClients, fetchVendedores,
 } from "@/lib/supabase/queries"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 import { generateCotizacionPDF } from "@/lib/pdf/cotizacion-pdf"
@@ -907,7 +907,7 @@ export default function CotizacionVentaDetallePage() {
                   className="w-full p-2 border rounded text-sm"
                 >
                   <option value="">— Sin asignar —</option>
-                  {editVendedores.filter((v) => v.isActive && esVendedorComercial(v)).map((v) => (
+                  {editVendedores.filter((v) => v.isActive).map((v) => (
                     <option key={v.id} value={v.id}>{v.name}{v.iniciales ? ` (${v.iniciales})` : ""}</option>
                   ))}
                 </select>

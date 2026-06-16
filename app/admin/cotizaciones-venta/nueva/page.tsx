@@ -15,7 +15,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { HistorialVentasDialog } from "@/components/historial-ventas-dialog"
 import {
   fetchClients, fetchProducts, fetchVendedores,
-  createCotizacionVenta, getNextCotizacionVentaNumero, esVendedorComercial,
+  createCotizacionVenta, getNextCotizacionVentaNumero,
   fetchProveedoresByProducto,
 } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/client"
@@ -131,7 +131,8 @@ export default function NuevaCotizacionVentaPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  const activeVendedores = vendedores.filter((v) => v.isActive && esVendedorComercial(v))
+  // Todos los vendedores activos pueden crear cotizaciones (sin restricción comercial).
+  const activeVendedores = vendedores.filter((v) => v.isActive)
   const selectedClient = clients.find((c) => c.id === selectedClientId)
 
   // Autofill forma_pago cuando se selecciona cliente
@@ -230,19 +231,15 @@ export default function NuevaCotizacionVentaPage() {
       return
     }
     const vendedor = vendedores.find((v) => v.id === selectedVendedorId) || currentUser
-    if (!vendedor || !esVendedorComercial(vendedor as any)) {
-      alert("Seleccioná un vendedor comercial (PSG, JGE o DDM)")
+    if (!vendedor) {
+      alert("Seleccioná un vendedor")
       return
     }
-    const iniciales = vendedor.iniciales || (
-      vendedor.email === "pablo@masoil.com.ar" ? "PSG" :
-      vendedor.email === "jestevez@masoil.com.ar" ? "JGE" :
-      vendedor.email === "cobranzas@masoil.com.ar" ? "DDM" : ""
-    )
-    if (!iniciales) {
-      alert("El vendedor no tiene iniciales configuradas")
-      return
-    }
+    // Todos los vendedores pueden cotizar. Usamos sus iniciales si las tiene;
+    // si no, las derivamos del nombre (fallback) para el correlativo COT-XXX-NNNN.
+    const iniciales = (vendedor.iniciales && vendedor.iniciales.trim())
+      ? vendedor.iniciales.trim().toUpperCase()
+      : ((vendedor.name || "").split(/\s+/).filter(Boolean).slice(0, 3).map((w) => w[0]).join("").toUpperCase() || "VEN")
 
     setSubmitting(true)
     try {

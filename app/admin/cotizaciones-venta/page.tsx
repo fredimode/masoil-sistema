@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { Plus, Search, Eye, Printer, Send } from "lucide-react"
-import { fetchCotizacionesVenta, fetchVendedores, esVendedorComercial } from "@/lib/supabase/queries"
+import { fetchCotizacionesVenta, fetchVendedores } from "@/lib/supabase/queries"
 import { formatCurrencyExact, formatDateStr, normalizeSearch } from "@/lib/utils"
 
 const ESTADO_BADGES: Record<string, { label: string; cls: string }> = {
@@ -32,7 +32,7 @@ export default function CotizacionesVentaPage() {
     Promise.all([fetchCotizacionesVenta(), fetchVendedores()])
       .then(([c, v]) => {
         setCotizaciones(c)
-        setVendedores(v.filter((x: any) => esVendedorComercial(x)))
+        setVendedores(v.filter((x: any) => x.isActive))
       })
       .catch((e) => console.error(e))
       .finally(() => setLoading(false))
