@@ -148,20 +148,16 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
         cuit: editForm.cuit || null,
         condicion_iva: editForm.condicionIva || null,
       })
-      setClient((prev) => prev ? {
-        ...prev,
-        businessName: editForm.businessName,
-        contactName: editForm.contactName,
-        whatsapp: editForm.whatsapp,
-        email: editForm.email,
-        address: editForm.address,
-        zona: editForm.zona as any,
-        vendedorId: editForm.vendedorId,
-        paymentTerms: editForm.paymentTerms,
-        condicionPago: editForm.paymentTerms,
-        creditLimit: editForm.creditLimit,
-        notes: editForm.notes,
-      } : prev)
+      // W.7: refrescar TODOS los campos desde la DB. Antes el merge local
+      // omitia domicilio fiscal, sucursal y sucursal de entrega (entre otros),
+      // asi que aunque se guardaban en la DB las tarjetas seguian mostrando los
+      // valores viejos y parecia que no se guardaba. Re-leer garantiza que la
+      // UI refleje exactamente lo persistido.
+      const fresh = await fetchClientById(client.id)
+      if (fresh) {
+        setClient(fresh)
+        setVendedor(allVendedores.find((v) => v.id === fresh.vendedorId) || null)
+      }
       setEditOpen(false)
     } catch (err) {
       console.error("Error saving client:", err)
