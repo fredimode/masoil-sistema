@@ -259,6 +259,12 @@ export async function createOrder(order: {
 
   const vendedorIdSafe = order.vendedorId && order.vendedorId.trim() !== "" ? order.vendedorId : null
 
+  // P5: orders.zona es enum NOT NULL (Norte|Capital|Sur|Oeste|GBA). Clientes
+  // importados sin zona traen NULL o "" y rompen el insert (23502 / 22P02).
+  // Sanitizamos a un valor válido por defecto.
+  const ZONAS_VALIDAS = ["Norte", "Capital", "Sur", "Oeste", "GBA"]
+  const zonaSafe = ZONAS_VALIDAS.includes(order.zona) ? order.zona : "Capital"
+
   // Insert order
   const { data: orderData, error: orderError } = await supabase
     .from("orders")
@@ -269,7 +275,7 @@ export async function createOrder(order: {
       client_name: order.clientName,
       vendedor_id: vendedorIdSafe,
       vendedor_name: order.vendedorName,
-      zona: order.zona,
+      zona: zonaSafe,
       status: order.status || "INGRESADO",
       total: order.total,
       notes: order.notes,

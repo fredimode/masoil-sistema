@@ -344,9 +344,9 @@ export default function AdminNuevoPedidoPage() {
       }
 
       router.push(`/admin/pedidos/${orderId}`)
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error creating order:", err)
-      alert("Error al crear el pedido")
+      alert("Error al crear el pedido: " + (err?.message || "intentá de nuevo"))
     } finally {
       setSubmitting(false)
     }

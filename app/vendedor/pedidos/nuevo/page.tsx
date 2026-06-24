@@ -227,8 +227,9 @@ function NuevoPedidoContent() {
       }
 
       router.push("/vendedor/pedidos")
-    } catch (err) {
-      alert("Error al crear el pedido. Intenta de nuevo.")
+    } catch (err: any) {
+      console.error("Error creating order:", err)
+      alert("Error al crear el pedido: " + (err?.message || "Intentá de nuevo."))
     } finally {
       setSubmitting(false)
     }
