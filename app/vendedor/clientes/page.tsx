@@ -5,8 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
-import { fetchClientsByVendedor } from "@/lib/supabase/queries"
+import { fetchClients } from "@/lib/supabase/queries"
 import type { Client } from "@/lib/types"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Search, Phone, MessageCircle, Plus, MapPin, Mail, Users } from "lucide-react"
@@ -14,21 +13,21 @@ import { formatDate } from "@/lib/utils"
 import Link from "next/link"
 
 export default function VendedorClientesPage() {
-  const { vendedor, loading } = useCurrentVendedor()
   const [clients, setClients] = useState<Client[]>([])
   const [loadingClients, setLoadingClients] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
 
   useEffect(() => {
-    if (!vendedor?.id) return
     setLoadingClients(true)
-    fetchClientsByVendedor(vendedor.id)
+    // W.1: el vendedor ve TODOS los clientes activos, sin filtrar por
+    // vendedor_id asignado.
+    fetchClients()
       .then(setClients)
       .catch(() => setClients([]))
       .finally(() => setLoadingClients(false))
-  }, [vendedor?.id])
+  }, [])
 
-  if (loading || loadingClients) {
+  if (loadingClients) {
     return (
       <div className="min-h-screen bg-background">
         <div className="bg-primary text-primary-foreground p-4">
@@ -146,8 +145,8 @@ export default function VendedorClientesPage() {
           ) : clients.length === 0 ? (
             <div className="text-center py-16 text-muted-foreground">
               <Users className="h-12 w-12 mx-auto mb-4 opacity-40" />
-              <p className="text-lg font-medium mb-1">No tenés clientes asignados todavía</p>
-              <p className="text-sm">Contactá al administrador para que te asigne clientes.</p>
+              <p className="text-lg font-medium mb-1">No hay clientes cargados todavía</p>
+              <p className="text-sm">Creá un cliente nuevo o contactá al administrador.</p>
             </div>
           ) : (
             <div className="text-center py-12 text-muted-foreground">
