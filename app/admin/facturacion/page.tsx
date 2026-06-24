@@ -680,7 +680,7 @@ export default function FacturacionPage() {
                         <th className="px-4 py-3 font-medium">N° Remito</th>
                         <th className="px-4 py-3 font-medium">Empresa</th>
                         <th className="px-4 py-3 font-medium">Cliente</th>
-                        <th className="px-4 py-3 font-medium">Pedido</th>
+                        <th className="px-4 py-3 font-medium">N° Pedido</th>
                         <th className="px-4 py-3 font-medium text-right">PDF</th>
                       </tr>
                     </thead>

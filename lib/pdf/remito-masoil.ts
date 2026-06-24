@@ -56,6 +56,9 @@ export interface RemitoPDFData {
   // S.6: número de la factura asociada (si el remito proviene de un pedido ya
   // facturado). Se imprime en el remito para cruzar ambos comprobantes.
   facturaNumero?: string | null
+  // W.5: N° de pedido (order_number_serial, ej. PED-JGE-0052) para cruzar el
+  // remito con el pedido que lo originó.
+  pedidoNumero?: string | null
 }
 
 const PAGE_W = 595.28
@@ -218,6 +221,13 @@ export async function generarRemitoPDF(data: RemitoPDFData): Promise<Uint8Array>
     size: 9, font: fontReg, color: black,
   })
   y = y - CLIENTE_H - 14
+
+  // ════════════════ N° PEDIDO (W.5) ════════════════
+  if (data.pedidoNumero) {
+    page.drawText("Pedido Nº:", { x: LEFT, y, size: 9, font: fontBold, color: black })
+    page.drawText(String(data.pedidoNumero), { x: LEFT + 60, y, size: 9, font: fontReg, color: black })
+    y -= 16
+  }
 
   // ════════════════ DETALLE (sin precios) ════════════════
   // Cantidad a la izquierda, descripción después.

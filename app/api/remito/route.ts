@@ -49,7 +49,8 @@ export async function POST(request: NextRequest) {
   const { data: order, error: orderError } = await supabase
     .from("orders")
     // R.13: Sector/Solicita/Recibe del pedido para imprimirlos en el remito.
-    .select("id, client_id, client_name, status, factura_id, sector, solicita, recibe")
+    // W.5: order_number_serial para imprimir el N° de Pedido en el remito.
+    .select("id, client_id, client_name, status, factura_id, sector, solicita, recibe, order_number_serial, order_number")
     .eq("id", orderId)
     .single()
 
@@ -191,6 +192,7 @@ export async function POST(request: NextRequest) {
       recibe: order.recibe || null,
       caiVencido,
       facturaNumero: factura?.numero || null,
+      pedidoNumero: order.order_number_serial || order.order_number || null,
     })
     console.log("Step 4: PDF generado, bytes:", pdfBytes.length)
   } catch (e) {
