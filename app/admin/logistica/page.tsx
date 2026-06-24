@@ -17,6 +17,12 @@ import { formatDateStr } from "@/lib/utils"
 import { Plus, Printer, Download, Trash2, CheckCircle2, PlayCircle } from "lucide-react"
 import * as XLSX from "xlsx"
 
+// W.2: N° de Pedido legible (PED-JGE-0052) en vez del UUID crudo de order_id.
+function nroPedidoDe(i: any): string {
+  if (!i?.order_id) return "-"
+  return i.orders?.order_number_serial || i.orders?.order_number || i.order_id.slice(0, 8)
+}
+
 const REPARTIDORES = ["Alejandro", "Agustín"]
 const ESTADOS_ENTREGA = [
   { value: "pendiente", label: "Pendiente" },
@@ -136,9 +142,7 @@ export default function LogisticaPage() {
     const rowsHtml = candidatos.map((i) => {
       // J.3: Nº Pedido puro (sin "(extra)") y Descripción separada para
       // destinos manuales.
-      const nroPedido = i.order_id
-        ? (i.orders?.order_number_serial || i.orders?.order_number || i.order_id.slice(0, 8))
-        : "-"
+      const nroPedido = nroPedidoDe(i)
       const descripcion = i.es_destino_extra ? truncate(i.descripcion_extra || "(sin descripción)", 50) : "-"
       // Observaciones: para pedidos toma orders.notes; para manuales toma reparto_items.observaciones
       const obsRaw = i.order_id ? (i.orders?.notes || "") : (i.observaciones || "")
@@ -203,7 +207,7 @@ export default function LogisticaPage() {
     const ws = XLSX.utils.json_to_sheet(visibles.map((i) => ({
       Orden: i.orden_reparto || "",
       // J.3: N° Pedido y Descripción separados
-      "N° Pedido": i.order_id || "",
+      "N° Pedido": nroPedidoDe(i),
       "Descripción": i.es_destino_extra ? (i.descripcion_extra || "") : "",
       Factura: i.factura_numero || "",
       Cliente: i.client_name || "",
@@ -318,8 +322,8 @@ export default function LogisticaPage() {
                             <CheckCircle2 className="h-3 w-3" /> Completado
                           </span>
                         )}
-                        {/* J.3: N° Pedido puro — vacio si es destino manual */}
-                        <span>{i.order_id || "-"}</span>
+                        {/* W.2: N° Pedido legible (order_number_serial) — vacío si es destino manual */}
+                        <span>{nroPedidoDe(i)}</span>
                       </div>
                     </TableCell>
                     <TableCell>
