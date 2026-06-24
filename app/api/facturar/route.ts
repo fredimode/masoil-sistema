@@ -143,7 +143,15 @@ export async function POST(request: NextRequest) {
     cliente.provincia = "CIUDAD AUTONOMA BUENOS AIRES"
     console.log("Cliente sin provincia → fallback CABA")
   }
-  const razonSocial = cliente.razon_social || cliente.business_name || ""
+  // P4: priorizar business_name. razon_social quedó contaminado por el import
+  // (traía el nombre de la emisora, ej. "Conancap"), así que lo ignoramos si
+  // coincide con una emisora conocida y caemos al business_name del cliente.
+  const EMISORAS = ["masoil", "aquiles", "conancap"]
+  const razonSocialCliente =
+    cliente.razon_social && !EMISORAS.includes(String(cliente.razon_social).trim().toLowerCase())
+      ? cliente.razon_social
+      : cliente.business_name
+  const razonSocial = razonSocialCliente || cliente.business_name || ""
   console.log('Step 2: Cliente OK →', razonSocial, '| provincia final:', cliente.provincia)
 
   // ───────────────── PASO 3: pedido (opcional) ─────────────────
