@@ -678,11 +678,31 @@ function TabRegistrarCobro({
   // Unified CUIT pendientes
   const [pendientesUnificados, setPendientesUnificados] = useState<any[]>([])
 
-  // Empresa válida para registrar cobro (Aquiles/Conancap/Masoil).
-  // El filter global puede estar en "Todas"/"INCLUIR" — esos no son válidos.
-  const empresaValida = empresaFilter && ["Aquiles", "Conancap", "Masoil"].includes(empresaFilter)
-    ? empresaFilter
-    : null
+  // W.6: el cobro se registra SIEMPRE contra una empresa emisora específica.
+  // En vez de heredar el filtro global (que puede estar en "Todas"), este tab
+  // tiene su propio selector sin "Todas" y con default "Aquiles". Si el filtro
+  // global ya trae una empresa específica, la usamos como valor inicial.
+  const EMPRESAS_COBRO = ["Aquiles", "Conancap", "Masoil"]
+  const [empresaCobro, setEmpresaCobro] = useState<string>(
+    EMPRESAS_COBRO.includes(empresaFilter) ? empresaFilter : "Aquiles",
+  )
+  const empresaValida = empresaCobro
+
+  // W.6: solo se muestran las FC pendientes de la empresa emisora seleccionada.
+  // Mismo criterio que TabCuentaCorriente: las filas sin empresa conocida
+  // (ajustes/NC manuales del importador legacy) se mantienen siempre.
+  const pendientesFiltrados = useMemo(() => {
+    return pendientesUnificados.filter((c) => {
+      if (!c.empresa) return true
+      return String(c.empresa).toLowerCase() === empresaCobro.toLowerCase()
+    })
+  }, [pendientesUnificados, empresaCobro])
+
+  // Al cambiar de empresa, las FC seleccionadas pueden dejar de estar visibles:
+  // limpiamos la selección para que los totales no incluyan filas ocultas.
+  useEffect(() => {
+    setSelectedIds(new Set())
+  }, [empresaCobro])
 
   // Carga rápida de retención (sin recibo)
   const [retOpen, setRetOpen] = useState(false)
@@ -706,7 +726,7 @@ function TabRegistrarCobro({
       })
       await createMovimientoCuentaCorriente({
         client_id: selectedClient.id,
-        empresa: empresaParaInsert(empresaFilter),
+        empresa: empresaParaInsert(empresaCobro),
         fecha: retForm.fecha,
         tipo_comprobante: "RT",
         punto_venta: 0,
@@ -762,7 +782,7 @@ function TabRegistrarCobro({
   // K2C.1: NC restan al total seleccionado. El tipo se detecta a partir
   // del comprobante ("NC ..." o "NOTA DE CREDITO ...") o tipo_comprobante.
   const totalSeleccionado = useMemo(() => {
-    return pendientesUnificados
+    return pendientesFiltrados
       .filter((c) => selectedIds.has(c.id))
       .reduce((sum, c) => {
         const tipo = (c.comprobante || c.tipo_comprobante || "").toUpperCase()
@@ -770,7 +790,7 @@ function TabRegistrarCobro({
         const monto = c.saldo_pendiente || c.total || 0
         return sum + (esNC ? -monto : monto)
       }, 0)
-  }, [pendientesUnificados, selectedIds])
+  }, [pendientesFiltrados, selectedIds])
 
   const totalMedios = useMemo(() => medios.reduce((s, m) => s + (m.importe || 0), 0), [medios])
   const totalRets = useMemo(() => rets.reduce((s, r) => s + (r.importe || 0), 0), [rets])
@@ -780,22 +800,22 @@ function TabRegistrarCobro({
   // transferencia, cheque, etc. para confirmar el cobro.
   const saldoAAbonar = totalSeleccionado - totalRets
 
-  // Total Debe/Haber for CC display
+  // Total Debe/Haber for CC display (W.6: sobre las FC de la empresa filtrada)
   const totalDebe = useMemo(() => {
-    return pendientesUnificados.reduce((s, c) => {
+    return pendientesFiltrados.reduce((s, c) => {
       const tipo = (c.comprobante || c.tipo_comprobante || "").toUpperCase()
       if (tipo.startsWith("NC")) return s
       return s + (c.saldo_pendiente || c.total || 0)
     }, 0)
-  }, [pendientesUnificados])
+  }, [pendientesFiltrados])
 
   const totalHaber = useMemo(() => {
-    return pendientesUnificados.reduce((s, c) => {
+    return pendientesFiltrados.reduce((s, c) => {
       const tipo = (c.comprobante || c.tipo_comprobante || "").toUpperCase()
       if (tipo.startsWith("NC")) return s + (c.saldo_pendiente || c.total || 0)
       return s
     }, 0)
-  }, [pendientesUnificados])
+  }, [pendientesFiltrados])
 
   function handleSelectClient(client: any) {
     setSelectedClient(client)
@@ -991,7 +1011,20 @@ function TabRegistrarCobro({
     <div className="space-y-4">
       {/* DATOS GENERALES */}
       <Card className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* W.6: empresa emisora específica (sin "Todas"), default Aquiles. */}
+          <div>
+            <label className="text-sm font-medium mb-1 block">Empresa</label>
+            <select
+              value={empresaCobro}
+              onChange={(e) => setEmpresaCobro(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm"
+            >
+              {EMPRESAS_COBRO.map((e) => (
+                <option key={e} value={e}>{e}</option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="text-sm font-medium mb-1 block">Fecha</label>
             <input
@@ -1062,7 +1095,7 @@ function TabRegistrarCobro({
             )}
           </div>
 
-          {selectedClient && pendientesUnificados.length > 0 ? (
+          {selectedClient && pendientesFiltrados.length > 0 ? (
             <>
               <div className="border rounded-md overflow-auto max-h-[400px]">
                 <Table>
@@ -1076,7 +1109,7 @@ function TabRegistrarCobro({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pendientesUnificados.map((c) => {
+                    {pendientesFiltrados.map((c) => {
                       const tipo = (c.comprobante || c.tipo_comprobante || "").toUpperCase()
                       const isNC = tipo.startsWith("NC")
                       const monto = c.saldo_pendiente || c.total || 0
@@ -1190,7 +1223,7 @@ function TabRegistrarCobro({
               </div>
             </>
           ) : selectedClient ? (
-            <p className="text-sm text-gray-500 py-4">Sin facturas pendientes para este cliente</p>
+            <p className="text-sm text-gray-500 py-4">Sin facturas pendientes de {empresaCobro} para este cliente</p>
           ) : (
             <p className="text-sm text-gray-500 py-4">Seleccione un cliente para ver sus facturas pendientes</p>
           )}
