@@ -13,11 +13,38 @@
 
 ## Índice
 
+- [Estado de los datos: REALES](#estado-datos)
 - [Mapa de problemas y causas raíz](#mapa)
 - [Sección 1 — Limpieza de datos (P4 + P5)](#seccion-1)
 - [Sección 2 — Lógica contable (P1 + P2 + P3)](#seccion-2)
 - [Sección 3 — Orden de ejecución y riesgos](#seccion-3)
 - [Sección 4 — Casos de prueba](#seccion-4)
+
+---
+
+<a name="estado-datos"></a>
+## Estado de los datos: REALES (verificado — Sprint X.3)
+
+> 🔴 **Los saldos de cuenta corriente son REALES, no de prueba. NO se resetean.**
+> Verificado con SELECT read-only sobre producción (Sprint X.3).
+
+| Dato | Valor |
+|------|-------|
+| Deuda real total (saldo deudor por CUIT) | **~$92,7 M** (neto solo-GestionPro: ~$93,2 M) |
+| Movimientos en `cuenta_corriente_cliente` | **1.171** total |
+| — migrados de GestionPro (`observaciones LIKE 'GestionPro%'`) | **1.034 (88%)** → **reales, intocables** |
+| — creados in-app (testing, `observaciones NOT LIKE 'GestionPro%'`) | 137 → netean **−$0,9 M** (no aportan deuda) |
+| Saldos de apertura migrados (tipo `SA`, "SALDO DE APERTURA DEL PERIODO") | **46**, fechados **31/12/2025** |
+| `cobranzas_pendientes` (snapshot legacy) | **165 filas**, import único 22/04/2026, razones sociales y montos reales → **snapshot real, intocable** |
+| `recibos_cobranza` (cobros hechos in-app) | **4** → único origen del bug P2 |
+| Rango de fechas de movimientos | 31/12/2025 (apertura) → operación distribuida en 6 meses |
+| Top deudores reales | Bremen Motors $11,2 M · Sudamerican Autos $11,0 M · Solbayres $7,3 M · … |
+
+**Consecuencias para este plan:**
+
+- ✅ **`cuenta_corriente_cliente` y `cobranzas_pendientes` NO se tocan.** Son la base contable real migrada de GestionPro. La única intervención admisible sobre `cuenta_corriente_cliente` es una **limpieza quirúrgica futura** de los 137 movimientos de testing (`observaciones NOT LIKE 'GestionPro%'`), **nunca** un truncate/reset ni nada que afecte las 1.034 filas GestionPro ni los 165 pendientes.
+- ✅ El bug **P2 está acotado a los 4 cobros hechos in-app** (`recibos_cobranza` = 4). Los 224 RC migrados de GestionPro ya vienen correctos. → **No hace falta backfill masivo; se re-imputan esos 4 a mano** (ver Sección 2.3 y paso 7).
+- ✅ Las **137 FC de testing**: decisión de Fredi = **NO borrar por ahora**. Queda como **paso final diferido**, después de validar la lógica contable (ver paso 8, Sección 3).
 
 ---
 
@@ -343,16 +370,15 @@ Mantener además el registro del recibo en `recibos_cobranza` (con su `facturas_
 
 #### Migración de los cobros YA registrados (referencia_id = id de recibo)
 
-**Sí se pueden re-imputar**, porque `recibos_cobranza.facturas_ids` guarda qué facturas saldaba cada recibo. Plan de backfill (script Node de un solo uso, **PROPUESTO - NO EJECUTADO**):
+> ⚠️ **Revisado tras Sprint X.3 — NO hay backfill masivo.** Se verificó que `cuenta_corriente_cliente` es **deuda real migrada de GestionPro** (1.034 de 1.171 movimientos, ~$93,2 M) y **no se toca**. De los 228 movimientos RC (cobros), **224 vienen de GestionPro ya correctos**; el bug P2 (`referencia_id = id de recibo`) afecta **solo a los 4 cobros hechos in-app** (`recibos_cobranza` = 4).
 
-1. Leer todos los movimientos `tipo_comprobante = 'RC'` cuyo `referencia_id` sea un id de recibo (formato distinto al id de factura).
-2. Para cada uno, buscar el recibo en `recibos_cobranza` y su `facturas_ids` + el saldo de cada FC en ese momento.
-3. **Reemplazar** el movimiento agregado por N movimientos (uno por factura), repartiendo el `haber` (FIFO o proporcional al saldo de cada FC). Idempotente: marcar los migrados (p. ej. `observaciones` con un tag `[migrado-x2]`) para no duplicar si se corre dos veces.
-4. Backup previo de `cuenta_corriente_cliente` (ver Sección 3).
+**Plan acotado (NO backfill — re-imputación manual de 4 cobros):**
 
-> Casos sin `facturas_ids` (cobros viejos sin detalle): no se pueden re-imputar automáticamente → quedan como ajuste manual o se documentan como "cobro a cuenta" sin factura asociada. Listarlos para revisión.
->
-> Alternativa mínima si el backfill se considera riesgoso: aplicar el fix **solo de ahora en más** y re-imputar a mano los pocos cobros de testing existentes. Dado que estamos en testing con pocos datos, **esta alternativa es aceptable** y es la recomendada para no arriesgar (ver Sección 3).
+1. Identificar los **4 movimientos RC in-app** (los `recibos_cobranza` existentes y su movimiento de haber asociado con `referencia_id = reciboId`). Son los únicos con el bug; el resto (`observaciones LIKE 'GestionPro%'`) **se deja intacto**.
+2. Para cada uno, usar su `recibos_cobranza.facturas_ids` para crear el/los movimiento(s) de haber por factura con `referencia_id = String(facturaId)`, y eliminar/anular el movimiento agregado viejo.
+3. **A mano**, no por script masivo: son 4 casos, se hacen y verifican uno por uno. Backup previo de `cuenta_corriente_cliente` igual (ver Sección 3).
+
+> **Prohibido** cualquier operación que afecte a las 1.034 filas GestionPro o a los 165 pendientes. La re-imputación se limita a los 4 RC in-app.
 
 ### 2.4 — Agrupación: todo por CUIT
 
@@ -377,6 +403,8 @@ Unificar a **CUIT** en todas las pantallas y cálculos (Sprint K1.5 ya agrupa as
    ```
    Rollback de una tabla: restaurar desde su `_backup_xrem`.
 
+> 🔴 **`cuenta_corriente_cliente` y `cobranzas_pendientes` NO se tocan** (datos reales de GestionPro, ver [Estado de los datos](#estado-datos)). La única intervención admisible es la **limpieza quirúrgica futura** de los 137 movimientos de testing (`observaciones NOT LIKE 'GestionPro%'`) — diferida al paso final. El backup de `cuenta_corriente_cliente` es solo red de seguridad, no porque se planee modificarla.
+
 ### Orden recomendado
 
 | Paso | Acción | Reversible | Si sale mal | Momento |
@@ -388,18 +416,21 @@ Unificar a **CUIT** en todas las pantallas y cálculos (Sprint K1.5 ya agrupa as
 | 4 | **UPDATE datos P4 facturas** (3 filas, solo testing) | Sí (restaurar `facturas_backup_xrem`) | Restaurar; cosmético | Antes del corte |
 | 5 | **Limpieza zona/vendedor** (manual, por negocio) | Sí (backup) | Quedan con default `Capital`; sin error | Puede esperar |
 | 6 | **Lógica contable P1/P2/P3** (fuente única + cobro por factura) | Parcial | Ver abajo | Antes del corte si se quiere arrancar con saldos confiables |
-| 7 | **Backfill cobros viejos** (opcional) | Riesgoso | Restaurar `cuenta_corriente_cliente_bkp_xrem` | **Evaluar saltar** en testing |
+| 7 | **Re-imputar a mano los 4 cobros in-app** (P2; `referencia_id` → id de factura). **NO backfill masivo.** Las 1.034 filas GestionPro intactas. | Sí (restaurar `cuenta_corriente_cliente_bkp_xrem`) | Restaurar tabla; son 4 casos | Junto con paso 6 |
+| 8 | **Limpieza quirúrgica de las 137 FC de testing** (`observaciones NOT LIKE 'GestionPro%'`) + sus movimientos | Sí (backup) | Restaurar | **DIFERIDO — PASO FINAL** (ver abajo) |
 
 **Criterio "antes del corte vs puede esperar":**
-- **Antes del corte (operación real):** pasos 0–4 y 6. Son los que garantizan que la primera FC real salga con la razón social correcta y que los saldos sean confiables.
-- **Puede esperar:** paso 5 (asignación fina de zonas; el default ya desbloquea) y paso 7 (backfill de cobros de testing; conviene **resetear** los datos de prueba en vez de migrarlos).
+- **Antes del corte (operación real):** pasos 0–4, 6 y 7. Garantizan que la primera FC real salga con razón social correcta y que los saldos/cobros sean confiables.
+- **Puede esperar:** paso 5 (asignación fina de zonas; el default ya desbloquea).
+- **DIFERIDO al final (decisión de Fredi):** paso 8 — las **137 FC de testing NO se borran por ahora**. Recién después de validar la lógica contable (paso 6) y decidir el criterio definitivo con Fredi/contador, se evalúa borrarlas quirúrgicamente. Hasta entonces conviven con los datos reales (netean −$0,9 M, no distorsionan).
 
 ### Riesgos por paso
 
 - **Pasos 1–2 (código):** riesgo bajo. Reversibles con `git revert`. Requieren `tsc + build` OK antes de pushear.
 - **Paso 3 (UPDATE P4):** riesgo bajo-medio. Mitigaciones: WHERE acotado a 3 nombres exactos; verificación previa cuenta = 155; backup. `razon_social` no tiene otros consumidores (mapClient no lo expone).
 - **Paso 6 (lógica contable):** riesgo medio-alto. Es refactor de cálculo de saldo. Mitigación: implementar la fuente única **sin** borrar las pantallas viejas hasta validar con los casos de prueba (Sección 4) sobre un cliente conocido; comparar número viejo vs nuevo.
-- **Paso 7 (backfill):** riesgo alto sobre `cuenta_corriente_cliente` (es el libro mayor). **Recomendación: en testing, NO migrar — resetear los cobros de prueba y arrancar limpio.** Si se hiciera, debe ser idempotente y con backup.
+- **Paso 7 (re-imputar 4 cobros):** riesgo **bajo y acotado** (solo 4 movimientos in-app; las 1.034 filas GestionPro y los 165 pendientes no se tocan). A mano, con verificación caso por caso y backup previo.
+- **Paso 8 (limpieza 137 FC testing):** riesgo medio — opera sobre la tabla real. **Diferido**; debe filtrar estrictamente por `observaciones NOT LIKE 'GestionPro%'` (y por id de las 137 FC), con backup y verificación de que el conteo afectado sea exactamente 137 (+ sus movimientos), nunca más.
 
 ### Verificaciones después de cada fix
 
