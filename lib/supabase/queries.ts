@@ -105,6 +105,18 @@ function mapClient(row: any): Client {
     domicilioEntrega: row.domicilio_entrega || null,
     sucursalEntrega: row.sucursal_entrega || null,
     codigoGestionpro: row.codigo_gestionpro || null,
+    // Contactos de Cobranzas (W.4): se mapean para que la ficha del cliente
+    // pueda releerlos tras guardar (antes no se mapeaban y el form quedaba vacío).
+    cobranzasMail: Array.isArray(row.cobranzas_mail)
+      ? row.cobranzas_mail
+      : row.cobranzas_mail ? [row.cobranzas_mail] : [],
+    cobranzasTelefono: Array.isArray(row.cobranzas_telefono)
+      ? row.cobranzas_telefono
+      : row.cobranzas_telefono ? [row.cobranzas_telefono] : [],
+    cobranzasContacto: row.cobranzas_contacto || null,
+    cobranzasObservaciones: row.cobranzas_observaciones || null,
+    portalProveedores: row.portal_proveedores || false,
+    portalProveedoresUrl: row.portal_proveedores_url || null,
   }
 }
 

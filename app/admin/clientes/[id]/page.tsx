@@ -99,15 +99,16 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
           cuit: (clientData as any).cuit || (clientData as any).numeroDocum || "",
           condicionIva: (clientData as any).condicionIva || "",
         })
-        const rawMail = (clientData as any).cobranzas_mail
-        const rawTel = (clientData as any).cobranzas_telefono
+        // W.4: leer los contactos de cobranzas desde los campos mapeados
+        // (mapClient ahora los expone; antes se leían claves snake_case que
+        // nunca venían y el form quedaba vacío tras guardar).
         setCobranzasForm({
-          cobranzas_mail: Array.isArray(rawMail) ? rawMail.filter(Boolean) : rawMail ? [rawMail] : [],
-          cobranzas_telefono: Array.isArray(rawTel) ? rawTel.filter(Boolean) : rawTel ? [rawTel] : [],
-          cobranzas_contacto: (clientData as any).cobranzas_contacto || "",
-          cobranzas_observaciones: (clientData as any).cobranzas_observaciones || "",
-          portal_proveedores: (clientData as any).portal_proveedores || false,
-          portal_proveedores_url: (clientData as any).portal_proveedores_url || "",
+          cobranzas_mail: (clientData.cobranzasMail || []).filter(Boolean),
+          cobranzas_telefono: (clientData.cobranzasTelefono || []).filter(Boolean),
+          cobranzas_contacto: clientData.cobranzasContacto || "",
+          cobranzas_observaciones: clientData.cobranzasObservaciones || "",
+          portal_proveedores: clientData.portalProveedores || false,
+          portal_proveedores_url: clientData.portalProveedoresUrl || "",
         })
       } catch (err) {
         console.error("Error loading client:", err)

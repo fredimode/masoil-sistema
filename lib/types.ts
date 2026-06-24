@@ -117,6 +117,13 @@ export interface Client {
   domicilioEntrega?: string | null
   sucursalEntrega?: string | null
   codigoGestionpro?: string | null
+  // Contactos de Cobranzas (W.4)
+  cobranzasMail?: string[]
+  cobranzasTelefono?: string[]
+  cobranzasContacto?: string | null
+  cobranzasObservaciones?: string | null
+  portalProveedores?: boolean
+  portalProveedoresUrl?: string | null
 }
 
 export interface Vendedor {
