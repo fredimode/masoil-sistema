@@ -132,7 +132,10 @@ export default function NuevaCotizacionVentaPage() {
   }, [])
 
   // Todos los vendedores activos pueden crear cotizaciones (sin restricción comercial).
-  const activeVendedores = vendedores.filter((v) => v.isActive)
+  // W.3: excluir el usuario Administrador (admin@masoil.com.ar) del selector.
+  const activeVendedores = vendedores.filter(
+    (v) => v.isActive && (v.email || "").toLowerCase() !== "admin@masoil.com.ar",
+  )
   const selectedClient = clients.find((c) => c.id === selectedClientId)
 
   // Autofill forma_pago cuando se selecciona cliente
