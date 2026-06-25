@@ -13,6 +13,7 @@ import {
   deleteCobranzaPendiente, fetchVendedores, getNextReciboNumero,
   createReciboCobranza, createChequesRecibidos, fetchRecibosCobranza,
 } from "@/lib/supabase/queries"
+import { calcularSaldoPorCuit, normalizarCuit } from "@/lib/saldos"
 import { formatCurrencyExact, normalizeSearch, formatDateStr } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { Search, Download, Plus, Trash2, Eye, Printer, FileText } from "lucide-react"
@@ -92,18 +93,23 @@ export default function CobranzasPage() {
   const [retenciones, setRetenciones] = useState<any[]>([])
   const [recibos, setRecibos] = useState<any[]>([])
   const [recibosCobranza, setRecibosCobranza] = useState<any[]>([])
+  // P1: el Informe de Saldos ahora lee TODOS los movimientos de
+  // cuenta_corriente_cliente (fuente única lib/saldos.ts), no el snapshot
+  // de cobranzas_pendientes.
+  const [ccMovimientos, setCcMovimientos] = useState<any[]>([])
   const [empresaFilter, setEmpresaFilter] = useState("Todas")
 
   useEffect(() => {
     async function load() {
       try {
-        const [cl, cp, ret, rec, vend, recCob] = await Promise.all([
+        const [cl, cp, ret, rec, vend, recCob, ccAll] = await Promise.all([
           fetchClients(),
           fetchCobranzasPendientes(),
           fetchRetenciones(),
           fetchRecibos(),
           fetchVendedores(),
           fetchRecibosCobranza(),
+          fetchCuentaCorrienteCliente(),
         ])
         setClients(cl)
         setCobranzas(cp)
@@ -111,6 +117,7 @@ export default function CobranzasPage() {
         setRecibos(rec)
         setVendedores(vend)
         setRecibosCobranza(recCob)
+        setCcMovimientos(ccAll)
       } catch (e) {
         console.error(e)
       } finally {
@@ -180,7 +187,7 @@ export default function CobranzasPage() {
         </TabsContent>
 
         <TabsContent value="informe">
-          <TabInforme cobranzas={cobranzas} clients={clients} empresaFilter={empresaFilter} />
+          <TabInforme ccMovimientos={ccMovimientos} clients={clients} empresaFilter={empresaFilter} />
         </TabsContent>
       </Tabs>
     </div>
@@ -1592,7 +1599,7 @@ function TabRetenciones({ retenciones, clients }: { retenciones: any[]; clients:
 
 // ─── Tab 4: Informe Saldos Pendientes ───────────────────────────────────────
 
-function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; clients: any[]; empresaFilter: string }) {
+function TabInforme({ ccMovimientos, clients, empresaFilter }: { ccMovimientos: any[]; clients: any[]; empresaFilter: string }) {
   const [desde, setDesde] = useState("2000-01-01")
   const [hasta, setHasta] = useState(new Date().toISOString().slice(0, 10))
   const [clienteFiltro, setClienteFiltro] = useState("todos") // "todos" | clientId
@@ -1606,64 +1613,109 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
     return map
   }, [clients])
 
-  // Filtrar comprobantes: solo los con saldo pendiente > 0
-  const pendientes = useMemo(() => {
-    let rows = cobranzas.filter((c) => {
-      const saldo = Number(c.saldo_pendiente ?? c.total ?? 0)
-      return saldo > 0
+  // P1: FUENTE ÚNICA. El Informe ahora calcula el saldo igual que la Cuenta
+  // Corriente: neto debe-haber de cuenta_corriente_cliente, agrupado por CUIT
+  // (lib/saldos.ts → calcularSaldoPorCuit). Antes reimputaba FIFO sobre la
+  // tabla `facturas` + snapshot legacy `cobranzas_pendientes`, ignorando las FC
+  // migradas de GestionPro que viven en cuenta_corriente_cliente → subcontaba/
+  // sobrecontaba. El detalle por comprobante son ahora los propios movimientos.
+  const clientIdToCuit = useMemo(() => {
+    const m = new Map<string, string>()
+    clients.forEach((c) => {
+      const cuit = normalizarCuit(c.cuit || c.numeroDocum)
+      if (cuit) m.set(c.id, cuit)
     })
+    return m
+  }, [clients])
+
+  // CUIT → datos de presentación (nombre representativo + cuit formateado)
+  const cuitInfo = useMemo(() => {
+    const m = new Map<string, { name: string; cuit: string }>()
+    clients.forEach((c) => {
+      const cuit = normalizarCuit(c.cuit || c.numeroDocum)
+      if (cuit && !m.has(cuit)) m.set(cuit, { name: c.businessName || "?", cuit: c.cuit || c.numeroDocum || cuit })
+    })
+    return m
+  }, [clients])
+
+  const cuitDeCliente = (clientId: string | null) =>
+    (clientId && clientIdToCuit.get(clientId)) || `cid:${clientId}`
+
+  // Movimientos filtrados por fecha / empresa emisora / cliente
+  const movsFiltrados = useMemo(() => {
+    let rows = ccMovimientos
+    if (desde) rows = rows.filter((m) => (m.fecha || "") >= desde)
+    if (hasta) rows = rows.filter((m) => (m.fecha || "") <= hasta)
     if (empresaFilter !== "Todas") {
-      rows = rows.filter((c) => (c.razon_social || "").toLowerCase() === empresaFilter.toLowerCase())
+      // Movimientos sin empresa conocida se mantienen (igual que Cta Cte).
+      rows = rows.filter((m) => !m.empresa || String(m.empresa).toLowerCase() === empresaFilter.toLowerCase())
     }
-    const fechaCampo = (c: any) => c.fecha_comprobante || c.fecha || c.created_at || ""
-    if (desde) rows = rows.filter((c) => fechaCampo(c) >= desde)
-    if (hasta) rows = rows.filter((c) => fechaCampo(c) <= hasta)
     if (clienteFiltro !== "todos") {
-      // K1.5: agrupar sucursales por CUIT. Si el cliente seleccionado tiene
-      // CUIT, incluir todos los client_id que comparten ese CUIT (cada sucursal
-      // sigue como bloque separado en porCliente). Si no hay CUIT, fallback al
-      // filter directo por client_id.
+      // K1.5: agrupar sucursales por CUIT — incluir todos los client_id del CUIT.
       const target = clientMap[clienteFiltro]
-      const targetCuit = target?.cuit || target?.numeroDocum
+      const targetCuit = normalizarCuit(target?.cuit || target?.numeroDocum)
       if (targetCuit) {
-        const idSet = new Set(
-          clients
-            .filter((c) => (c.cuit || c.numeroDocum) === targetCuit)
-            .map((c) => c.id)
-        )
-        rows = rows.filter((c) => idSet.has(c.client_id))
+        const idSet = new Set(clients.filter((c) => normalizarCuit(c.cuit || c.numeroDocum) === targetCuit).map((c) => c.id))
+        rows = rows.filter((m) => idSet.has(m.client_id))
       } else {
-        rows = rows.filter((c) => c.client_id === clienteFiltro)
+        rows = rows.filter((m) => m.client_id === clienteFiltro)
       }
     }
     return rows
-  }, [cobranzas, empresaFilter, desde, hasta, clienteFiltro, clientMap, clients])
+  }, [ccMovimientos, desde, hasta, empresaFilter, clienteFiltro, clientMap, clients])
 
-  // Agrupar por cliente (alfabético)
+  // Saldo neto autoritativo por CUIT (fuente única)
+  const saldoPorCuit = useMemo(
+    () => calcularSaldoPorCuit(movsFiltrados, clientIdToCuit),
+    [movsFiltrados, clientIdToCuit],
+  )
+
+  // Agrupar por CUIT: solo deudores (saldo > 0). El detalle (`facturas`) son los
+  // movimientos del CUIT; `saldo` por fila = debe-haber firmado (NC/RC restan).
   const porCliente = useMemo(() => {
-    type Grupo = { client_id: string; client_name: string; client_cuit: string | null; facturas: any[]; total: number }
+    type Grupo = { client_id: string; client_name: string; client_cuit: string | null; empresa: string; facturas: any[]; total: number }
     const map = new Map<string, Grupo>()
-    for (const c of pendientes) {
-      const id = c.client_id || "sin_cliente"
-      const cli = clientMap[id]
-      const name = cli?.businessName || c.client_name || "Sin cliente"
-      const cuit = cli?.cuit || cli?.numeroDocum || c.cuit_cliente || null
-      const saldo = Number(c.saldo_pendiente ?? c.total ?? 0)
-      const entry: Grupo = map.get(id) || { client_id: id, client_name: name, client_cuit: cuit, facturas: [] as any[], total: 0 }
-      entry.facturas.push(c)
-      entry.total += saldo
-      map.set(id, entry)
+    for (const m of movsFiltrados) {
+      const cuit = cuitDeCliente(m.client_id)
+      const info = cuitInfo.get(cuit)
+      let g = map.get(cuit)
+      if (!g) {
+        g = {
+          client_id: cuit, // key de expand/render/paginación
+          client_name: info?.name || clientMap[m.client_id]?.businessName || m.client_id || "Sin cliente",
+          client_cuit: info?.cuit || null,
+          empresa: "",
+          facturas: [],
+          total: 0,
+        }
+        map.set(cuit, g)
+      }
+      const debe = Number(m.debe) || 0
+      const haber = Number(m.haber) || 0
+      if (!g.empresa && m.empresa) g.empresa = m.empresa
+      g.facturas.push({
+        id: m.id,
+        fecha_comprobante: m.fecha,
+        tipo_comprobante: m.tipo_comprobante,
+        numero_comprobante: m.numero_comprobante,
+        total: debe > 0 ? debe : haber, // monto del comprobante (display)
+        saldo: Math.round((debe - haber) * 100) / 100, // contribución neta firmada
+      })
     }
-    return Array.from(map.values()).sort((a, b) => a.client_name.localeCompare(b.client_name, "es"))
-  }, [pendientes, clientMap])
+    const grupos: Grupo[] = []
+    for (const g of map.values()) {
+      g.total = saldoPorCuit.get(g.client_id)?.saldo ?? 0
+      if (g.total > 0.005) grupos.push(g) // solo deudores
+    }
+    return grupos.sort((a, b) => a.client_name.localeCompare(b.client_name, "es"))
+  }, [movsFiltrados, saldoPorCuit, cuitInfo, clientMap])
 
-  // Agrupar por empresa (razon_social) → clientes (ambos alfabéticos)
+  // Agrupar por empresa emisora → clientes (ambos alfabéticos)
   const porEmpresa = useMemo(() => {
     type EmpresaGrupo = { empresa: string; clientes: typeof porCliente; total: number }
     const map = new Map<string, EmpresaGrupo>()
     for (const grupo of porCliente) {
-      // Una factura puede tener razon_social; agrupamos por primera razon_social encontrada
-      const empresa = grupo.facturas[0]?.razon_social || "Sin empresa"
+      const empresa = grupo.empresa || "Sin empresa"
       const entry = map.get(empresa) || { empresa, clientes: [] as typeof porCliente, total: 0 }
       entry.clientes.push(grupo)
       entry.total += grupo.total
@@ -1735,7 +1787,7 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
           return String(fa).localeCompare(String(fb))
         })
         for (const f of ordenadas) {
-          const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
+          const saldo = Number(f.saldo ?? 0)
           acumulado += saldo
           totalGeneralXlsx += saldo
           aoa.push([
@@ -1763,7 +1815,7 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
           return String(fa).localeCompare(String(fb))
         })
         for (const f of ordenadas) {
-          const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
+          const saldo = Number(f.saldo ?? 0)
           acumulado += saldo
           const clienteCuit = grupo.client_cuit
             ? `${grupo.client_name} (CUIT: ${grupo.client_cuit})`
@@ -1806,7 +1858,7 @@ function TabInforme({ cobranzas, clients, empresaFilter }: { cobranzas: any[]; c
           return String(fa).localeCompare(String(fb))
         })
         const filas = ordenadas.map((f) => {
-          const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
+          const saldo = Number(f.saldo ?? 0)
           acumulado += saldo
           // J.2: la columna Cliente se removio del sub-header porque el
           // bloque ya identifica al cliente con su CUIT — repetirlo por
@@ -1965,7 +2017,7 @@ function GrupoCliente({ grupo, expanded, onToggle }: { grupo: { client_id: strin
             <span className="ml-3 text-sm text-gray-600 font-mono">CUIT: {grupo.client_cuit}</span>
           )}
         </span>
-        <span className="text-right text-sm text-gray-600 w-28">{grupo.facturas.length} facturas</span>
+        <span className="text-right text-sm text-gray-600 w-28">{grupo.facturas.length} movim.</span>
         <span className="text-right font-semibold text-red-600 w-32">{formatCurrencyExact(grupo.total)}</span>
       </button>
       {expanded && (
@@ -1984,7 +2036,7 @@ function GrupoCliente({ grupo, expanded, onToggle }: { grupo: { client_id: strin
               {(() => {
                 let acum = 0
                 return ordenadas.map((f, i) => {
-                  const saldo = Number(f.saldo_pendiente ?? f.total ?? 0)
+                  const saldo = Number(f.saldo ?? 0)
                   acum += saldo
                   const num = [f.comprobante || f.tipo_comprobante, f.numero_comprobante || f.pv_numero].filter(Boolean).join(" ")
                   return (
