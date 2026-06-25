@@ -321,7 +321,17 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
 
   const totalDebe = useMemo(() => filtered.reduce((s, m) => s + (m.debe || 0), 0), [filtered])
   const totalHaber = useMemo(() => filtered.reduce((s, m) => s + (m.haber || 0), 0), [filtered])
-  const saldoTotal = totalDebe - totalHaber
+  // refactor: el saldo se calcula con la fuente única (lib/saldos.ts). El número
+  // es idéntico al Σdebe−Σhaber que ya mostraba (validado $0 diff en Fase 1).
+  const clientIdToCuit = useMemo(() => {
+    const m = new Map<string, string>()
+    clients.forEach((c) => { const cu = normalizarCuit(c.cuit || c.numeroDocum); if (cu) m.set(c.id, cu) })
+    return m
+  }, [clients])
+  const saldoTotal = useMemo(() => {
+    const map = calcularSaldoPorCuit(filtered, clientIdToCuit)
+    return [...map.values()].reduce((s, v) => s + v.saldo, 0)
+  }, [filtered, clientIdToCuit])
 
   const sortedFiltered = useMemo(
     () => [...filtered].sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "")),
