@@ -15,7 +15,7 @@
 import { createClient } from "@supabase/supabase-js"
 import * as fs from "fs"
 import * as path from "path"
-import { calcularSaldoPorCuit, normalizarCuit, type MovimientoCC } from "../lib/saldos"
+import { calcularSaldoPorCuit, calcularEstadoFacturas, normalizarCuit, type MovimientoCC } from "../lib/saldos"
 
 // ── env + cliente service-role (read-only en la práctica) ──
 const envPath = path.join(__dirname, "..", ".env.local")
@@ -34,7 +34,7 @@ const fmt = (n: number) => n.toLocaleString("es-AR", { maximumFractionDigits: 0 
 async function main() {
   // ── 1) leer datos (read-only) ──
   const [ccRes, clientsRes, factRes, legacyRes] = await Promise.all([
-    supabase.from("cuenta_corriente_cliente").select("client_id, debe, haber, tipo_comprobante, fecha, observaciones").limit(100000),
+    supabase.from("cuenta_corriente_cliente").select("client_id, debe, haber, tipo_comprobante, fecha, observaciones, referencia_id").limit(100000),
     supabase.from("clients").select("id, business_name, cuit, numero_docum").limit(100000),
     supabase.from("facturas").select("id, client_id, razon_social, numero, comprobante_nro, fecha, total, tipo, empresa").limit(100000),
     supabase.from("cobranzas_pendientes").select("*").limit(100000),
@@ -206,6 +206,26 @@ async function main() {
 
   const totalDeudorNuevo = rows.filter((r) => r.nuevoSaldo > 0).reduce((s, r) => s + r.nuevoSaldo, 0)
   console.log(`\nSaldo deudor TOTAL (nuevo): $${fmt(totalDeudorNuevo)}  (esperado ~$92,7M según Sprint X.3)`)
+
+  // ── P2: estado de pago por factura (Facturación) vía calcularEstadoFacturas ──
+  const movimientosPorFactura = new Map<string, number>()
+  for (const m of cc as any[]) {
+    if (!m.referencia_id) continue
+    const k = String(m.referencia_id)
+    movimientosPorFactura.set(k, (movimientosPorFactura.get(k) || 0) + (Number(m.haber) || 0))
+  }
+  const estados = calcularEstadoFacturas(
+    (facturas as any[]).map((f) => ({ id: f.id, total: f.total, tipo: f.tipo })),
+    movimientosPorFactura,
+  )
+  const conCobro = (facturas as any[])
+    .map((f) => ({ f, e: estados.get(String(f.id))! }))
+    .filter((x) => x.e && x.e.pagado > 0)
+  console.log(`\n=== P2: facturas con cobro imputado (estado de pago por factura) ===`)
+  if (!conCobro.length) console.log("  (ninguna factura tiene haber imputado por referencia_id)")
+  for (const { f, e } of conCobro) {
+    console.log(`  factura id=${f.id} ${f.numero || ""}  total=$${fmt(e.total)}  pagado=$${fmt(e.pagado)}  saldo=$${fmt(e.saldo)}`)
+  }
 
   // guard: si algún top-20 difiere de ctacte, avisar fuerte
   const sospechosos = topDeudores.filter((r) => Math.abs(r.diffCtaCte) >= TOL)

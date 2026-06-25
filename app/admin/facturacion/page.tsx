@@ -5,6 +5,7 @@ import { normalizeSearch, formatMoney, formatDateStr } from "@/lib/utils"
 import { fetchFacturasGestionpro, fetchFacturasGestionproCount, fetchFacturas, fetchRemitos, getRemitoPdfUrl } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/client"
 import { fetchCuentaCorrienteCliente } from "@/lib/supabase/queries"
+import { calcularEstadoFacturas } from "@/lib/saldos"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -228,17 +229,24 @@ export default function FacturacionPage() {
     return { totalMonto, byTipo, topVendedores }
   }, [gpData])
 
-  // Calculate deuda per factura based on cuenta corriente
+  // P2: estado de pago por factura vía fuente única lib/saldos.ts. El cobro baja
+  // la deuda porque su haber en cuenta_corriente_cliente referencia el id de la
+  // factura (referencia_id). movimientosPorFactura = Σ haber por referencia_id.
   const deudaMap = useMemo(() => {
+    const movimientosPorFactura = new Map<string, number>()
+    for (const cc of ccData as any[]) {
+      if (!cc?.referencia_id) continue
+      const k = String(cc.referencia_id)
+      movimientosPorFactura.set(k, (movimientosPorFactura.get(k) || 0) + (Number(cc.haber) || 0))
+    }
+    const estados = calcularEstadoFacturas(
+      (emitidas as any[]).map((f) => ({ id: f.id, total: f.total, tipo: f.tipo })),
+      movimientosPorFactura,
+    )
     const map: Record<string, number> = {}
-    // For each factura, check CC payments
-    emitidas.forEach((f: any) => {
-      const total = Number(f.total) || 0
-      // Sum haber (payments) for this factura reference
-      const pagos = ccData.filter((cc: any) => cc.referencia_id === String(f.id))
-      const totalPagado = pagos.reduce((sum: number, cc: any) => sum + (Number(cc.haber) || 0), 0)
-      map[f.id] = Math.max(0, total - totalPagado)
-    })
+    for (const f of emitidas as any[]) {
+      map[f.id] = Math.max(0, estados.get(String(f.id))?.saldo ?? (Number(f.total) || 0))
+    }
     return map
   }, [emitidas, ccData])
 
