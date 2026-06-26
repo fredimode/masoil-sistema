@@ -62,7 +62,9 @@ export function ProductTable({ products, onEdit, onDelete, selectedIds, onSelect
             <TableHead className="text-right">Costo Neto</TableHead>
             <TableHead>Grupo/Rubro</TableHead>
             <TableHead>Ubicacion</TableHead>
-            <TableHead className="w-32">Stock</TableHead>
+            <TableHead className="w-20 text-right">Físico</TableHead>
+            <TableHead className="w-20 text-right">Reservado</TableHead>
+            <TableHead className="w-20 text-right">Disponible</TableHead>
             <TableHead>Estado</TableHead>
             <TableHead className="w-32 text-right">Precio</TableHead>
             <TableHead className="w-24 text-right">Acciones</TableHead>
@@ -113,7 +115,12 @@ export function ProductTable({ products, onEdit, onDelete, selectedIds, onSelect
                 <TableCell className="max-w-[100px] truncate" title={product.ubicacion || ""}>
                   {product.ubicacion || "-"}
                 </TableCell>
-                <TableCell className="font-semibold text-lg">{product.stock}</TableCell>
+                {/* Plan B: Físico / Reservado / Disponible (ej. 5 / −3 / 2) */}
+                <TableCell className="text-right">{product.stockFisico ?? product.stock}</TableCell>
+                <TableCell className="text-right text-amber-600">
+                  {(product.stockReservado ?? 0) > 0 ? `−${product.stockReservado}` : 0}
+                </TableCell>
+                <TableCell className="text-right font-semibold text-lg">{product.stock}</TableCell>
                 <TableCell>
                   <StockIndicator product={product} showCount={false} />
                 </TableCell>

@@ -26,7 +26,9 @@ export interface Product {
   code: string
   name: string
   category: ProductCategory | null
-  stock: number
+  stock: number // Plan B: DISPONIBLE (= stock_fisico − stock_reservado)
+  stockFisico?: number | null
+  stockReservado?: number
   price: number
   isCustomizable: boolean
   customLeadTime: number // days

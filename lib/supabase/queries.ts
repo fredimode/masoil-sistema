@@ -67,7 +67,9 @@ function mapProduct(row: any): Product {
     code: row.code,
     name: row.name,
     category: row.category || null,
-    stock: row.stock,
+    stock: row.stock, // Plan B: disponible
+    stockFisico: row.stock_fisico != null ? Number(row.stock_fisico) : null,
+    stockReservado: Number(row.stock_reservado) || 0,
     price: Number(row.price),
     isCustomizable: row.is_customizable,
     customLeadTime: row.custom_lead_time,
