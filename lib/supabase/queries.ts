@@ -201,6 +201,69 @@ export async function notificarPedido(
   }
 }
 
+// Plan B: días hasta que vence una reserva de stock no entregada (configurable).
+export const RESERVA_EXPIRA_DIAS = 30
+
+// Plan B: helper para ajustar stock de forma atómica vía RPC `ajustar_stock`
+// (actualiza fisico/reservado/disponible + escribe en movimientos_stock en una
+// sola transacción con lock de fila). Tira si la RPC falla.
+async function ajustarStock(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  args: {
+    productId: string | null
+    deltaFisico: number
+    deltaReservado: number
+    tipo: string
+    cantidad: number
+    usuarioId?: string | null
+    usuarioNombre?: string | null
+    observacion?: string | null
+    referenciaTipo?: string | null
+    referenciaId?: string | null
+  },
+): Promise<void> {
+  if (!args.productId) return // líneas libres / descuentos no mueven stock
+  const { error } = await supabase.rpc("ajustar_stock", {
+    p_product_id: args.productId,
+    p_delta_fisico: args.deltaFisico,
+    p_delta_reservado: args.deltaReservado,
+    p_tipo: args.tipo,
+    p_cantidad: args.cantidad,
+    p_usuario_id: args.usuarioId ?? null,
+    p_usuario_nombre: args.usuarioNombre ?? null,
+    p_observacion: args.observacion ?? null,
+    p_referencia_tipo: args.referenciaTipo ?? null,
+    p_referencia_id: args.referenciaId ?? null,
+  })
+  if (error) throw error
+}
+
+// Plan B: al cancelar un pedido, liberar la reserva de stock de los ítems que
+// AÚN reservaban (no los ya facturados, cuyo físico ya salió). Físico no cambia;
+// disponible sube. Luego marca todos los ítems como no reservados.
+export async function cancelarPedidoLiberarStock(orderId: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  const { data: items } = await supabase
+    .from("order_items")
+    .select("id, product_id, quantity, tipo_linea, reservado")
+    .eq("order_id", orderId)
+  for (const it of (items || []) as any[]) {
+    if (it.reservado && it.tipo_linea === "producto" && it.product_id) {
+      await ajustarStock(supabase, {
+        productId: it.product_id,
+        deltaFisico: 0,
+        deltaReservado: -Number(it.quantity),
+        tipo: "LiberaReserva",
+        cantidad: Number(it.quantity),
+        observacion: "Cancelación de pedido",
+        referenciaTipo: "order",
+        referenciaId: orderId,
+      })
+    }
+  }
+  await supabase.from("order_items").update({ reservado: false }).eq("order_id", orderId)
+}
+
 export async function createOrder(order: {
   clientId: string
   clientName: string
@@ -283,6 +346,8 @@ export async function createOrder(order: {
       is_urgent: order.isUrgent,
       estimated_delivery: new Date(Date.now() + (order.isCustom ? 15 : 3) * 86400000).toISOString().slice(0, 10),
       razon_social: order.razonSocial || null,
+      // Plan B: la reserva de stock vence a los RESERVA_EXPIRA_DIAS (default 30).
+      reserva_expira_at: new Date(Date.now() + RESERVA_EXPIRA_DIAS * 86400000).toISOString(),
     })
     .select("id")
     .single()
@@ -328,7 +393,9 @@ export async function createOrder(order: {
     throw itemsError
   }
 
-  // Reserve stock: deduct from products and track shortages
+  // Plan B: RESERVAR stock (no descuenta físico). reservado += q y el disponible
+  // se recalcula (= fisico − reservado) dentro de la RPC atómica. El físico
+  // recién baja al facturar. Shortage = no había disponible suficiente al reservar.
   const shortages: { productId: string; originalStock: number; quantity: number; name: string; code: string }[] = []
   for (const item of order.items) {
     if (item.productId) {
@@ -338,10 +405,19 @@ export async function createOrder(order: {
         .eq("id", item.productId)
         .single()
       if (product) {
-        const originalStock = product.stock ?? 0
-        const newStock = Math.max(0, originalStock - item.quantity)
-        await supabase.from("products").update({ stock: newStock }).eq("id", item.productId)
-        // Track items where original stock < quantity requested
+        const originalStock = product.stock ?? 0 // disponible antes de reservar
+        await ajustarStock(supabase, {
+          productId: item.productId,
+          deltaFisico: 0,
+          deltaReservado: item.quantity,
+          tipo: "Reserva",
+          cantidad: item.quantity,
+          usuarioId: vendedorIdSafe,
+          usuarioNombre: order.vendedorName || null,
+          referenciaTipo: "order",
+          referenciaId: orderData.id,
+        })
+        // Track items where original disponible < quantity requested
         if (originalStock < item.quantity) {
           shortages.push({
             productId: item.productId,
@@ -457,18 +533,18 @@ export async function addItemsToOrder(
     .update({ total: newTotal, updated_at: new Date().toISOString() })
     .eq("id", orderId)
 
-  // Descontar stock
+  // Plan B: reservar stock de los ítems agregados (no descuenta físico).
   for (const item of items) {
     if (!item.productId) continue
-    const { data: product } = await supabase
-      .from("products")
-      .select("stock")
-      .eq("id", item.productId)
-      .single()
-    if (product) {
-      const newStock = Math.max(0, (product.stock ?? 0) - item.quantity)
-      await supabase.from("products").update({ stock: newStock }).eq("id", item.productId)
-    }
+    await ajustarStock(supabase, {
+      productId: item.productId,
+      deltaFisico: 0,
+      deltaReservado: item.quantity,
+      tipo: "Reserva",
+      cantidad: item.quantity,
+      referenciaTipo: "order",
+      referenciaId: orderId,
+    })
   }
 
   // R.7: notificar a Matías los productos agregados al pedido (no bloqueante).
@@ -508,17 +584,17 @@ export async function removeOrderItem(orderId: string, itemId: string): Promise<
     .update({ total: newTotal, updated_at: new Date().toISOString() })
     .eq("id", orderId)
 
-  // Devolver el stock reservado (solo productos de catalogo, igual que al agregar)
+  // Plan B: liberar la reserva (reservado −= q, físico igual → disponible sube).
   if (item.tipo_linea === "producto" && item.product_id) {
-    const { data: product } = await supabase
-      .from("products")
-      .select("stock")
-      .eq("id", item.product_id)
-      .single()
-    if (product) {
-      const newStock = (product.stock ?? 0) + Number(item.quantity)
-      await supabase.from("products").update({ stock: newStock }).eq("id", item.product_id)
-    }
+    await ajustarStock(supabase, {
+      productId: item.product_id,
+      deltaFisico: 0,
+      deltaReservado: -Number(item.quantity),
+      tipo: "LiberaReserva",
+      cantidad: Number(item.quantity),
+      referenciaTipo: "order",
+      referenciaId: orderId,
+    })
   }
 }
 
@@ -548,18 +624,18 @@ export async function updateOrderItem(
   const newPrice = updates.price != null ? updates.price : Number(item.unit_price)
   if (newQty <= 0) throw new Error("La cantidad debe ser mayor a 0")
 
-  // Ajustar stock por la diferencia de cantidad (solo catálogo).
+  // Plan B: ajustar la RESERVA por la diferencia de cantidad (solo catálogo).
   if (item.tipo_linea === "producto" && item.product_id && newQty !== Number(item.quantity)) {
-    const delta = newQty - Number(item.quantity) // positivo = reservar más
-    const { data: product } = await supabase
-      .from("products")
-      .select("stock")
-      .eq("id", item.product_id)
-      .single()
-    if (product) {
-      const newStock = Math.max(0, (product.stock ?? 0) - delta)
-      await supabase.from("products").update({ stock: newStock }).eq("id", item.product_id)
-    }
+    const delta = newQty - Number(item.quantity) // + reserva más, − libera
+    await ajustarStock(supabase, {
+      productId: item.product_id,
+      deltaFisico: 0,
+      deltaReservado: delta,
+      tipo: delta > 0 ? "Reserva" : "LiberaReserva",
+      cantidad: Math.abs(delta),
+      referenciaTipo: "order",
+      referenciaId: orderId,
+    })
   }
 
   const { error: updErr } = await supabase
@@ -1736,14 +1812,20 @@ export async function recibirSeguimiento(params: {
     if (pid && delta !== 0) stockDelta.set(pid, (stockDelta.get(pid) || 0) + delta)
   }
 
-  // Mover stock: sube la cantidad recibida (read-modify-write por producto).
+  // Plan B (rework Plan A): la recepción sube el FÍSICO (+disponible), no el
+  // "stock" a secas. Atómico vía RPC + registra en movimientos_stock (tipo Compra).
   for (const [pid, delta] of stockDelta) {
     if (delta === 0) continue
-    const { data: prod, error: ep } = await supabase.from("products").select("stock").eq("id", pid).single()
-    if (ep) throw ep
-    const nuevo = (Number(prod?.stock) || 0) + delta
-    const { error: eu } = await supabase.from("products").update({ stock: nuevo }).eq("id", pid)
-    if (eu) throw eu
+    await ajustarStock(supabase, {
+      productId: pid,
+      deltaFisico: delta,
+      deltaReservado: 0,
+      tipo: "Compra",
+      cantidad: delta,
+      observacion: "Recepción de mercadería (Seguimiento de Compras)",
+      referenciaTipo: "orden_compra",
+      referenciaId: params.ordenCompraId,
+    })
   }
 
   // Actualizar el seguimiento (estado + observaciones de recepción).
