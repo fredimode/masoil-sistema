@@ -15,7 +15,7 @@ import {
   fetchOrderById, fetchClientById, updateOrderStatus, addItemsToOrder, removeOrderItem, updateOrderItem, fetchProducts,
   fetchOrdenCompraArchivos, createOrdenCompraArchivo, deleteOrdenCompraArchivo,
   fetchClients, fetchVendedores, esVendedorComercial, updateOrder,
-  fetchMovableTargetOrders, moveOrderItemToOrder,
+  fetchMovableTargetOrders, moveOrderItemToOrder, cancelarPedidoLiberarStock,
   type OrdenCompraArchivo,
 } from "@/lib/supabase/queries"
 import type { Vendedor } from "@/lib/types"
@@ -271,21 +271,11 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     try {
       const supabase = createClient()
 
-      // Restore reserved stock
-      for (const item of o.products) {
-        if (item.productId) {
-          const { data: product } = await supabase
-            .from("products")
-            .select("stock")
-            .eq("id", item.productId)
-            .single()
-          if (product) {
-            await supabase.from("products").update({ stock: product.stock + item.quantity }).eq("id", item.productId)
-          }
-        }
-      }
-      // Mark items as not reserved
-      await supabase.from("order_items").update({ reservado: false }).eq("order_id", o.id)
+      // Plan B: liberar la reserva de stock (reservado −= q de los ítems aún
+      // reservados; físico igual → disponible sube) y marcar ítems no reservados.
+      // Lógica movida a queries.ts (cancelarPedidoLiberarStock) — antes restauraba
+      // el "stock" único inline.
+      await cancelarPedidoLiberarStock(o.id)
 
       // Save cancel reason
       await supabase.from("orders").update({

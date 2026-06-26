@@ -423,6 +423,13 @@ export async function POST(request: NextRequest) {
     // AFIP-OK y el UPDATE. Si orderItemIds no vino, no hacemos nada —
     // facturas legacy o emisiones manuales no requieren tracking per-item.
     if (orderItemIds && orderItemIds.length > 0) {
+      // Plan B: datos de los ítems para mover stock al facturar (físico−, reservado−).
+      const { data: oiRows } = await supabase
+        .from("order_items")
+        .select("id, product_id, quantity, tipo_linea")
+        .in("id", orderItemIds.filter(Boolean))
+      const oiMap = new Map((oiRows || []).map((r: any) => [r.id, r]))
+
       for (let i = 0; i < orderItemIds.length; i++) {
         const orderItemId = orderItemIds[i]
         if (!orderItemId) continue
@@ -430,6 +437,9 @@ export async function POST(request: NextRequest) {
         const updateFields: Record<string, unknown> = {
           facturado: true,
           factura_id: factura.id,
+          // Plan B: al facturar, el ítem deja de reservar stock (flag limpiado;
+          // su efecto en stock se aplica abajo vía ajustar_stock).
+          reservado: false,
         }
         if (typeof cantidad === "number" && cantidad > 0) {
           updateFields.cantidad_facturada = cantidad
@@ -449,6 +459,29 @@ export async function POST(request: NextRequest) {
             orderItemId,
             error: oiErr,
           })
+        }
+
+        // Plan B: descuento físico al facturar (−Físico, −Reservado → Disponible
+        // igual). Post-CAE: si falla, se loguea pero NO se aborta (la factura ya
+        // está en AFIP). El movimiento queda registrado en movimientos_stock.
+        const oi: any = oiMap.get(orderItemId)
+        const cantStock = (typeof cantidad === "number" && cantidad > 0)
+          ? cantidad
+          : Number(oi?.quantity) || 0
+        if (oi?.product_id && cantStock > 0) {
+          const { error: stkErr } = await supabase.rpc("ajustar_stock", {
+            p_product_id: oi.product_id,
+            p_delta_fisico: -cantStock,
+            p_delta_reservado: -cantStock,
+            p_tipo: "Venta",
+            p_cantidad: cantStock,
+            p_referencia_tipo: "order",
+            p_referencia_id: orderId,
+            p_observacion: `Facturado ${numero}`,
+          })
+          if (stkErr) {
+            console.error("Step 11c: ERROR ajustando stock por venta:", { orderItemId, error: stkErr })
+          }
         }
       }
     }
