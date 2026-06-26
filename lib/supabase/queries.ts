@@ -1751,6 +1751,27 @@ export async function recibirSeguimiento(params: {
   if (params.observaciones !== undefined) upd.observaciones_recepcion = params.observaciones
   const { error: e2 } = await supabase.from("compras").update(upd).eq("id", params.compraId)
   if (e2) throw e2
+
+  // A.5: al recibir mercadería (completa o incompleta con el faltante), impactar
+  // los pedidos de venta vinculados a la OC: limpiar es_incompleto (saca el ícono
+  // INC y deja el pedido listo para facturar) y registrar el evento en el
+  // historial de estados. El vínculo OC→pedido es solicitudes_compra.orden_compra_id.
+  if (params.estado === "Recibido Completo" || params.estado === "Recibido Incompleto") {
+    const { data: ocRow } = await supabase
+      .from("ordenes_compra").select("nro_oc").eq("id", params.ordenCompraId).maybeSingle()
+    const nroOc = ocRow?.nro_oc || params.ordenCompraId
+    const pedidos = await fetchPedidosVentaVinculadosAOC(params.ordenCompraId)
+    for (const p of pedidos) {
+      await supabase.from("orders").update({ es_incompleto: false }).eq("id", p.orderId)
+      await supabase.from("order_status_history").insert({
+        order_id: p.orderId,
+        status: p.status, // mantiene el estado actual; solo se registra el evento
+        changed_by: null,
+        user_name: "Sistema (recepción compras)",
+        notes: `Mercadería recibida (OC ${nroOc}) — ${params.estado}. Pedido listo para facturar.`,
+      })
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
