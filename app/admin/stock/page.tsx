@@ -281,6 +281,9 @@ export default function AdminStockPage() {
             <Download className="h-4 w-4 mr-2" />
             Exportar
           </Button>
+          <Button asChild variant="outline">
+            <Link href="/admin/stock/movimientos">Historial de Movimientos</Link>
+          </Button>
           <Button asChild>
             <Link href="/admin/stock/nuevo">
               <Plus className="h-4 w-4 mr-2" />

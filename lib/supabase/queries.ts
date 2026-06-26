@@ -294,6 +294,22 @@ export async function ajusteManualStock(params: {
   if (error) throw error
 }
 
+// Plan B Fase 3: historial de movimientos de stock (ledger).
+export async function fetchMovimientosStock(limit = 5000): Promise<any[]> {
+  const supabase = createSupabaseClient()
+  const { data, error } = await supabase
+    .from("movimientos_stock")
+    .select("*, products(code, name)")
+    .order("fecha", { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return (data || []).map((m: any) => ({
+    ...m,
+    producto_codigo: m.products?.code || null,
+    producto_nombre: m.products?.name || null,
+  }))
+}
+
 export async function createOrder(order: {
   clientId: string
   clientName: string
