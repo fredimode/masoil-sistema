@@ -79,8 +79,31 @@ finanzas y contabilidad de IVA. Ver `docs/ESTADO_SISTEMA.md` (auditoría) y
   confirmación antes de mover stock.
 - **Gating a nivel app**: solo `compras@masoil.com.ar` (Agustín) y
   `matias@aquilesweb.com` (Matías) pueden recibir/mover stock.
-- Stock es cantidad única (las 3 columnas Físico/Reservado/Disponible son Plan B,
-  futuro).
+
+## Modelo de stock (Plan B — implementado, 4 fases)
+**3 columnas en `products`** con invariante **`stock = stock_fisico − stock_reservado`**
+(donde `products.stock` = DISPONIBLE; se mantiene ese nombre por compat).
+- **Toda** mutación de stock pasa por la RPC Postgres **`ajustar_stock`**
+  (`FOR UPDATE` + escribe en `movimientos_stock` en la misma transacción).
+  NO actualizar `products.stock*` con UPDATE directo — usar la RPC (helper
+  `ajustarStock` en queries.ts, o `supabase.rpc("ajustar_stock", …)` en routes).
+- Circuito: **crear pedido** → reservado+ (disp−, físico igual) ·
+  **facturar** (`/api/facturar`) → físico− y reservado− *solo si el ítem seguía
+  `reservado=true`* (disp igual) · **recepción Seguimiento** (`recibirSeguimiento`)
+  → físico+ (disp+) · **cancelar / quitar ítem / expirar** → reservado− (disp+).
+- **`order_items.reservado`** debe limpiarse al facturar/cancelar/expirar (si
+  queda pegado en true rompe el cálculo de reservas; fue la causa del backfill).
+- **Historial**: tabla `movimientos_stock` (ledger con antes/después). UI en
+  `/admin/stock/movimientos`. Ajuste manual de físico: gateado Agustín/Matías
+  (`ajusteManualStock`).
+- **Expiración (Fase 4)**: `orders.reserva_expira_at = now()+RESERVA_EXPIRA_DIAS`
+  (const, default 30) en `createOrder`. Cron diario `/api/cron/expirar-reservas`
+  (en `vercel.json`, `0 6 * * *`, auth `Bearer CRON_SECRET`, soporta `?dry_run=true`)
+  libera reservas vencidas de pedidos abiertos (BORRADOR/INGRESADO/FACTURADO_PARCIAL),
+  marca `orders.reserva_expirada=true` y registra en `order_status_history`. El
+  pedido **sigue activo** (opción a). Pedidos viejos con `reserva_expira_at` NULL
+  NO expiran (los maneja el equipo a mano).
+- **Requiere en Vercel**: env var `CRON_SECRET` + el cron de `vercel.json`.
 
 ## Seguridad — DEUDA ABIERTA (no resuelta aún)
 - **RLS permisiva**: casi todas las tablas tienen `USING(true)` (ver
