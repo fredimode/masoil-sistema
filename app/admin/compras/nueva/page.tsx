@@ -15,7 +15,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Paperclip, X, Search, Upload, Check } from "lucide-react"
 import type { Product } from "@/lib/types"
 
-const ESTADOS_OC = ["Pendiente", "Realizado", "Recibido Completo", "Recibido Incompleto", "Factura Cargada", "Cancelado"]
 const EMPRESAS = ["Masoil", "Aquiles", "Conancap"]
 
 interface CompraItem {
@@ -794,28 +793,15 @@ function NuevaCompraForm() {
               <Input type="date" value={form.fecha_estimada_ingreso} onChange={(e) => setForm((prev) => ({ ...prev, fecha_estimada_ingreso: e.target.value }))} />
             </div>
 
-            {/* Estado */}
-            <div className="space-y-2">
-              <Label>Estado</Label>
-              <select value={form.estado} onChange={(e) => setForm((prev) => ({ ...prev, estado: e.target.value }))} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm">
-                {ESTADOS_OC.map((e) => (<option key={e} value={e}>{e}</option>))}
-              </select>
-            </div>
-
-            {/* Observaciones si Recibido Incompleto */}
-            {form.estado === "Recibido Incompleto" && (
-              <div className="space-y-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                <Label className="text-orange-800">Observaciones (obligatorio) <span className="text-red-500">*</span></Label>
-                <Textarea placeholder="Detalle de lo faltante..." value={form.observaciones_incompleto} onChange={(e) => setForm((prev) => ({ ...prev, observaciones_incompleto: e.target.value }))} required rows={2} />
-                <p className="text-xs text-orange-600">Se notificara al comprador sobre la recepcion incompleta.</p>
-              </div>
-            )}
+            {/* A.1: el Estado de la OC/Seguimiento es automático (Pendiente al
+                crear). La recepción (Recibido Completo/Incompleto) y sus
+                observaciones se gestionan en el Seguimiento de Compras. */}
           </CardContent>
         </Card>
 
         <div className="flex justify-end gap-3 mt-6">
           <Button type="button" variant="outline" onClick={() => router.push("/admin/compras")} disabled={submitting}>Cancelar</Button>
-          <Button type="submit" disabled={submitting || !form.empresa || (articuloMode === "texto" ? !form.articulo.trim() : compraItems.length === 0) || (form.estado === "Recibido Incompleto" && !form.observaciones_incompleto.trim())}>
+          <Button type="submit" disabled={submitting || !form.empresa || (articuloMode === "texto" ? !form.articulo.trim() : compraItems.length === 0)}>
             {submitting ? "Guardando..." : "Crear Compra"}
           </Button>
         </div>

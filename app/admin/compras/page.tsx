@@ -11,7 +11,6 @@ import {
   fetchOrdenesCompra,
   deleteCompra,
   updateCompra,
-  deleteOrdenCompra,
   updateOrdenCompra,
   fetchSolicitudesCompra,
   updateSolicitudCompra,
@@ -37,7 +36,13 @@ import {
 import { Eye, Pencil, Trash2, Paperclip, FileText } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 
-const ESTADOS_OC = ["Pendiente", "Realizado", "Recibido Completo", "Recibido Incompleto", "Factura Cargada", "Cancelado"]
+// A.1: estados de la OC, automáticos y NO editables en el listado.
+//   Pendiente (default al crear) → Facturado (al contabilizar la factura de
+//   compra que levanta la OC) → Eliminado (soft-delete con el ícono).
+const ESTADOS_OC = ["Pendiente", "Facturado", "Eliminado"]
+// Estados del Seguimiento de Compras (recepción de mercadería). Se derivan de
+// las tildes por ítem (todos tildados → Completo; alguno no → Incompleto).
+const ESTADOS_SEGUIMIENTO = ["Pendiente", "Recibido Completo", "Recibido Incompleto"]
 
 function estadoBadge(estado: string) {
   const lower = (estado || "").toLowerCase()
@@ -178,7 +183,9 @@ export default function ComprasPage() {
       normalizeSearch(o.proveedor_nombre || "").includes(normalizeSearch(busquedaOrdenes)) ||
       normalizeSearch(o.nro_oc || "").includes(normalizeSearch(busquedaOrdenes))
     const matchRazon = !razonSocialOrdenes || o.razon_social === razonSocialOrdenes
-    const matchEstado = !estadoOrdenes || o.estado === estadoOrdenes
+    // A.1: por defecto no se listan las OC eliminadas (soft-delete); aparecen
+    // solo si se filtra explícitamente por "Eliminado".
+    const matchEstado = estadoOrdenes ? o.estado === estadoOrdenes : o.estado !== "Eliminado"
     return matchBusqueda && matchRazon && matchEstado
   })
 
@@ -221,9 +228,11 @@ export default function ComprasPage() {
   async function handleDeleteOrden() {
     if (!deletingOrden) return
     try {
-      await deleteOrdenCompra(deletingOrden.id)
+      // A.1: soft-delete — la OC pasa a estado "Eliminado" (queda en la DB y
+      // sale del listado activo), en vez de borrarse físicamente.
+      await updateOrdenCompra(deletingOrden.id, { estado: "Eliminado" })
+      setOrdenes((prev) => prev.map((x) => x.id === deletingOrden.id ? { ...x, estado: "Eliminado" } : x))
       setDeletingOrden(null)
-      await loadData()
     } catch (err) {
       console.error("Error eliminando orden:", err)
     }
@@ -694,7 +703,7 @@ export default function ComprasPage() {
               className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
             >
               <option value="">Todos los estados</option>
-              {ESTADOS_OC.map((e) => (
+              {ESTADOS_SEGUIMIENTO.map((e) => (
                 <option key={e} value={e}>{e}</option>
               ))}
             </select>
@@ -767,7 +776,7 @@ export default function ComprasPage() {
                             }}
                             className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
                           >
-                            {ESTADOS_OC.map((e) => (
+                            {ESTADOS_SEGUIMIENTO.map((e) => (
                               <option key={e} value={e}>{e}</option>
                             ))}
                           </select>
@@ -924,8 +933,7 @@ export default function ComprasPage() {
                       <th className="px-2 py-3 text-right font-semibold text-gray-700" style={{ width: 85 }}>Importe</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 120 }}>Estado</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 90 }}>Empresa</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>F. Recepción</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 60 }}>Nro OC</th>
+                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 70 }}>N° OC</th>
                       <th className="px-2 py-3 text-center font-semibold text-gray-700" style={{ width: 75 }}>Acciones</th>
                     </tr>
                   </thead>
@@ -941,75 +949,18 @@ export default function ComprasPage() {
                         <td className="px-2 py-2 text-right font-bold text-gray-900">
                           {formatCurrencyExact(Number(o.importe_total) || 0)}
                         </td>
-                        <td className="px-2 py-1">
-                          <select
-                            value={o.estado || ""}
-                            onChange={async (e) => {
-                              const nuevoEstado = e.target.value
-                              try {
-                                await updateOrdenCompra(o.id, { estado: nuevoEstado })
-                                setOrdenes((prev) => prev.map((x) => x.id === o.id ? { ...x, estado: nuevoEstado } : x))
-                                // G2.3 (Sprint H) — al recibir mercaderia,
-                                // mostrar aviso con pedidos vinculados para
-                                // que el operador sepa cuales pueden facturar
-                                // ahora. Solo informativo, sin cambio de estado.
-                                if (nuevoEstado === "Recibido Completo") {
-                                  try {
-                                    const pendientes = await fetchPedidosVentaVinculadosAOC(o.id)
-                                    if (pendientes.length > 0) {
-                                      setMarcarIngresadoOC({ ocId: o.id, pendientes })
-                                    }
-                                  } catch (err) {
-                                    console.error("Error buscando pedidos venta vinculados:", err)
-                                  }
-                                }
-                              } catch (err) {
-                                console.error("Error actualizando estado:", err)
-                              }
-                            }}
-                            className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
-                          >
-                            {ESTADOS_OC.map((e) => (
-                              <option key={e} value={e}>{e}</option>
-                            ))}
-                          </select>
+                        {/* A.1: Estado automático, NO editable (badge) */}
+                        <td className="px-2 py-2">
+                          {(() => {
+                            const est = o.estado || "Pendiente"
+                            const cls = est === "Facturado" ? "bg-green-100 text-green-700"
+                              : est === "Eliminado" ? "bg-red-100 text-red-700"
+                              : "bg-amber-100 text-amber-700"
+                            return <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${cls}`}>{est}</span>
+                          })()}
                         </td>
-                        <td className="px-2 py-1">
-                          <select
-                            value={o.empresa || ""}
-                            onChange={async (e) => {
-                              const val = e.target.value
-                              setOrdenes((prev) => prev.map((x) => x.id === o.id ? { ...x, empresa: val } : x))
-                              try {
-                                await updateOrdenCompra(o.id, { empresa: val || null })
-                              } catch (err) {
-                                console.error("Error guardando empresa:", err)
-                              }
-                            }}
-                            className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
-                          >
-                            <option value="">-</option>
-                            <option value="Masoil">Masoil</option>
-                            <option value="Aquiles">Aquiles</option>
-                            <option value="Conancap">Conancap</option>
-                          </select>
-                        </td>
-                        <td className="px-2 py-1">
-                          <input
-                            type="date"
-                            value={o.fecha_recepcion || ""}
-                            onChange={async (e) => {
-                              const val = e.target.value
-                              setOrdenes((prev) => prev.map((x) => x.id === o.id ? { ...x, fecha_recepcion: val } : x))
-                              try {
-                                await updateOrdenCompra(o.id, { fecha_recepcion: val || null })
-                              } catch (err) {
-                                console.error("Error guardando fecha recepción:", err)
-                              }
-                            }}
-                            className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
-                          />
-                        </td>
+                        {/* A.1: Empresa automática (se levanta al crear la OC), NO editable */}
+                        <td className="px-2 py-2 text-gray-600 text-xs">{o.empresa || "-"}</td>
                         <td className="px-2 py-2 text-gray-600 truncate text-xs">{o.nro_oc || "-"}</td>
                         <td className="px-1 py-2 text-center">
                           <div className="flex items-center justify-center gap-1">
@@ -1119,7 +1070,7 @@ export default function ComprasPage() {
             <div>
               <label className="text-sm text-gray-600 block mb-1">Estado</label>
               <select value={editCompraForm.estado || ""} onChange={(e) => setEditCompraForm((f: any) => ({ ...f, estado: e.target.value }))} className="w-full p-2 border rounded-lg text-sm">
-                {ESTADOS_OC.map((e) => (<option key={e} value={e}>{e}</option>))}
+                {ESTADOS_SEGUIMIENTO.map((e) => (<option key={e} value={e}>{e}</option>))}
               </select>
             </div>
             <div>
@@ -1299,12 +1250,8 @@ export default function ComprasPage() {
               <label className="text-sm text-gray-600 block mb-1">Importe Total</label>
               <input type="number" value={editOrdenForm.importe_total || 0} onChange={(e) => setEditOrdenForm((f: any) => ({ ...f, importe_total: Number(e.target.value) }))} className="w-full p-2 border rounded-lg text-sm" />
             </div>
-            <div>
-              <label className="text-sm text-gray-600 block mb-1">Estado</label>
-              <select value={editOrdenForm.estado || ""} onChange={(e) => setEditOrdenForm((f: any) => ({ ...f, estado: e.target.value }))} className="w-full p-2 border rounded-lg text-sm">
-                {ESTADOS_OC.map((e) => (<option key={e} value={e}>{e}</option>))}
-              </select>
-            </div>
+            {/* A.1: el Estado de la OC es automático (Pendiente/Facturado/Eliminado),
+                no se edita a mano. */}
             <div>
               <label className="text-sm text-gray-600 block mb-1">Nro OC</label>
               <input type="text" value={editOrdenForm.nro_oc || ""} onChange={(e) => setEditOrdenForm((f: any) => ({ ...f, nro_oc: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
