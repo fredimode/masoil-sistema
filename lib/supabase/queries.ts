@@ -266,6 +266,34 @@ export async function cancelarPedidoLiberarStock(orderId: string): Promise<void>
   await supabase.from("order_items").update({ reservado: false }).eq("order_id", orderId)
 }
 
+// Plan B Fase 3: ajuste manual de stock FÍSICO (Agustín/Matías). Mueve solo
+// físico (+disponible) vía la RPC atómica y queda en movimientos_stock.
+export async function ajusteManualStock(params: {
+  productId: string
+  tipo: "AjustePositivo" | "AjusteNegativo"
+  cantidad: number
+  observacion: string
+  usuarioId?: string | null
+  usuarioNombre?: string | null
+}): Promise<void> {
+  const supabase = createSupabaseClient()
+  const mag = Math.abs(Number(params.cantidad) || 0)
+  const delta = params.tipo === "AjustePositivo" ? mag : -mag
+  const { error } = await supabase.rpc("ajustar_stock", {
+    p_product_id: params.productId,
+    p_delta_fisico: delta,
+    p_delta_reservado: 0,
+    p_tipo: params.tipo,
+    p_cantidad: mag,
+    p_usuario_id: params.usuarioId ?? null,
+    p_usuario_nombre: params.usuarioNombre ?? null,
+    p_observacion: params.observacion || null,
+    p_referencia_tipo: "ajuste",
+    p_referencia_id: null,
+  })
+  if (error) throw error
+}
+
 export async function createOrder(order: {
   clientId: string
   clientName: string

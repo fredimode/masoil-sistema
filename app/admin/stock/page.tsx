@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
-import { fetchProducts, fetchProductsCount, updateProduct, deleteProduct, deleteProducts } from "@/lib/supabase/queries"
+import { fetchProducts, fetchProductsCount, updateProduct, deleteProduct, deleteProducts, ajusteManualStock } from "@/lib/supabase/queries"
+import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import { normalizeSearch } from "@/lib/utils"
 import type { Product } from "@/lib/types"
 import { Search, Plus, Download, Upload, Trash2 } from "lucide-react"
@@ -41,6 +42,53 @@ export default function AdminStockPage() {
 
   // Delete dialog state
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
+
+  // Plan B Fase 3: ajuste manual de stock físico (gating Agustín/Matías).
+  const { vendedor } = useCurrentVendedor()
+  const puedeAjustar = ["compras@masoil.com.ar", "matias@aquilesweb.com"]
+    .includes((vendedor?.email || "").toLowerCase())
+  const OBS_PREDEF = ["Muestras", "Obsequios", "Uso interno", "Bajas por rotura", "Otras"]
+  const [adjustProduct, setAdjustProduct] = useState<Product | null>(null)
+  const [adjustTipo, setAdjustTipo] = useState<"AjustePositivo" | "AjusteNegativo">("AjustePositivo")
+  const [adjustCantidad, setAdjustCantidad] = useState("")
+  const [adjustObsOpcion, setAdjustObsOpcion] = useState("Muestras")
+  const [adjustObsTexto, setAdjustObsTexto] = useState("")
+  const [savingAdjust, setSavingAdjust] = useState(false)
+
+  function openAdjust(product: Product) {
+    setAdjustProduct(product)
+    setAdjustTipo("AjustePositivo")
+    setAdjustCantidad("")
+    setAdjustObsOpcion("Muestras")
+    setAdjustObsTexto("")
+  }
+
+  async function handleSaveAdjust() {
+    if (!adjustProduct) return
+    const cant = parseFloat(adjustCantidad)
+    if (!cant || cant <= 0) { alert("Ingresá una cantidad mayor a 0"); return }
+    const observacion = adjustObsOpcion === "Otras" ? adjustObsTexto.trim() : adjustObsOpcion
+    if (!observacion) { alert("Ingresá la observación"); return }
+    setSavingAdjust(true)
+    try {
+      await ajusteManualStock({
+        productId: adjustProduct.id,
+        tipo: adjustTipo,
+        cantidad: cant,
+        observacion,
+        usuarioId: vendedor?.id || null,
+        usuarioNombre: vendedor?.name || null,
+      })
+      const updated = await fetchProducts()
+      setLocalProducts(updated)
+      setAdjustProduct(null)
+    } catch (err) {
+      console.error("Error ajustando stock:", err)
+      alert("Error al ajustar stock: " + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setSavingAdjust(false)
+    }
+  }
 
   useEffect(() => {
     Promise.all([fetchProducts(), fetchProductsCount()])
@@ -334,6 +382,7 @@ export default function AdminStockPage() {
             products={paginatedProducts}
             onEdit={openEditDialog}
             onDelete={setDeleteTarget}
+            onAjustar={puedeAjustar ? openAdjust : undefined}
             selectedIds={selectedIds}
             onSelectionChange={setSelectedIds}
           />
@@ -431,6 +480,55 @@ export default function AdminStockPage() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Plan B Fase 3: Ajuste manual de stock físico (Agustín/Matías) */}
+      {adjustProduct && (
+        <Dialog open onOpenChange={(open) => { if (!open && !savingAdjust) setAdjustProduct(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Ajustar stock físico</DialogTitle>
+              <DialogDescription>
+                {adjustProduct.name} ({adjustProduct.code}) — Físico actual: {adjustProduct.stockFisico ?? adjustProduct.stock}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm font-medium block mb-1">Tipo de ajuste</label>
+                <Select value={adjustTipo} onValueChange={(v) => setAdjustTipo(v as "AjustePositivo" | "AjusteNegativo")}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="AjustePositivo">Ajuste positivo (+)</SelectItem>
+                    <SelectItem value="AjusteNegativo">Ajuste negativo (−)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">Cantidad</label>
+                <Input type="number" min="0" step="1" value={adjustCantidad} onChange={(e) => setAdjustCantidad(e.target.value)} />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1">Observación</label>
+                <Select value={adjustObsOpcion} onValueChange={setAdjustObsOpcion}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {OBS_PREDEF.map((o) => (<SelectItem key={o} value={o}>{o}</SelectItem>))}
+                  </SelectContent>
+                </Select>
+                {adjustObsOpcion === "Otras" && (
+                  <Input className="mt-2" placeholder="Detalle de la observación" value={adjustObsTexto} onChange={(e) => setAdjustObsTexto(e.target.value)} />
+                )}
+              </div>
+              <p className="text-xs text-amber-600">
+                El ajuste mueve el stock FÍSICO (y disponible) y queda registrado en el historial de movimientos.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setAdjustProduct(null)} disabled={savingAdjust}>Cancelar</Button>
+              <Button onClick={handleSaveAdjust} disabled={savingAdjust}>{savingAdjust ? "Guardando..." : "Aplicar ajuste"}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* Delete Product Dialog - conditional mount */}

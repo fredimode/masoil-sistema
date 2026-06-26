@@ -6,18 +6,19 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { StockIndicator } from "@/components/vendedor/stock-indicator"
 import { formatCurrencyExact, cn } from "@/lib/utils"
 import type { Product } from "@/lib/types"
-import { Edit, Trash2, Eye } from "lucide-react"
+import { Edit, Trash2, Eye, SlidersHorizontal } from "lucide-react"
 import Link from "next/link"
 
 interface ProductTableProps {
   products: Product[]
   onEdit?: (product: Product) => void
   onDelete?: (product: Product) => void
+  onAjustar?: (product: Product) => void
   selectedIds?: Set<string>
   onSelectionChange?: (ids: Set<string>) => void
 }
 
-export function ProductTable({ products, onEdit, onDelete, selectedIds, onSelectionChange }: ProductTableProps) {
+export function ProductTable({ products, onEdit, onDelete, onAjustar, selectedIds, onSelectionChange }: ProductTableProps) {
   const allSelected = products.length > 0 && selectedIds != null && products.every((p) => selectedIds.has(p.id))
   const someSelected = selectedIds != null && products.some((p) => selectedIds.has(p.id)) && !allSelected
 
@@ -132,6 +133,11 @@ export function ProductTable({ products, onEdit, onDelete, selectedIds, onSelect
                         <Eye className="h-4 w-4" />
                       </Link>
                     </Button>
+                    {onAjustar && (
+                      <Button size="sm" variant="ghost" onClick={() => onAjustar(product)} title="Ajustar stock físico">
+                        <SlidersHorizontal className="h-4 w-4" />
+                      </Button>
+                    )}
                     <Button size="sm" variant="ghost" onClick={() => onEdit?.(product)}>
                       <Edit className="h-4 w-4" />
                     </Button>
