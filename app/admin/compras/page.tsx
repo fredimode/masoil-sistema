@@ -377,6 +377,20 @@ export default function ComprasPage() {
         }],
       })
 
+      // A.3: el Seguimiento de Compras se crea automáticamente al convertir la
+      // solicitud en OC (antes Q.2 no creaba fila de seguimiento → la OC no
+      // aparecía en Seguimiento). Vinculado por orden_compra_id.
+      const { data: ocRow } = await supabase.from("ordenes_compra").select("nro_oc").eq("id", ocId).single()
+      await supabase.from("compras").insert({
+        fecha: new Date().toISOString().slice(0, 10),
+        proveedor_id: proveedor?.id || null,
+        proveedor_nombre: proveedorNombre,
+        articulo: solicitud.producto_nombre || "Sin descripción",
+        estado: "Pendiente",
+        nro_oc: ocRow?.nro_oc || null,
+        orden_compra_id: ocId,
+      })
+
       await updateSolicitudCompra(solicitud.id, { estado: "convertido_oc", orden_compra_id: ocId })
       await loadData()
       setActiveTab("ordenes")
@@ -707,16 +721,6 @@ export default function ComprasPage() {
                 <option key={e} value={e}>{e}</option>
               ))}
             </select>
-            <select
-              value={vendedorCompras}
-              onChange={(e) => { setVendedorCompras(e.target.value); setComprasPage(1) }}
-              className="p-2 border rounded-lg focus:ring-2 focus:ring-primary text-sm"
-            >
-              <option value="">Todos los vendedores</option>
-              {vendedoresUnicos.map((v) => (
-                <option key={v} value={v}>{v}</option>
-              ))}
-            </select>
             <button
               onClick={exportComprasXLSX}
               className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm flex items-center gap-1"
@@ -739,7 +743,6 @@ export default function ComprasPage() {
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 75 }}>Fecha</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 120 }}>Proveedor</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 160 }}>Articulo</th>
-                      <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 75 }}>Vendedor</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 120 }}>Estado</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 90 }}>Nro Orden de Compra</th>
                       <th className="px-2 py-3 text-left font-semibold text-gray-700" style={{ width: 80 }}>F. Recepción</th>
@@ -758,9 +761,6 @@ export default function ComprasPage() {
                         </td>
                         <td className="px-2 py-2 text-gray-600 truncate" title={c.articulo || ""}>
                           {c.articulo || "-"}
-                        </td>
-                        <td className="px-2 py-2 text-gray-600 truncate" title={c.vendedor || ""}>
-                          {c.vendedor || "-"}
                         </td>
                         <td className="px-2 py-1">
                           <select
@@ -1039,7 +1039,6 @@ export default function ComprasPage() {
               <div><strong>Fecha:</strong> {viewingCompra.fecha ? formatDate(new Date(viewingCompra.fecha)) : "-"}</div>
               <div><strong>Proveedor:</strong> {viewingCompra.proveedor_nombre || "-"}</div>
               <div><strong>Articulo:</strong> {viewingCompra.articulo || "-"}</div>
-              <div><strong>Vendedor:</strong> {viewingCompra.vendedor || "-"}</div>
               <div><strong>Estado:</strong> {viewingCompra.estado || "-"}</div>
               <div><strong>Nro Cotizacion:</strong> {viewingCompra.nro_cotizacion || "-"}</div>
               <div><strong>Nro Nota Pedido:</strong> {viewingCompra.nro_nota_pedido || "-"}</div>
@@ -1062,10 +1061,6 @@ export default function ComprasPage() {
             <div>
               <label className="text-sm text-gray-600 block mb-1">Articulo</label>
               <input type="text" value={editCompraForm.articulo || ""} onChange={(e) => setEditCompraForm((f: any) => ({ ...f, articulo: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
-            </div>
-            <div>
-              <label className="text-sm text-gray-600 block mb-1">Vendedor</label>
-              <input type="text" value={editCompraForm.vendedor || ""} onChange={(e) => setEditCompraForm((f: any) => ({ ...f, vendedor: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
             </div>
             <div>
               <label className="text-sm text-gray-600 block mb-1">Estado</label>

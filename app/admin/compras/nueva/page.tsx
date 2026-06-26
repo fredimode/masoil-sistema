@@ -408,10 +408,13 @@ function NuevaCompraForm() {
           nro_cotizacion: form.nro_cotizacion || null,
           nro_nota_pedido: form.nro_nota_pedido || null,
           nro_oc: nroOcGenerado,
-          estado: form.estado || null,
+          estado: "Pendiente",
           fecha: form.fecha || null,
           fecha_estimada_ingreso: form.fecha_estimada_ingreso || null,
           email_comercial: form.email_comercial || null,
+          // A.3: vincular el Seguimiento con la OC (si se creó). El detalle de
+          // Seguimiento lee orden_compra_items para tildar la recepción por ítem.
+          orden_compra_id: ocId,
         })
         .select("id")
         .single()
