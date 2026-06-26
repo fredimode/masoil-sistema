@@ -57,7 +57,7 @@ export default function OrdenCompraEditarPage() {
     setLoading(false)
   }
 
-  function updateItem(idx: number, field: keyof EditItem, value: number) {
+  function updateItem(idx: number, field: keyof EditItem, value: number | string) {
     setItems((prev) => {
       const updated = [...prev]
       updated[idx] = { ...updated[idx], [field]: value }
@@ -65,6 +65,10 @@ export default function OrdenCompraEditarPage() {
     })
   }
 
+  // Costo neto unitario (tras bonificación) y subtotal de línea.
+  function netoUnit(it: EditItem) {
+    return Math.round(it.precio_unitario * (1 - (it.descuento_porcentaje || 0) / 100) * 100) / 100
+  }
   function lineSubtotal(it: EditItem) {
     const base = it.cantidad * it.precio_unitario
     const desc = base * ((it.descuento_porcentaje || 0) / 100)
@@ -81,9 +85,11 @@ export default function OrdenCompraEditarPage() {
           cantidad: it.cantidad,
           precio_unitario: it.precio_unitario,
           descuento_porcentaje: it.descuento_porcentaje,
+          producto_nombre: it.producto_nombre,
         })),
       )
-      router.push(`/admin/compras/${params.id}`)
+      // A.2: la página de detalle [id] no existe; volvemos al listado.
+      router.push(`/admin/compras`)
     } catch (e: any) {
       alert("Error al guardar: " + (e?.message || e))
       setSaving(false)
@@ -98,7 +104,7 @@ export default function OrdenCompraEditarPage() {
       <div className="max-w-4xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={() => router.push(`/admin/compras/${params.id}`)}>
+            <Button variant="ghost" size="icon" onClick={() => router.push(`/admin/compras`)}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <h1 className="text-xl font-bold">Editar Orden de Compra</h1>
@@ -131,17 +137,19 @@ export default function OrdenCompraEditarPage() {
                   <table className="w-full text-sm">
                     <thead className="bg-muted text-xs">
                       <tr>
-                        <th className="text-center p-2 w-24">Cantidad</th>
-                        <th className="text-left p-2">Código</th>
-                        <th className="text-left p-2">Producto</th>
+                        <th className="text-center p-2 w-20">Cantidad</th>
+                        <th className="text-left p-2 w-24">Código</th>
+                        <th className="text-left p-2">Descripción</th>
                         <th className="text-right p-2 w-28">Costo</th>
-                        <th className="text-right p-2 w-24">Desc.%</th>
+                        <th className="text-right p-2 w-20">Bonif %</th>
+                        <th className="text-right p-2 w-28">Costo c/bonif</th>
                         <th className="text-right p-2 w-28">Subtotal</th>
                       </tr>
                     </thead>
                     <tbody>
                       {items.map((it, idx) => (
                         <tr key={it.id} className="border-t">
+                          {/* A.2: Cantidad editable */}
                           <td className="p-2">
                             <Input
                               type="number"
@@ -152,16 +160,18 @@ export default function OrdenCompraEditarPage() {
                             />
                           </td>
                           <td className="p-2 font-mono text-xs">{it.producto_codigo || "-"}</td>
-                          <td className="p-2">{it.producto_nombre}</td>
+                          {/* A.2: Descripción editable */}
                           <td className="p-2">
                             <Input
-                              type="number"
-                              step="0.01"
-                              value={it.precio_unitario}
-                              onChange={(e) => updateItem(idx, "precio_unitario", Number(e.target.value))}
-                              className="text-right h-8"
+                              type="text"
+                              value={it.producto_nombre}
+                              onChange={(e) => updateItem(idx, "producto_nombre", e.target.value)}
+                              className="h-8"
                             />
                           </td>
+                          {/* A.2: Costo (precio unitario) NO editable */}
+                          <td className="p-2 text-right text-muted-foreground">{formatCurrencyExact(it.precio_unitario)}</td>
+                          {/* A.2: Bonificación editable */}
                           <td className="p-2">
                             <Input
                               type="number"
@@ -172,21 +182,22 @@ export default function OrdenCompraEditarPage() {
                               className="text-right h-8"
                             />
                           </td>
+                          <td className="p-2 text-right">{formatCurrencyExact(netoUnit(it))}</td>
                           <td className="p-2 text-right font-medium">{formatCurrencyExact(lineSubtotal(it))}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot>
                       <tr className="border-t">
-                        <td colSpan={5} className="text-right p-2 text-muted-foreground">Subtotal (neto)</td>
+                        <td colSpan={6} className="text-right p-2 text-muted-foreground">Subtotal (neto)</td>
                         <td className="text-right p-2">{formatCurrencyExact(sumSub)}</td>
                       </tr>
                       <tr>
-                        <td colSpan={5} className="text-right p-2 text-muted-foreground">IVA 21%</td>
+                        <td colSpan={6} className="text-right p-2 text-muted-foreground">IVA 21%</td>
                         <td className="text-right p-2">{formatCurrencyExact(sumIva)}</td>
                       </tr>
                       <tr className="font-medium">
-                        <td colSpan={5} className="text-right p-2">Total</td>
+                        <td colSpan={6} className="text-right p-2">Total</td>
                         <td className="text-right p-2">{formatCurrencyExact(Math.round((sumSub + sumIva) * 100) / 100)}</td>
                       </tr>
                     </tfoot>
@@ -194,7 +205,7 @@ export default function OrdenCompraEditarPage() {
                 </div>
               )}
               <p className="text-xs text-muted-foreground mt-3">
-                El código y el producto no se modifican desde acá. Podés editar cantidad, costo y descuento.
+                Podés editar la cantidad, la descripción y la bonificación. El código y el costo (precio unitario) no se modifican desde acá.
               </p>
             </Card>
           </div>

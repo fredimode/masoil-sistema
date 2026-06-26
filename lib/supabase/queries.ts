@@ -1669,7 +1669,7 @@ export async function createOrdenCompra(oc: {
 // Recalcula subtotal por ítem (neto de descuento) e importe_total de la OC.
 export async function updateOrdenCompraItems(
   ordenCompraId: string,
-  items: { id: string; cantidad: number; precio_unitario: number; descuento_porcentaje?: number }[],
+  items: { id: string; cantidad: number; precio_unitario: number; descuento_porcentaje?: number; producto_nombre?: string }[],
 ): Promise<number> {
   const supabase = createSupabaseClient()
   let importeTotal = 0
@@ -1685,6 +1685,8 @@ export async function updateOrdenCompraItems(
         precio_unitario: it.precio_unitario,
         descuento_porcentaje: it.descuento_porcentaje ?? 0,
         subtotal,
+        // A.2: la descripción (producto_nombre) ahora es editable desde la OC.
+        ...(it.producto_nombre !== undefined ? { producto_nombre: it.producto_nombre } : {}),
       })
       .eq("id", it.id)
     if (error) throw error
