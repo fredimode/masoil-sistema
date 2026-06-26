@@ -426,7 +426,7 @@ export async function POST(request: NextRequest) {
       // Plan B: datos de los ítems para mover stock al facturar (físico−, reservado−).
       const { data: oiRows } = await supabase
         .from("order_items")
-        .select("id, product_id, quantity, tipo_linea")
+        .select("id, product_id, quantity, tipo_linea, reservado")
         .in("id", orderItemIds.filter(Boolean))
       const oiMap = new Map((oiRows || []).map((r: any) => [r.id, r]))
 
@@ -469,10 +469,15 @@ export async function POST(request: NextRequest) {
           ? cantidad
           : Number(oi?.quantity) || 0
         if (oi?.product_id && cantStock > 0) {
+          // Plan B Fase 4: liberar reservado SOLO si el ítem seguía reservado.
+          // Si la reserva ya venció (cron lo liberó, reservado=false), facturar
+          // baja el físico pero NO toca reservado (evita reservado negativo y
+          // romper el invariante disponible = físico − reservado).
+          const deltaReservado = oi.reservado ? -cantStock : 0
           const { error: stkErr } = await supabase.rpc("ajustar_stock", {
             p_product_id: oi.product_id,
             p_delta_fisico: -cantStock,
-            p_delta_reservado: -cantStock,
+            p_delta_reservado: deltaReservado,
             p_tipo: "Venta",
             p_cantidad: cantStock,
             p_referencia_tipo: "order",
