@@ -108,6 +108,7 @@ export default function ComprasPage() {
   // A.3: detalle de recepción del Seguimiento (tildes por ítem de la OC)
   const [detalleCompra, setDetalleCompra] = useState<any | null>(null)
   const [detalleItems, setDetalleItems] = useState<any[]>([])
+  const [detalleObs, setDetalleObs] = useState("")
   const [detalleLoading, setDetalleLoading] = useState(false)
   const [savingDetalle, setSavingDetalle] = useState(false)
   const [editingCompra, setEditingCompra] = useState<any | null>(null)
@@ -261,6 +262,7 @@ export default function ComprasPage() {
     }
     setDetalleCompra(c)
     setDetalleItems([])
+    setDetalleObs(c.observaciones_recepcion || "")
     setDetalleLoading(true)
     try {
       const items = await fetchOrdenCompraItems(c.orden_compra_id)
@@ -314,9 +316,11 @@ export default function ComprasPage() {
           recibido: !!it.recibido,
         })),
         estado: estadoSeguimientoCalc(detalleItems),
+        observaciones: detalleObs || null,
       })
       setDetalleCompra(null)
       setDetalleItems([])
+      setDetalleObs("")
       await loadData()
       alert("Stock actualizado y recepción guardada.")
     } catch (e: any) {
@@ -517,6 +521,17 @@ export default function ComprasPage() {
           .maybeSingle()
         proveedorData = data
       }
+      // A.4: las observaciones de la recepción viven en el Seguimiento vinculado
+      // (compras.observaciones_recepcion). Las inyectamos en el PDF de la OC.
+      let observacionesPdf: string | null = orden.observaciones || null
+      const { data: segRow } = await supabase
+        .from("compras")
+        .select("observaciones_recepcion")
+        .eq("orden_compra_id", orden.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (segRow?.observaciones_recepcion) observacionesPdf = segRow.observaciones_recepcion
       const blob = generateOrdenCompraPDF({
         nro_oc: orden.nro_oc || `OC-${String(orden.id).slice(0, 8)}`,
         fecha: orden.fecha || null,
@@ -537,7 +552,7 @@ export default function ComprasPage() {
           subtotal: Number(it.subtotal) || 0,
         })),
         total: Number(orden.importe_total) || 0,
-        observaciones: orden.observaciones || null,
+        observaciones: observacionesPdf,
         condicion_pago: orden.condicion_pago || null,
         estado: orden.estado || null,
       })
@@ -926,6 +941,7 @@ export default function ComprasPage() {
                                   estado: c.estado || "",
                                   nro_cotizacion: c.nro_cotizacion || "",
                                   nro_nota_pedido: c.nro_nota_pedido || "",
+                                  observaciones_recepcion: c.observaciones_recepcion || "",
                                 })
                               }}
                               className="p-1 hover:bg-gray-200 rounded" title="Editar"
@@ -1195,6 +1211,18 @@ export default function ComprasPage() {
                   </table>
                 </div>
               )}
+              {/* A.4: Observaciones de la recepción (se guardan y salen en el PDF de la OC) */}
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">Observaciones</label>
+                <textarea
+                  value={detalleObs}
+                  disabled={!puedeRecibir}
+                  onChange={(e) => setDetalleObs(e.target.value)}
+                  rows={2}
+                  placeholder="Notas de la recepción (faltantes, estado de la mercadería, etc.)"
+                  className="w-full p-2 border rounded-lg text-sm disabled:bg-gray-100"
+                />
+              </div>
               {puedeRecibir ? (
                 <p className="text-xs text-amber-600">
                   Al guardar se sube el stock de los ítems tildados (por la cantidad recibida).
@@ -1249,6 +1277,10 @@ export default function ComprasPage() {
             <div>
               <label className="text-sm text-gray-600 block mb-1">Nro Nota Pedido</label>
               <input type="text" value={editCompraForm.nro_nota_pedido || ""} onChange={(e) => setEditCompraForm((f: any) => ({ ...f, nro_nota_pedido: e.target.value }))} className="w-full p-2 border rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="text-sm text-gray-600 block mb-1">Observaciones</label>
+              <textarea value={editCompraForm.observaciones_recepcion || ""} onChange={(e) => setEditCompraForm((f: any) => ({ ...f, observaciones_recepcion: e.target.value }))} rows={2} className="w-full p-2 border rounded-lg text-sm" />
             </div>
           </div>
           <DialogFooter>
