@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dialog"
 import { Eye, Pencil, Trash2, Paperclip, FileText } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
+import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 
 // A.1: estados de la OC, automáticos y NO editables en el listado.
 //   Pendiente (default al crear) → Facturado (al contabilizar la factura de
@@ -97,6 +98,12 @@ export default function ComprasPage() {
   const [estadoOrdenes, setEstadoOrdenes] = useState("")
 
   // Action dialogs - Compras
+  // A.3c: control a nivel app — solo Agustín y Matías reciben mercadería /
+  // mueven stock. Otros usuarios ven el detalle pero no pueden tildar/guardar.
+  const { vendedor } = useCurrentVendedor()
+  const EMAILS_RECEPCION = ["compras@masoil.com.ar", "matias@aquilesweb.com"]
+  const puedeRecibir = EMAILS_RECEPCION.includes((vendedor?.email || "").toLowerCase())
+
   const [viewingCompra, setViewingCompra] = useState<any | null>(null)
   // A.3: detalle de recepción del Seguimiento (tildes por ítem de la OC)
   const [detalleCompra, setDetalleCompra] = useState<any | null>(null)
@@ -289,6 +296,11 @@ export default function ComprasPage() {
 
   async function guardarRecepcion() {
     if (!detalleCompra) return
+    // A.3c: doble chequeo a nivel app (además de ocultar la acción en la UI).
+    if (!puedeRecibir) {
+      alert("Solo Agustín o Matías pueden recibir mercadería y mover stock.")
+      return
+    }
     // A.3: advertencia obligatoria antes de mover stock.
     if (!confirm("Usted está a punto de subir stock, ¿Desea continuar?")) return
     setSavingDetalle(true)
@@ -841,6 +853,7 @@ export default function ComprasPage() {
                         <td className="px-2 py-1">
                           <select
                             value={c.estado || ""}
+                            disabled={!puedeRecibir}
                             onChange={async (e) => {
                               const nuevoEstado = e.target.value
                               try {
@@ -850,7 +863,7 @@ export default function ComprasPage() {
                                 console.error("Error actualizando estado:", err)
                               }
                             }}
-                            className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary"
+                            className="p-1 border rounded text-xs w-full bg-white focus:ring-2 focus:ring-primary disabled:bg-gray-100 disabled:cursor-not-allowed"
                           >
                             {ESTADOS_SEGUIMIENTO.map((e) => (
                               <option key={e} value={e}>{e}</option>
@@ -1158,8 +1171,9 @@ export default function ComprasPage() {
                             <input
                               type="checkbox"
                               checked={it.recibido}
+                              disabled={!puedeRecibir}
                               onChange={(e) => updateDetalleItem(idx, "recibido", e.target.checked)}
-                              className="h-4 w-4 cursor-pointer"
+                              className="h-4 w-4 cursor-pointer disabled:cursor-not-allowed"
                             />
                           </td>
                           <td className="p-2 font-mono text-xs">{it.codigo}</td>
@@ -1170,8 +1184,9 @@ export default function ComprasPage() {
                               type="number"
                               min={0}
                               value={it.cantidadRecibida}
+                              disabled={!puedeRecibir}
                               onChange={(e) => updateDetalleItem(idx, "cantidadRecibida", Number(e.target.value))}
-                              className="w-24 p-1 border rounded text-right text-sm"
+                              className="w-24 p-1 border rounded text-right text-sm disabled:bg-gray-100"
                             />
                           </td>
                         </tr>
@@ -1180,20 +1195,28 @@ export default function ComprasPage() {
                   </table>
                 </div>
               )}
-              <p className="text-xs text-amber-600">
-                Al guardar se sube el stock de los ítems tildados (por la cantidad recibida).
-              </p>
+              {puedeRecibir ? (
+                <p className="text-xs text-amber-600">
+                  Al guardar se sube el stock de los ítems tildados (por la cantidad recibida).
+                </p>
+              ) : (
+                <p className="text-xs text-gray-500">
+                  Solo Agustín o Matías pueden recibir mercadería y mover stock. Estás en modo solo lectura.
+                </p>
+              )}
             </div>
           )}
           <DialogFooter>
             <button onClick={() => { setDetalleCompra(null); setDetalleItems([]) }} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cerrar</button>
-            <button
-              onClick={guardarRecepcion}
-              disabled={savingDetalle || detalleLoading || detalleItems.length === 0}
-              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm disabled:opacity-50"
-            >
-              {savingDetalle ? "Guardando..." : "Guardar y subir stock"}
-            </button>
+            {puedeRecibir && (
+              <button
+                onClick={guardarRecepcion}
+                disabled={savingDetalle || detalleLoading || detalleItems.length === 0}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm disabled:opacity-50"
+              >
+                {savingDetalle ? "Guardando..." : "Guardar y subir stock"}
+              </button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
