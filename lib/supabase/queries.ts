@@ -1700,6 +1700,59 @@ export async function updateOrdenCompraItems(
   return importeTotal
 }
 
+// A.3: recepción de mercadería desde el Seguimiento de Compras. Es el ÚNICO
+// punto que mueve stock en el circuito de compras (no la factura de proveedor):
+// sube `products.stock` por el DELTA de cantidad recibida por ítem, de modo que
+// re-guardar o destildar no duplica ni descuenta de más (idempotente). Marca
+// orden_compra_items.cantidad_recibida/recibido y el estado del seguimiento.
+export async function recibirSeguimiento(params: {
+  compraId: string
+  ordenCompraId: string
+  recepcion: { itemId: string; cantidadRecibida: number; recibido: boolean }[]
+  estado: string
+  observaciones?: string | null
+}): Promise<void> {
+  const supabase = createSupabaseClient()
+  // Estado previo de los ítems para calcular el delta de stock a mover.
+  const { data: rows, error: e0 } = await supabase
+    .from("orden_compra_items")
+    .select("id, product_id, cantidad_recibida, recibido")
+    .eq("orden_compra_id", params.ordenCompraId)
+  if (e0) throw e0
+  const prevById = new Map((rows || []).map((r: any) => [r.id, r]))
+
+  const stockDelta = new Map<string, number>()
+  for (const rec of params.recepcion) {
+    const prev = prevById.get(rec.itemId)
+    const prevEf = prev?.recibido ? (Number(prev.cantidad_recibida) || 0) : 0
+    const newEf = rec.recibido ? (Number(rec.cantidadRecibida) || 0) : 0
+    const delta = newEf - prevEf
+    const { error } = await supabase
+      .from("orden_compra_items")
+      .update({ cantidad_recibida: rec.cantidadRecibida, recibido: rec.recibido })
+      .eq("id", rec.itemId)
+    if (error) throw error
+    const pid = prev?.product_id
+    if (pid && delta !== 0) stockDelta.set(pid, (stockDelta.get(pid) || 0) + delta)
+  }
+
+  // Mover stock: sube la cantidad recibida (read-modify-write por producto).
+  for (const [pid, delta] of stockDelta) {
+    if (delta === 0) continue
+    const { data: prod, error: ep } = await supabase.from("products").select("stock").eq("id", pid).single()
+    if (ep) throw ep
+    const nuevo = (Number(prod?.stock) || 0) + delta
+    const { error: eu } = await supabase.from("products").update({ stock: nuevo }).eq("id", pid)
+    if (eu) throw eu
+  }
+
+  // Actualizar el seguimiento (estado + observaciones de recepción).
+  const upd: Record<string, any> = { estado: params.estado }
+  if (params.observaciones !== undefined) upd.observaciones_recepcion = params.observaciones
+  const { error: e2 } = await supabase.from("compras").update(upd).eq("id", params.compraId)
+  if (e2) throw e2
+}
+
 // ---------------------------------------------------------------------------
 // Facturas (emitidas por el sistema)
 // ---------------------------------------------------------------------------

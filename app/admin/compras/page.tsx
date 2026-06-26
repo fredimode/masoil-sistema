@@ -21,6 +21,7 @@ import {
   fetchProducts,
   fetchOrdenCompraItems,
   fetchPedidosVentaVinculadosAOC,
+  recibirSeguimiento,
 } from "@/lib/supabase/queries"
 import { generateOrdenCompraPDF } from "@/lib/pdf/orden-compra-pdf"
 import type { Product } from "@/lib/types"
@@ -97,6 +98,11 @@ export default function ComprasPage() {
 
   // Action dialogs - Compras
   const [viewingCompra, setViewingCompra] = useState<any | null>(null)
+  // A.3: detalle de recepción del Seguimiento (tildes por ítem de la OC)
+  const [detalleCompra, setDetalleCompra] = useState<any | null>(null)
+  const [detalleItems, setDetalleItems] = useState<any[]>([])
+  const [detalleLoading, setDetalleLoading] = useState(false)
+  const [savingDetalle, setSavingDetalle] = useState(false)
   const [editingCompra, setEditingCompra] = useState<any | null>(null)
   const [editCompraForm, setEditCompraForm] = useState<any>({})
   const [deletingCompra, setDeletingCompra] = useState<any | null>(null)
@@ -235,6 +241,76 @@ export default function ComprasPage() {
       setDeletingOrden(null)
     } catch (err) {
       console.error("Error eliminando orden:", err)
+    }
+  }
+
+  // A.3: abrir el detalle de recepción de un Seguimiento. Si está atado a una OC
+  // (orden_compra_id) carga sus ítems para tildar la recepción; si es un
+  // seguimiento legacy de texto libre, abre el detalle plano read-only.
+  async function abrirDetalleSeguimiento(c: any) {
+    if (!c.orden_compra_id) {
+      setViewingCompra(c)
+      return
+    }
+    setDetalleCompra(c)
+    setDetalleItems([])
+    setDetalleLoading(true)
+    try {
+      const items = await fetchOrdenCompraItems(c.orden_compra_id)
+      setDetalleItems((items || []).map((it: any) => ({
+        id: it.id,
+        codigo: it.producto_codigo || "-",
+        nombre: it.producto_nombre || "-",
+        cantidadPedida: Number(it.cantidad) || 0,
+        cantidadRecibida: it.cantidad_recibida != null ? Number(it.cantidad_recibida) : (Number(it.cantidad) || 0),
+        recibido: !!it.recibido,
+      })))
+    } catch (e) {
+      console.error("Error cargando ítems de la OC:", e)
+      setDetalleItems([])
+    } finally {
+      setDetalleLoading(false)
+    }
+  }
+
+  // Estado automático: todos tildados y con cantidad completa → Recibido Completo;
+  // alguno sin tildar o con cantidad menor → Recibido Incompleto; nada tildado → Pendiente.
+  function estadoSeguimientoCalc(items: any[]): string {
+    if (items.length === 0) return "Pendiente"
+    const tildados = items.filter((i) => i.recibido)
+    if (tildados.length === 0) return "Pendiente"
+    const completo = items.every((i) => i.recibido && Number(i.cantidadRecibida) >= Number(i.cantidadPedida))
+    return completo ? "Recibido Completo" : "Recibido Incompleto"
+  }
+
+  function updateDetalleItem(idx: number, field: "cantidadRecibida" | "recibido", value: number | boolean) {
+    setDetalleItems((prev) => prev.map((it, i) => i === idx ? { ...it, [field]: value } : it))
+  }
+
+  async function guardarRecepcion() {
+    if (!detalleCompra) return
+    // A.3: advertencia obligatoria antes de mover stock.
+    if (!confirm("Usted está a punto de subir stock, ¿Desea continuar?")) return
+    setSavingDetalle(true)
+    try {
+      await recibirSeguimiento({
+        compraId: detalleCompra.id,
+        ordenCompraId: detalleCompra.orden_compra_id,
+        recepcion: detalleItems.map((it) => ({
+          itemId: it.id,
+          cantidadRecibida: Number(it.cantidadRecibida) || 0,
+          recibido: !!it.recibido,
+        })),
+        estado: estadoSeguimientoCalc(detalleItems),
+      })
+      setDetalleCompra(null)
+      setDetalleItems([])
+      await loadData()
+      alert("Stock actualizado y recepción guardada.")
+    } catch (e: any) {
+      alert("Error al guardar la recepción: " + (e?.message || e))
+    } finally {
+      setSavingDetalle(false)
     }
   }
 
@@ -824,7 +900,7 @@ export default function ComprasPage() {
                                 <Paperclip className="h-3.5 w-3.5 text-blue-600" />
                               </button>
                             )}
-                            <button onClick={() => setViewingCompra(c)} className="p-1 hover:bg-gray-200 rounded" title="Ver detalle">
+                            <button onClick={() => abrirDetalleSeguimiento(c)} className="p-1 hover:bg-gray-200 rounded" title="Ver detalle">
                               <Eye className="h-3.5 w-3.5 text-gray-600" />
                             </button>
                             <button
@@ -1044,6 +1120,81 @@ export default function ComprasPage() {
               <div><strong>Nro Nota Pedido:</strong> {viewingCompra.nro_nota_pedido || "-"}</div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* A.3: Detalle de recepción del Seguimiento (tildes por ítem de la OC) */}
+      <Dialog open={!!detalleCompra} onOpenChange={(open) => { if (!open) { setDetalleCompra(null); setDetalleItems([]) } }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Recepción de mercadería{detalleCompra?.nro_oc ? ` — ${detalleCompra.nro_oc}` : ""}</DialogTitle>
+          </DialogHeader>
+          {detalleCompra && (
+            <div className="space-y-3">
+              <div className="text-sm text-gray-600">
+                <span className="font-medium">{detalleCompra.proveedor_nombre || "-"}</span>
+                {" · "}Estado: <span className="font-medium">{estadoSeguimientoCalc(detalleItems)}</span>
+              </div>
+              {detalleLoading ? (
+                <p className="text-sm text-gray-500">Cargando ítems...</p>
+              ) : detalleItems.length === 0 ? (
+                <p className="text-sm text-gray-500">La OC no tiene ítems cargados.</p>
+              ) : (
+                <div className="overflow-x-auto border rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100 text-xs">
+                      <tr>
+                        <th className="p-2 text-center w-12">Recib.</th>
+                        <th className="p-2 text-left w-24">Código</th>
+                        <th className="p-2 text-left">Descripción</th>
+                        <th className="p-2 text-right w-20">Pedida</th>
+                        <th className="p-2 text-right w-28">Recibida</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {detalleItems.map((it, idx) => (
+                        <tr key={it.id} className="border-t">
+                          <td className="p-2 text-center">
+                            <input
+                              type="checkbox"
+                              checked={it.recibido}
+                              onChange={(e) => updateDetalleItem(idx, "recibido", e.target.checked)}
+                              className="h-4 w-4 cursor-pointer"
+                            />
+                          </td>
+                          <td className="p-2 font-mono text-xs">{it.codigo}</td>
+                          <td className="p-2">{it.nombre}</td>
+                          <td className="p-2 text-right text-gray-600">{it.cantidadPedida}</td>
+                          <td className="p-2">
+                            <input
+                              type="number"
+                              min={0}
+                              value={it.cantidadRecibida}
+                              onChange={(e) => updateDetalleItem(idx, "cantidadRecibida", Number(e.target.value))}
+                              className="w-24 p-1 border rounded text-right text-sm"
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+              <p className="text-xs text-amber-600">
+                Al guardar se sube el stock de los ítems tildados (por la cantidad recibida).
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <button onClick={() => { setDetalleCompra(null); setDetalleItems([]) }} className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Cerrar</button>
+            <button
+              onClick={guardarRecepcion}
+              disabled={savingDetalle || detalleLoading || detalleItems.length === 0}
+              className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 text-sm disabled:opacity-50"
+            >
+              {savingDetalle ? "Guardando..." : "Guardar y subir stock"}
+            </button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
