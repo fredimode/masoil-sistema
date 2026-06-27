@@ -653,7 +653,15 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
         const newOrderStatus = allInvoiced ? "FACTURADO" : "FACTURADO_PARCIAL"
         const uid = currentUser?.id || o.vendedorId
         const uname = currentUser?.name || "Admin"
-        await updateOrderStatus(o.id, newOrderStatus as OrderStatus, uid, uname, `Factura ${data.numero}`)
+        // updateOrderStatus dispara la asignación al reparto. Si esa parte falla,
+        // la factura YA se emitió y el status ya quedó guardado: avisamos del
+        // problema de reparto sin reportar la factura como fallida.
+        try {
+          await updateOrderStatus(o.id, newOrderStatus as OrderStatus, uid, uname, `Factura ${data.numero}`)
+        } catch (statusErr) {
+          console.error("updateOrderStatus/reparto:", statusErr)
+          alert("La factura se emitió OK, pero falló la asignación al reparto. Avisá a Logística.")
+        }
 
         setCurrentStatus(newOrderStatus as OrderStatus)
         setStatusHistory([

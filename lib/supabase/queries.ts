@@ -845,9 +845,14 @@ export async function updateOrderStatus(
 
   if (histError) throw histError
 
-  // Trigger Logística: al pasar a FACTURADO o FACTURADO_PARCIAL, asignar al reparto del próximo día hábil
+  // Trigger Logística: al pasar a FACTURADO o FACTURADO_PARCIAL, asignar al reparto
+  // del próximo día hábil. Antes el error se tragaba en silencio (console.error) →
+  // un fallo de asignación quedaba invisible y el pedido nunca entraba a la Hoja.
+  // Ahora propaga: el status ya quedó committeado arriba (la factura no se pierde),
+  // y el caller (handleFacturar) muestra un aviso claro sin reportar la factura
+  // como fallida.
   if (newStatus === "FACTURADO" || newStatus === "FACTURADO_PARCIAL") {
-    try { await assignOrderToNextReparto(orderId) } catch (e) { console.error("assignOrderToNextReparto:", e) }
+    await assignOrderToNextReparto(orderId)
   }
 }
 
@@ -2244,34 +2249,45 @@ export async function assignOrderToNextReparto(orderId: string): Promise<void> {
   // asignado al reparto pero sin pasar a EN_PROCESO_ENTREGA, inconsistente con
   // la hoja de ruta.
   const shouldTransition = order.status === "FACTURADO" || order.status === "FACTURADO_PARCIAL"
-  const alreadyInReparto = order.reparto_id === repartoId
 
-  if (!alreadyInReparto) {
-    const { data: existing } = await supabase
-      .from("reparto_items")
-      .select("id")
-      .eq("reparto_id", repartoId)
-      .eq("order_id", orderId)
-      .maybeSingle()
+  // Dedup por "pendiente", NO por "presente": solo evitamos duplicar si el pedido
+  // YA tiene un destino SIN entregar en este reparto. Un ítem previo ya entregado
+  // ("entregado"/"cliente_retira") NO bloquea — la mercadería recién facturada
+  // necesita su propio destino, aunque caiga en el mismo reparto del envío anterior.
+  // (Bug PED-JGE-0052: 2da factura el mismo viernes apuntaba al mismo reparto del
+  // lunes donde el 1er ítem ya estaba entregado → no reimpactaba en la Hoja.)
+  // .select() plano (no .maybeSingle()) para no reventar si hubiera filas duplicadas.
+  const ESTADOS_COMPLETADOS = ["entregado", "cliente_retira"]
+  const { data: itemsEnReparto } = await supabase
+    .from("reparto_items")
+    .select("id, estado_entrega")
+    .eq("reparto_id", repartoId)
+    .eq("order_id", orderId)
 
-    if (!existing) {
-      let facturaNro: string | null = null
-      if (order.factura_id) {
-        const { data: f } = await supabase.from("facturas").select("numero, punto_venta").eq("id", order.factura_id).single()
-        if (f) facturaNro = f.numero ? `${f.punto_venta || ""}-${f.numero}`.replace(/^-/, "") : null
-      }
+  const tienePendiente = (itemsEnReparto || []).some(
+    (it) => !ESTADOS_COMPLETADOS.includes(it.estado_entrega)
+  )
 
-      await supabase.from("reparto_items").insert({
-        reparto_id: repartoId,
-        order_id: orderId,
-        factura_numero: facturaNro,
-        client_name: order.client_name,
-        zona: order.zona || null,
-        sucursal_entrega: order.entrega_otra_sucursal || null,
-        estado_entrega: "pendiente",
-        es_destino_extra: false,
-      })
+  if (!tienePendiente) {
+    let facturaNro: string | null = null
+    if (order.factura_id) {
+      // facturas.numero ya viene completo ("00007-00000056"). NO usar punto_venta:
+      // esa columna no existe en prod (drift) y rompía el select (42703) → dejaba
+      // factura_numero en null en la Hoja.
+      const { data: f } = await supabase.from("facturas").select("numero").eq("id", order.factura_id).maybeSingle()
+      if (f?.numero) facturaNro = f.numero
     }
+
+    await supabase.from("reparto_items").insert({
+      reparto_id: repartoId,
+      order_id: orderId,
+      factura_numero: facturaNro,
+      client_name: order.client_name,
+      zona: order.zona || null,
+      sucursal_entrega: order.entrega_otra_sucursal || null,
+      estado_entrega: "pendiente",
+      es_destino_extra: false,
+    })
   }
 
   const updateFields: Record<string, unknown> = {

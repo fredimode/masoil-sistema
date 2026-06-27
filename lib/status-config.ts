@@ -98,7 +98,10 @@ export const validTransitions: Record<OrderStatus, OrderStatus[]> = {
   FACTURADO_PARCIAL: ["FACTURADO", "EN_PROCESO_ENTREGA", "CANCELADO"],
   FACTURADO: ["EN_PROCESO_ENTREGA", "CANCELADO"],
   EN_PROCESO_ENTREGA: ["ENTREGADO", "ENTREGADO_PARCIAL", "CANCELADO"],
-  ENTREGADO_PARCIAL: ["ENTREGADO", "CANCELADO"],
+  // Desde entrega parcial se puede volver a facturar (la mercadería recién
+  // facturada vuelve al reparto). No se valida en runtime — refleja la realidad
+  // y alimenta el dropdown de la UI.
+  ENTREGADO_PARCIAL: ["FACTURADO", "FACTURADO_PARCIAL", "ENTREGADO", "CANCELADO"],
   ENTREGADO: [],
   CANCELADO: [],
 }
