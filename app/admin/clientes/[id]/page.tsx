@@ -431,7 +431,12 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
             <div className="space-y-3 text-sm">
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Dirección fiscal</p>
-                <p className="font-medium">{client.address || <span className="text-muted-foreground italic">—</span>}</p>
+                <p className="font-medium">{client.domicilio || client.address || <span className="text-muted-foreground italic">—</span>}</p>
+              </div>
+              <Separator />
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">Lugar de Entrega</p>
+                <p className="font-medium">{client.lugarEntrega || <span className="text-muted-foreground italic">— (sin definir)</span>}</p>
               </div>
               <Separator />
               <div>

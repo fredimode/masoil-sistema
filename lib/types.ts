@@ -116,6 +116,9 @@ export interface Client {
   sucursal?: string | null
   cuit?: string | null
   numeroDocum?: string | null
+  // Domicilio fiscal y lugar de entrega reales (import GestionPro).
+  domicilio?: string | null
+  lugarEntrega?: string | null
   domicilioEntrega?: string | null
   sucursalEntrega?: string | null
   codigoGestionpro?: string | null

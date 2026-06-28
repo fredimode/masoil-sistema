@@ -104,6 +104,11 @@ function mapClient(row: any): Client {
     sucursal: row.sucursal || null,
     cuit: row.cuit || null,
     numeroDocum: row.numero_docum || null,
+    // Domicilio fiscal y lugar de entrega REALES (importados de GestionPro).
+    // El grueso de los clientes tiene el dato acá, no en address/domicilio_entrega
+    // (que el form de edición usa pero quedaron casi vacías tras el import).
+    domicilio: row.domicilio || null,
+    lugarEntrega: row.lugar_entrega || null,
     domicilioEntrega: row.domicilio_entrega || null,
     sucursalEntrega: row.sucursal_entrega || null,
     codigoGestionpro: row.codigo_gestionpro || null,
