@@ -35,15 +35,13 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
     contactName: "",
     whatsapp: "",
     email: "",
-    address: "",
     zona: "" as string,
     vendedorId: "",
     paymentTerms: "",
     creditLimit: 0,
     notes: "",
-    domicilioEntrega: "",
-    sucursal: "",
-    sucursalEntrega: "",
+    domicilio: "",
+    lugarEntrega: "",
     cuit: "",
     condicionIva: "",
   })
@@ -87,15 +85,13 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
           contactName: clientData.contactName,
           whatsapp: clientData.whatsapp,
           email: clientData.email,
-          address: clientData.address,
           zona: clientData.zona || "",
           vendedorId: clientData.vendedorId || "",
           paymentTerms: clientData.condicionPago || clientData.paymentTerms || "",
           creditLimit: clientData.creditLimit || 0,
           notes: clientData.notes || "",
-          domicilioEntrega: (clientData as any).domicilioEntrega || "",
-          sucursal: (clientData as any).sucursal || "",
-          sucursalEntrega: (clientData as any).sucursalEntrega || "",
+          domicilio: clientData.domicilio || "",
+          lugarEntrega: clientData.lugarEntrega || "",
           cuit: (clientData as any).cuit || (clientData as any).numeroDocum || "",
           condicionIva: (clientData as any).condicionIva || "",
         })
@@ -135,16 +131,17 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
         contact_name: editForm.contactName,
         whatsapp: editForm.whatsapp,
         email: editForm.email,
-        address: editForm.address,
+        // Fuente única: domicilio fiscal → clients.domicilio, lugar de entrega
+        // → clients.lugar_entrega. Las columnas address/domicilio_entrega/
+        // sucursal/sucursal_entrega quedan deprecadas (ya no se leen ni escriben).
+        domicilio: editForm.domicilio || null,
+        lugar_entrega: editForm.lugarEntrega || null,
         zona: editForm.zona || null,
         vendedor_id: editForm.vendedorId || null,
         condicion_pago: editForm.paymentTerms,
         payment_terms: editForm.paymentTerms,
         credit_limit: editForm.creditLimit,
         notes: editForm.notes,
-        domicilio_entrega: editForm.domicilioEntrega || null,
-        sucursal: editForm.sucursal || null,
-        sucursal_entrega: editForm.sucursalEntrega || null,
         cuit: editForm.cuit || null,
         condicion_iva: editForm.condicionIva || null,
       })
@@ -172,15 +169,13 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
       contactName: client.contactName,
       whatsapp: client.whatsapp,
       email: client.email,
-      address: client.address,
       zona: client.zona || "",
       vendedorId: client.vendedorId || "",
       paymentTerms: client.condicionPago || client.paymentTerms || "",
       creditLimit: client.creditLimit || 0,
       notes: client.notes || "",
-      domicilioEntrega: (client as any).domicilioEntrega || "",
-      sucursal: (client as any).sucursal || "",
-      sucursalEntrega: (client as any).sucursalEntrega || "",
+      domicilio: client.domicilio || "",
+      lugarEntrega: client.lugarEntrega || "",
       cuit: (client as any).cuit || (client as any).numeroDocum || "",
       condicionIva: (client as any).condicionIva || "",
     })
@@ -230,22 +225,16 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
             <span className="text-muted-foreground">•</span>
             <span className="text-muted-foreground">{client.totalOrders} pedidos realizados</span>
           </div>
-          {client.address && (
+          {(client.domicilio || client.address) && (
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <MapPin className="h-3.5 w-3.5" />
-              <span>{client.address}</span>
+              <span>{client.domicilio || client.address}</span>
             </div>
           )}
-          {(client as any).sucursalEntrega && (
+          {client.lugarEntrega && (
             <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <MapPin className="h-3.5 w-3.5" />
-              <span><span className="text-xs">Sucursal entrega:</span> {(client as any).sucursalEntrega}</span>
-            </div>
-          )}
-          {(client as any).domicilioEntrega && (
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <MapPin className="h-3.5 w-3.5" />
-              <span><span className="text-xs">Domicilio entrega:</span> {(client as any).domicilioEntrega}</span>
+              <span><span className="text-xs">Lugar de entrega:</span> {client.lugarEntrega}</span>
             </div>
           )}
         </div>
@@ -391,16 +380,10 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   <span>{client.email}</span>
                 </div>
-                {(client as any).domicilioEntrega && (
+                {client.lugarEntrega && (
                   <div className="flex items-start gap-2 text-sm pl-6">
-                    <span className="text-muted-foreground text-xs">Domicilio entrega:</span>
-                    <span>{(client as any).domicilioEntrega}</span>
-                  </div>
-                )}
-                {(client as any).sucursalEntrega && (
-                  <div className="flex items-start gap-2 text-sm pl-6">
-                    <span className="text-muted-foreground text-xs">Sucursal entrega:</span>
-                    <span>{(client as any).sucursalEntrega}</span>
+                    <span className="text-muted-foreground text-xs">Lugar de entrega:</span>
+                    <span>{client.lugarEntrega}</span>
                   </div>
                 )}
                 {(client as any).cuit && (
@@ -424,34 +407,19 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
             </div>
           </Card>
 
-          {/* Domicilio y Entrega — siempre visible para que sea evidente
-              dónde se carga la sucursal/domicilio de entrega del cliente. */}
+          {/* Domicilio y Entrega — fuente única: clients.domicilio (fiscal) y
+              clients.lugar_entrega (operativo). Dos campos independientes. */}
           <Card className="p-6">
             <h3 className="text-lg font-semibold mb-4">Domicilio y Entrega</h3>
             <div className="space-y-3 text-sm">
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Dirección fiscal</p>
+                <p className="text-xs text-muted-foreground mb-1">Domicilio fiscal</p>
                 <p className="font-medium">{client.domicilio || client.address || <span className="text-muted-foreground italic">—</span>}</p>
               </div>
               <Separator />
               <div>
                 <p className="text-xs text-muted-foreground mb-1">Lugar de Entrega</p>
                 <p className="font-medium">{client.lugarEntrega || <span className="text-muted-foreground italic">— (sin definir)</span>}</p>
-              </div>
-              <Separator />
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Sucursal</p>
-                <p className="font-medium">{(client as any).sucursal || <span className="text-muted-foreground italic">—</span>}</p>
-              </div>
-              <Separator />
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Sucursal de Entrega</p>
-                <p className="font-medium">{(client as any).sucursalEntrega || <span className="text-muted-foreground italic">— (sin definir)</span>}</p>
-              </div>
-              <Separator />
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">Domicilio de Entrega</p>
-                <p className="font-medium">{(client as any).domicilioEntrega || <span className="text-muted-foreground italic">— (sin definir)</span>}</p>
               </div>
             </div>
           </Card>
@@ -688,41 +656,22 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Dirección</label>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Domicilio fiscal</label>
               <input
-                value={editForm.address}
-                onChange={(e) => setEditForm((f) => ({ ...f, address: e.target.value }))}
+                value={editForm.domicilio}
+                onChange={(e) => setEditForm((f) => ({ ...f, domicilio: e.target.value }))}
                 className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                placeholder="Domicilio fiscal del cliente"
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-700 block mb-1">Domicilio de Entrega</label>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Lugar de entrega</label>
               <input
-                value={editForm.domicilioEntrega}
-                onChange={(e) => setEditForm((f) => ({ ...f, domicilioEntrega: e.target.value }))}
+                value={editForm.lugarEntrega}
+                onChange={(e) => setEditForm((f) => ({ ...f, lugarEntrega: e.target.value }))}
                 className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-                placeholder="Dirección de entrega (si difiere de la principal)"
+                placeholder="A dónde se entrega la mercadería (si difiere del fiscal)"
               />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Sucursal</label>
-                <input
-                  value={editForm.sucursal}
-                  onChange={(e) => setEditForm((f) => ({ ...f, sucursal: e.target.value }))}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-                  placeholder="Casa Central, Sucursal Norte..."
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700 block mb-1">Sucursal de Entrega</label>
-                <input
-                  value={editForm.sucursalEntrega}
-                  onChange={(e) => setEditForm((f) => ({ ...f, sucursalEntrega: e.target.value }))}
-                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
-                  placeholder="Planta San Martín, Depósito..."
-                />
-              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -733,9 +682,9 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
                     valoresActuales={{
                       razon_social: editForm.businessName,
                       condicion_iva: editForm.condicionIva,
-                      domicilio: editForm.address,
-                      // Form de editar no tiene localidad/provincia/cp separados,
-                      // pero sí domicilioEntrega — eso es de entrega, no fiscal.
+                      domicilio: editForm.domicilio,
+                      // El domicilio fiscal de AFIP va a clients.domicilio.
+                      // El lugar de entrega es operativo de Masoil, no viene de AFIP.
                     }}
                     onAplicar={(campos: CamposAFIP) => {
                       setEditForm((prev) => ({
@@ -744,7 +693,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
                         condicionIva: campos.condicion_iva !== undefined
                           ? mapCondicionIvaToSelectOption(campos.condicion_iva)
                           : prev.condicionIva,
-                        address: campos.domicilio ?? prev.address,
+                        domicilio: campos.domicilio ?? prev.domicilio,
                       }))
                     }}
                   />
