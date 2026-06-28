@@ -335,7 +335,10 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     doc.text(`Cliente: ${o.clientName}`, margin, y); y += 6
     if (o.razonSocial) { doc.text(`Razón Social: ${o.razonSocial}`, margin, y); y += 6 }
     if (client) {
-      if (client.address) { doc.text(`Dirección: ${client.address}`, margin, y); y += 6 }
+      // Dirección de entrega = a dónde se manda la mercadería (lugar_entrega),
+      // con fallback al domicilio fiscal si no hay lugar de entrega cargado.
+      const entrega = client.lugarEntrega || client.domicilio
+      if (entrega) { doc.text(`Dirección de entrega: ${entrega}`, margin, y); y += 6 }
       if (client.contactName) { doc.text(`Contacto: ${client.contactName}`, margin, y); y += 6 }
       if (client.whatsapp) { doc.text(`Teléfono: ${client.whatsapp}`, margin, y); y += 6 }
     }
@@ -408,11 +411,9 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     doc.setFontSize(10)
     doc.text(`Cliente: ${o.clientName}`, margin, y); y += 6
     if (client) {
-      doc.text(`Dirección: ${client.address || "-"}`, margin, y); y += 6
-      const sucEntrega = (client as any).sucursalEntrega
-      const domEntrega = (client as any).domicilioEntrega
-      if (sucEntrega) { doc.text(`Sucursal entrega: ${sucEntrega}`, margin, y); y += 6 }
-      if (domEntrega) { doc.text(`Domicilio entrega: ${domEntrega}`, margin, y); y += 6 }
+      // Remito/Hoja: la dirección relevante es a dónde se entrega (lugar_entrega),
+      // con fallback al domicilio fiscal.
+      doc.text(`Dirección de entrega: ${client.lugarEntrega || client.domicilio || "-"}`, margin, y); y += 6
       doc.text(`Contacto: ${client.contactName || "-"}`, margin, y); y += 6
       doc.text(`Teléfono: ${client.whatsapp || "-"}`, margin, y); y += 6
     }
@@ -1465,13 +1466,10 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
                 </div>
                 <Separator />
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Dirección</p>
-                  <p className="text-sm">{client.address}</p>
-                  {(client as any).sucursalEntrega && (
-                    <p className="text-sm mt-1"><span className="text-xs text-muted-foreground">Sucursal entrega:</span> {(client as any).sucursalEntrega}</p>
-                  )}
-                  {(client as any).domicilioEntrega && (
-                    <p className="text-sm mt-1"><span className="text-xs text-muted-foreground">Domicilio entrega:</span> {(client as any).domicilioEntrega}</p>
+                  <p className="text-sm text-muted-foreground mb-1">Domicilio fiscal</p>
+                  <p className="text-sm">{client.domicilio || client.address || "-"}</p>
+                  {client.lugarEntrega && (
+                    <p className="text-sm mt-1"><span className="text-xs text-muted-foreground">Lugar de entrega:</span> {client.lugarEntrega}</p>
                   )}
                 </div>
                 <Separator />
