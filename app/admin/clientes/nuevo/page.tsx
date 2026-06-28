@@ -45,8 +45,8 @@ export default function AdminNuevoClientePage() {
     contactName: "",
     cuit: "",
     condicionIva: "",
-    address: "",
-    sucursalEntrega: "",
+    domicilio: "",
+    lugarEntrega: "",
     whatsapp: "",
     email: "",
     zona: "" as Zona | "",
@@ -75,8 +75,8 @@ export default function AdminNuevoClientePage() {
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = "Email inválido"
     }
-    if (!formData.address.trim()) {
-      newErrors.address = "La dirección es requerida"
+    if (!formData.domicilio.trim()) {
+      newErrors.domicilio = "El domicilio fiscal es requerido"
     }
     if (!formData.zona) {
       newErrors.zona = "La zona es requerida"
@@ -105,8 +105,8 @@ export default function AdminNuevoClientePage() {
         email: formData.email,
         zona: formData.zona as string,
         vendedorId: formData.vendedorId,
-        address: formData.address,
-        sucursalEntrega: formData.sucursalEntrega,
+        domicilio: formData.domicilio,
+        lugarEntrega: formData.lugarEntrega,
         paymentTerms: formData.paymentTerms,
         creditLimit: parseInt(formData.creditLimit) || 0,
         notes: formData.notes,
@@ -201,8 +201,8 @@ export default function AdminNuevoClientePage() {
                   valoresActuales={{
                     razon_social: formData.businessName,
                     condicion_iva: formData.condicionIva,
-                    domicilio: formData.address,
-                    // Form de nuevo cliente no tiene campos separados de localidad/provincia/cp.
+                    domicilio: formData.domicilio,
+                    // El domicilio fiscal de AFIP va a clients.domicilio.
                   }}
                   onAplicar={(campos: CamposAFIP) => {
                     setFormData((prev) => ({
@@ -211,7 +211,7 @@ export default function AdminNuevoClientePage() {
                       condicionIva: campos.condicion_iva !== undefined
                         ? mapCondicionIvaToSelectOption(campos.condicion_iva)
                         : prev.condicionIva,
-                      address: campos.domicilio ?? prev.address,
+                      domicilio: campos.domicilio ?? prev.domicilio,
                     }))
                   }}
                 />
@@ -238,24 +238,24 @@ export default function AdminNuevoClientePage() {
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="address">Dirección *</Label>
+              <Label htmlFor="domicilio">Domicilio fiscal *</Label>
               <Input
-                id="address"
-                value={formData.address}
-                onChange={(e) => handleChange("address", e.target.value)}
+                id="domicilio"
+                value={formData.domicilio}
+                onChange={(e) => handleChange("domicilio", e.target.value)}
                 placeholder="Ej: Av. San Martín 1234, CABA"
-                className={errors.address ? "border-destructive" : ""}
+                className={errors.domicilio ? "border-destructive" : ""}
               />
-              {errors.address && <p className="text-sm text-destructive">{errors.address}</p>}
+              {errors.domicilio && <p className="text-sm text-destructive">{errors.domicilio}</p>}
             </div>
 
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="sucursalEntrega">Sucursal de Entrega</Label>
+              <Label htmlFor="lugarEntrega">Lugar de entrega</Label>
               <Input
-                id="sucursalEntrega"
-                value={formData.sucursalEntrega}
-                onChange={(e) => handleChange("sucursalEntrega", e.target.value)}
-                placeholder="Ej: Sucursal Beccar - Av. Centenario 2400"
+                id="lugarEntrega"
+                value={formData.lugarEntrega}
+                onChange={(e) => handleChange("lugarEntrega", e.target.value)}
+                placeholder="A dónde se entrega la mercadería (si difiere del fiscal)"
               />
             </div>
           </div>

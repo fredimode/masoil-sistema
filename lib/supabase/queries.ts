@@ -1033,10 +1033,15 @@ export async function fetchClientsByVendedor(vendedorId: string): Promise<Client
 
 export async function createClient(client: {
   businessName: string; contactName: string; whatsapp: string;
-  email: string; zona: string; vendedorId?: string; address: string;
-  paymentTerms: string; creditLimit: number; notes: string;
+  email: string; zona: string; vendedorId?: string;
+  // Fuente única: domicilio (fiscal) y lugarEntrega (operativo).
+  domicilio?: string;
+  lugarEntrega?: string;
+  // Deprecados (compat con forms viejos que aún los envían).
+  address?: string;
   domicilioEntrega?: string;
   sucursalEntrega?: string;
+  paymentTerms: string; creditLimit: number; notes: string;
   cuit?: string;
   condicionIva?: string;
 }): Promise<void> {
@@ -1048,11 +1053,14 @@ export async function createClient(client: {
     email: client.email,
     zona: client.zona || null,
     vendedor_id: client.vendedorId || null,
-    address: client.address,
+    domicilio: client.domicilio || null,
+    lugar_entrega: client.lugarEntrega || null,
     payment_terms: client.paymentTerms,
     condicion_pago: client.paymentTerms,
     credit_limit: client.creditLimit,
     notes: client.notes,
+    // Deprecados: solo se escriben si un caller viejo todavía los manda.
+    address: client.address || null,
     domicilio_entrega: client.domicilioEntrega || null,
     sucursal_entrega: client.sucursalEntrega || null,
     cuit: client.cuit || null,
