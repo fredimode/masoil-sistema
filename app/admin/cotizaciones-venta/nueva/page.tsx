@@ -14,7 +14,7 @@ import { ArrowLeft, Search, Trash2, Truck, History } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { HistorialVentasDialog } from "@/components/historial-ventas-dialog"
 import {
-  fetchClients, fetchProducts, fetchVendedores,
+  fetchClients, fetchProducts, fetchVendedores, esVendedorComercial,
   createCotizacionVenta, getNextCotizacionVentaNumero,
   fetchProveedoresByProducto,
 } from "@/lib/supabase/queries"
@@ -131,11 +131,11 @@ export default function NuevaCotizacionVentaPage() {
       .finally(() => setLoading(false))
   }, [])
 
-  // Todos los vendedores activos pueden crear cotizaciones (sin restricción comercial).
-  // W.3: excluir el usuario Administrador (admin@masoil.com.ar) del selector.
-  const activeVendedores = vendedores.filter(
-    (v) => v.isActive && (v.email || "").toLowerCase() !== "admin@masoil.com.ar",
-  )
+  // Solo vendedores comerciales reales (Diego/Jonatan/Pablo) aparecen en el
+  // selector. esVendedorComercial filtra por iniciales válidas (PSG/JGE/DDM) y
+  // excluye back-office (Administrador, Agustín/compras, Matías). Mismo criterio
+  // que pedidos/nuevo.
+  const activeVendedores = vendedores.filter((v) => v.isActive && esVendedorComercial(v))
   const selectedClient = clients.find((c) => c.id === selectedClientId)
 
   // Autofill forma_pago cuando se selecciona cliente

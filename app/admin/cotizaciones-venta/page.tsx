@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { Plus, Search, Eye, Printer, Send } from "lucide-react"
-import { fetchCotizacionesVenta, fetchVendedores } from "@/lib/supabase/queries"
+import { fetchCotizacionesVenta, fetchVendedores, esVendedorComercial } from "@/lib/supabase/queries"
 import { formatCurrencyExact, formatDateStr, normalizeSearch } from "@/lib/utils"
 
 const ESTADO_BADGES: Record<string, { label: string; cls: string }> = {
@@ -32,7 +32,9 @@ export default function CotizacionesVentaPage() {
     Promise.all([fetchCotizacionesVenta(), fetchVendedores()])
       .then(([c, v]) => {
         setCotizaciones(c)
-        setVendedores(v.filter((x: any) => x.isActive))
+        // Solo vendedores comerciales reales (Diego/Jonatan/Pablo) en el filtro;
+        // excluye back-office (Administrador, Agustín, Matías). Mismo criterio que nueva cotización.
+        setVendedores(v.filter((x: any) => x.isActive && esVendedorComercial(x)))
       })
       .catch((e) => console.error(e))
       .finally(() => setLoading(false))
