@@ -97,7 +97,6 @@ export default function CobranzasPage() {
   // cuenta_corriente_cliente (fuente única lib/saldos.ts), no el snapshot
   // de cobranzas_pendientes.
   const [ccMovimientos, setCcMovimientos] = useState<any[]>([])
-  const [empresaFilter, setEmpresaFilter] = useState("Todas")
 
   useEffect(() => {
     async function load() {
@@ -139,19 +138,8 @@ export default function CobranzasPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Cobranzas</h1>
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium text-muted-foreground">Empresa:</label>
-          <Select value={empresaFilter} onValueChange={setEmpresaFilter}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {EMPRESAS.map((e) => (
-                <SelectItem key={e} value={e}>{e}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {/* El filtro Empresa global se removió: cada solapa que filtra por empresa
+            (Cuenta Corriente, Registrar Cobro, Informe) tiene el suyo propio. */}
       </div>
 
       <Tabs defaultValue="cuenta-corriente">
@@ -164,7 +152,7 @@ export default function CobranzasPage() {
         </TabsList>
 
         <TabsContent value="cuenta-corriente">
-          <TabCuentaCorriente clients={clients} empresaFilter={empresaFilter} />
+          <TabCuentaCorriente clients={clients} />
         </TabsContent>
 
         <TabsContent value="registrar-cobro">
@@ -173,7 +161,6 @@ export default function CobranzasPage() {
             vendedores={vendedores}
             cobranzas={cobranzas}
             setCobranzas={setCobranzas}
-            empresaFilter={empresaFilter}
             onReciboCreado={(rec) => setRecibosCobranza((prev) => [rec, ...prev])}
           />
         </TabsContent>
@@ -187,7 +174,7 @@ export default function CobranzasPage() {
         </TabsContent>
 
         <TabsContent value="informe">
-          <TabInforme ccMovimientos={ccMovimientos} clients={clients} empresaFilter={empresaFilter} />
+          <TabInforme ccMovimientos={ccMovimientos} clients={clients} />
         </TabsContent>
       </Tabs>
     </div>
@@ -213,7 +200,8 @@ function formatNumeroComprobante(m: any): string {
   return m.pv_numero || ""
 }
 
-function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empresaFilter: string }) {
+function TabCuentaCorriente({ clients }: { clients: any[] }) {
+  const [empresaFilter, setEmpresaFilter] = useState("Todas")
   const [search, setSearch] = useState("")
   const [selectedClient, setSelectedClient] = useState<any | null>(null)
   const [showDropdown, setShowDropdown] = useState(false)
@@ -436,8 +424,21 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
 
   return (
     <Card className="p-4 space-y-4">
-      {/* Fila superior: Activos/Inactivos (filtro Empresa global vive en el header) */}
+      {/* Fila superior: Empresa (propio del tab) + Activos/Inactivos */}
       <div className="flex flex-wrap gap-3 items-end">
+        <div>
+          <label className="text-sm font-medium mb-1 block">Empresa</label>
+          <Select value={empresaFilter} onValueChange={setEmpresaFilter}>
+            <SelectTrigger className="w-36">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {EMPRESAS.map((e) => (
+                <SelectItem key={e} value={e}>{e}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div>
           <label className="text-sm font-medium mb-1 block">Estado clientes</label>
           <Select value={activosFilter} onValueChange={(v) => setActivosFilter(v as any)}>
@@ -676,9 +677,9 @@ function TabCuentaCorriente({ clients, empresaFilter }: { clients: any[]; empres
 // ─── Tab 2: Registrar Cobro ─────────────────────────────────────────────────
 
 function TabRegistrarCobro({
-  clients, vendedores, cobranzas, setCobranzas, empresaFilter, onReciboCreado,
+  clients, vendedores, cobranzas, setCobranzas, onReciboCreado,
 }: {
-  clients: any[]; vendedores: any[]; cobranzas: any[]; setCobranzas: (c: any[]) => void; empresaFilter: string; onReciboCreado: (r: any) => void
+  clients: any[]; vendedores: any[]; cobranzas: any[]; setCobranzas: (c: any[]) => void; onReciboCreado: (r: any) => void
 }) {
   const [search, setSearch] = useState("")
   const [showDropdown, setShowDropdown] = useState(false)
@@ -696,13 +697,9 @@ function TabRegistrarCobro({
   const [pendientesUnificados, setPendientesUnificados] = useState<any[]>([])
 
   // W.6: el cobro se registra SIEMPRE contra una empresa emisora específica.
-  // En vez de heredar el filtro global (que puede estar en "Todas"), este tab
-  // tiene su propio selector sin "Todas" y con default "Aquiles". Si el filtro
-  // global ya trae una empresa específica, la usamos como valor inicial.
+  // Este tab tiene su propio selector sin "Todas" y con default "Aquiles".
   const EMPRESAS_COBRO = ["Aquiles", "Conancap", "Masoil"]
-  const [empresaCobro, setEmpresaCobro] = useState<string>(
-    EMPRESAS_COBRO.includes(empresaFilter) ? empresaFilter : "Aquiles",
-  )
+  const [empresaCobro, setEmpresaCobro] = useState<string>("Aquiles")
   const empresaValida = empresaCobro
 
   // W.6: solo se muestran las FC pendientes de la empresa emisora seleccionada.
@@ -1609,7 +1606,8 @@ function TabRetenciones({ retenciones, clients }: { retenciones: any[]; clients:
 
 // ─── Tab 4: Informe Saldos Pendientes ───────────────────────────────────────
 
-function TabInforme({ ccMovimientos, clients, empresaFilter }: { ccMovimientos: any[]; clients: any[]; empresaFilter: string }) {
+function TabInforme({ ccMovimientos, clients }: { ccMovimientos: any[]; clients: any[] }) {
+  const [empresaFilter, setEmpresaFilter] = useState("Todas")
   const [desde, setDesde] = useState("2000-01-01")
   const [hasta, setHasta] = useState(new Date().toISOString().slice(0, 10))
   const [clienteFiltro, setClienteFiltro] = useState("todos") // "todos" | clientId
@@ -1914,6 +1912,18 @@ function TabInforme({ ccMovimientos, clients, empresaFilter }: { ccMovimientos: 
     <Card className="p-4 space-y-4">
       {/* Filtros */}
       <div className="flex flex-wrap gap-3 items-end">
+        <div>
+          <label className="text-sm font-medium mb-1 block">Empresa</label>
+          <select
+            value={empresaFilter}
+            onChange={(e) => setEmpresaFilter(e.target.value)}
+            className="border rounded-md px-3 py-2 text-sm"
+          >
+            {EMPRESAS.map((e) => (
+              <option key={e} value={e}>{e}</option>
+            ))}
+          </select>
+        </div>
         <div>
           <label className="text-sm font-medium mb-1 block">Desde</label>
           <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="border rounded-md px-3 py-2 text-sm" />
