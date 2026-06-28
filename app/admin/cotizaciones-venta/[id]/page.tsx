@@ -87,8 +87,8 @@ export default function CotizacionVentaDetallePage() {
       cliente: {
         razon_social: cot.client_name || client?.businessName || "",
         cuit: client?.cuit || client?.numeroDocum || "",
-        domicilio: client?.address || client?.domicilioEntrega || "",
-        sucursal_entrega: client?.sucursalEntrega || null,
+        domicilio: client?.domicilio || client?.address || "",
+        sucursal_entrega: client?.lugarEntrega || null,
         contacto: client?.contactName || "",
       },
       items: items.map((i) => ({
@@ -432,8 +432,8 @@ export default function CotizacionVentaDetallePage() {
     aoa.push(["DATOS DEL CLIENTE"])
     aoa.push([`Cliente: ${cot.client_name || client?.businessName || ""}`])
     if (client?.cuit || client?.numeroDocum) aoa.push([`CUIT: ${client?.cuit || client?.numeroDocum}`])
-    if (client?.address || client?.domicilioEntrega) aoa.push([`Domicilio: ${client?.address || client?.domicilioEntrega}`])
-    if (client?.sucursalEntrega) aoa.push([`Sucursal de Entrega: ${client?.sucursalEntrega}`])
+    if (client?.domicilio || client?.address) aoa.push([`Domicilio: ${client?.domicilio || client?.address}`])
+    if (client?.lugarEntrega) aoa.push([`Lugar de entrega: ${client?.lugarEntrega}`])
     if (client?.contactName) aoa.push([`Contacto: ${client?.contactName}`])
     aoa.push([`Vendedor: ${cot.vendedor_nombre || ""}${cot.vendedor_iniciales ? ` (${cot.vendedor_iniciales})` : ""}`])
     aoa.push([])
