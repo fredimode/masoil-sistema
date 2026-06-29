@@ -83,6 +83,37 @@ finanzas y contabilidad de IVA. Ver `docs/ESTADO_SISTEMA.md` (auditoría) y
 - Histórico: hubo duplicados del bug previo (8 facturas / 11 pedidos). Se
   deduplicó a 1 remito por factura antes de crear el constraint. Caso cerrado.
 
+## Descuento general por cliente
+- Porcentaje de descuento configurable por cliente que se aplica al armar
+  cotizaciones y pedidos. Columna **`clients.descuento_general_pct`** NUMERIC(5,2)
+  DEFAULT 0 (editable en la ficha, `app/admin/clientes/[id]`, sección "Términos
+  Comerciales"). Auditoría: se persiste el % efectivo en
+  **`orders.descuento_general_pct`** y **`cotizaciones_venta.descuento_general_pct`**.
+- **Fuente única de cálculo: `lib/descuentos.ts`** (cubierto por tests). No
+  duplicar la lógica: `baseProductos` (neto de PRODUCTOS — excluye renglones de
+  descuento y aportes negativos, NO se descuenta sobre descuentos),
+  `montoDescuentoGeneral` (monto negativo del renglón),
+  `construirLineaDescuentoGeneral` y `calcularTotales`
+  (subtotal productos → descuento general → subtotal → IVA 21% → total).
+  Redondeo `Math.round(x*100)/100`, consistente con el resto del sistema.
+- **Renglón derivado**: el descuento se materializa como un renglón aparte
+  `tipo_linea="descuento"` con `productCode = CODIGO_DESCUENTO_GENERAL`
+  (`"DESCUENTO_GENERAL"`, sentinela para distinguirlo de un descuento manual).
+  NO vive en el estado de items: se calcula del % + productos y **se regenera
+  solo**; se agrega como item real recién al persistir. Por eso la facturación lo
+  hereda igual que cualquier descuento (**no se tocó `/api/facturar` ni
+  `lib/tusfacturas.ts`**).
+- **Se aplica en las 4 pantallas de armado** (cálculo antes duplicado, ahora vía
+  el helper): `app/admin/pedidos/nuevo`, `app/vendedor/pedidos/nuevo`,
+  `app/admin/cotizaciones-venta/nueva`, `app/vendedor/cotizaciones/nueva`. El %
+  se **precarga del cliente** al seleccionarlo (effect sobre `selectedClientId`)
+  y es editable por documento (el vendedor puede ajustarlo o ponerlo en 0).
+- Gotcha de redondeo: en **pedidos** el `unit_price` se guarda CON IVA (`×1.21`
+  por línea), así que `orders.total` vs el `Σ cantidad×unit_price` del detalle
+  pueden diferir 1 centavo con precios decimales (pre-existente, afecta a todo
+  descuento con decimales). **Cotizaciones** guardan neto directo y reconcilian
+  exacto. El total que ve el operador y el del helper son exactos.
+
 ## Circuito de Compras (Plan A — implementado)
 - Tabs en `app/admin/compras/page.tsx`: Solicitudes / Órdenes de Compra / Seguimiento.
 - Estados de **OC**: `Pendiente | Facturado | Eliminado` (automáticos, no
