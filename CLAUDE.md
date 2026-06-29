@@ -66,6 +66,23 @@ finanzas y contabilidad de IVA. Ver `docs/ESTADO_SISTEMA.md` (auditoría) y
 - Razón social del cliente: usar `clients.business_name` (la columna
   `razon_social` quedó contaminada por un import; ver P4 en el plan contable).
 
+## Remitos — UN SOLO REMITO POR FACTURA (3 capas)
+- Regla invariante: **una factura = un remito**. El remito vive en la tabla
+  `remitos` y se vincula por **`remitos.factura_id`** (= `orders.factura_id`).
+  Se genera desde el detalle de pedido (`app/admin/pedidos/[id]/page.tsx`) →
+  `POST /api/remito` (`app/api/remito/route.ts`).
+- Bloqueo en **3 capas** (no romper ninguna):
+  1. **UI**: si la factura actual ya tiene remito, el botón "Generar Remito" se
+     reemplaza por "Imprimir Remito" (abre el PDF con signed URL fresca vía
+     `getRemitoPdfUrl`). Match por `factura_id` (una parcial con factura nueva sí
+     habilita su propio remito); sin factura asociada (legacy) cae a `order_id`.
+  2. **Backend**: `/api/remito` chequea duplicado antes de emitir y devuelve
+     **409** con el remito existente (no crea el segundo). La UI sincroniza estado.
+  3. **DB**: constraint **`uq_remitos_factura`** = UNIQUE parcial sobre
+     `remitos(factura_id) WHERE factura_id IS NOT NULL` (creado en prod).
+- Histórico: hubo duplicados del bug previo (8 facturas / 11 pedidos). Se
+  deduplicó a 1 remito por factura antes de crear el constraint. Caso cerrado.
+
 ## Circuito de Compras (Plan A — implementado)
 - Tabs en `app/admin/compras/page.tsx`: Solicitudes / Órdenes de Compra / Seguimiento.
 - Estados de **OC**: `Pendiente | Facturado | Eliminado` (automáticos, no
