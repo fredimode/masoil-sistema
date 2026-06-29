@@ -143,9 +143,11 @@ export default function LogisticaPage() {
       // J.3: Nº Pedido puro (sin "(extra)") y Descripción separada para
       // destinos manuales.
       const nroPedido = nroPedidoDe(i)
-      const descripcion = i.es_destino_extra ? truncate(i.descripcion_extra || "(sin descripción)", 50) : "-"
-      // Observaciones: para pedidos toma orders.notes; para manuales toma reparto_items.observaciones
-      const obsRaw = i.order_id ? (i.orders?.notes || "") : (i.observaciones || "")
+      // Descripción/Observaciones editables en la hoja de ruta (reparto_items).
+      const descripcion = i.descripcion_extra ? truncate(i.descripcion_extra, 50) : "-"
+      // Observaciones: prioriza lo confeccionado (reparto_items.observaciones);
+      // si está vacío, cae a las notas del pedido (orders.notes).
+      const obsRaw = (i.observaciones != null && i.observaciones !== "") ? i.observaciones : (i.orders?.notes || "")
       const obs = obsRaw ? escapeHtml(truncate(String(obsRaw), 50)) : "-"
       // Sucursal: si hay proveedor_sucursal_id, mostrar nombre + dirección (override).
       let sucursalTxt: string
@@ -300,7 +302,12 @@ export default function LogisticaPage() {
                 {visibles.map((i) => {
                   const completado = isCompletado(i.estado_entrega)
                   const incluir = i.incluir_en_reparto !== false
-                  const obsRaw = i.order_id ? (i.orders?.notes || "") : (i.observaciones || "")
+                  // Observaciones editables: prioriza lo confeccionado en la hoja de
+                  // ruta (reparto_items.observaciones); si está vacío, cae a las
+                  // notas del pedido (orders.notes) como valor inicial.
+                  const obsInicial = (i.observaciones != null && i.observaciones !== "")
+                    ? i.observaciones
+                    : (i.orders?.notes || "")
                   return (
                   <TableRow key={i.id} className={completado ? "bg-green-50/50" : ""}>
                     <TableCell className="text-center">
@@ -337,17 +344,33 @@ export default function LogisticaPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-xs text-gray-700">
-                      {/* J.3: Descripción para destinos manuales — vacia si es pedido */}
-                      {i.es_destino_extra ? (i.descripcion_extra || "(sin descripción)") : "-"}
+                    <TableCell>
+                      {/* Descripción editable por ítem (persiste en reparto_items.descripcion_extra). */}
+                      <input
+                        defaultValue={i.descripcion_extra || ""}
+                        onBlur={(e) => {
+                          const v = e.target.value.trim()
+                          if (v !== (i.descripcion_extra || "")) handleUpdateItem(i.id, "descripcion_extra", v || null)
+                        }}
+                        placeholder="—"
+                        className="w-full min-w-[140px] border rounded px-2 py-1 text-sm" />
                     </TableCell>
                     <TableCell>
                       <input value={i.sucursal_entrega || ""}
                         onChange={(e) => handleUpdateItem(i.id, "sucursal_entrega", e.target.value)}
                         className="w-full border rounded px-2 py-1 text-sm" />
                     </TableCell>
-                    <TableCell className="text-xs text-gray-600 max-w-[200px] truncate" title={obsRaw}>
-                      {obsRaw || "-"}
+                    <TableCell>
+                      {/* Observaciones editables por ítem (persiste en reparto_items.observaciones). */}
+                      <input
+                        defaultValue={obsInicial}
+                        onBlur={(e) => {
+                          const v = e.target.value
+                          if (v !== obsInicial) handleUpdateItem(i.id, "observaciones", v.trim() || null)
+                        }}
+                        title={obsInicial}
+                        placeholder="—"
+                        className="w-full min-w-[160px] max-w-[220px] border rounded px-2 py-1 text-sm" />
                     </TableCell>
                     <TableCell className="text-xs">{i.factura_numero || "-"}</TableCell>
                     <TableCell className="text-xs">{i.zona || "-"}</TableCell>
