@@ -15,6 +15,7 @@ import {
 } from "@/lib/supabase/queries"
 import type { Client, Product } from "@/lib/types"
 import { formatCurrencyExact, normalizeSearch } from "@/lib/utils"
+import { calcularTotales, construirLineaDescuentoGeneral } from "@/lib/descuentos"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, Plus, Trash2, Search, History } from "lucide-react"
 import Link from "next/link"
@@ -82,6 +83,8 @@ function NuevaCotizacionContent() {
   const [histDialog, setHistDialog] = useState<{ open: boolean; productId?: string; productName?: string }>({ open: false })
   const [clientSearch, setClientSearch] = useState("")
   const [items, setItems] = useState<CotItem[]>([])
+  // Descuento general (%) del documento: se precarga del cliente y es editable.
+  const [descuentoGeneralPct, setDescuentoGeneralPct] = useState(0)
   const [selectedProductId, setSelectedProductId] = useState("")
   const [quantity, setQuantity] = useState(1)
   const [productSearch, setProductSearch] = useState("")
@@ -108,6 +111,12 @@ function NuevaCotizacionContent() {
   }, [products, productSearch])
 
   const selectedClient = clients.find((c) => c.id === selectedClientId)
+
+  // Precarga del descuento general del cliente al seleccionarlo (editable después).
+  useEffect(() => {
+    const c = clients.find((cl) => cl.id === selectedClientId)
+    setDescuentoGeneralPct(c?.descuentoGeneralPct || 0)
+  }, [selectedClientId, clients])
 
   const addProduct = () => {
     const product = products.find((p) => p.id === selectedProductId)
@@ -165,10 +174,13 @@ function NuevaCotizacionContent() {
     }])
   }
 
-  // Precios de línea SIN IVA. subtotal = neto; IVA 21% encima; total con IVA.
+  // Precios de línea SIN IVA. subtotalSinIva = Σ items. El descuento general
+  // (renglón derivado) y el IVA/total salen del helper común (lib/descuentos).
   const subtotalSinIva = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  const ivaCalculado = Math.round(subtotalSinIva * 0.21 * 100) / 100
-  const totalConIva = Math.round((subtotalSinIva + ivaCalculado) * 100) / 100
+  const lineaDescGeneral = construirLineaDescuentoGeneral(items, descuentoGeneralPct)
+  const totalesDoc = calcularTotales(items, descuentoGeneralPct)
+  const ivaCalculado = totalesDoc.iva
+  const totalConIva = totalesDoc.total
 
   const handleSubmit = async () => {
     if (!selectedClientId || items.length === 0 || !vendedor) {
@@ -185,6 +197,19 @@ function NuevaCotizacionContent() {
     try {
       const iniciales = resolverIniciales(vendedor.iniciales, vendedor.name)
       const numero = await getNextCotizacionVentaNumero(iniciales)
+      // Renglón de descuento general como item real (tipo_linea="descuento"),
+      // para que el detalle/PDF/export y la facturación lo hereden.
+      const itemsToSave: CotItem[] = [...items]
+      if (lineaDescGeneral) {
+        itemsToSave.push({
+          productId: `descgral-${Date.now()}`,
+          productCode: lineaDescGeneral.productCode,
+          productName: lineaDescGeneral.descripcion,
+          quantity: 1,
+          price: lineaDescGeneral.price,
+          tipoLinea: "descuento",
+        })
+      }
       const id = await createCotizacionVenta({
         numero,
         client_id: selectedClientId,
@@ -198,10 +223,11 @@ function NuevaCotizacionContent() {
         forma_pago: formaPago || null,
         plazo_entrega: plazoEntrega || null,
         observaciones: observaciones || null,
-        // Se persiste el neto (sin IVA), consistente con admin: el detalle/PDF
-        // recalculan el IVA a partir de los items.
-        total: subtotalSinIva,
-        items: items.map((i) => ({
+        // Se persiste el neto (sin IVA) ya con el descuento general, consistente
+        // con Σ subtotales de items (que incluyen ese renglón).
+        total: totalesDoc.subtotalSinIva,
+        descuento_general_pct: descuentoGeneralPct,
+        items: itemsToSave.map((i) => ({
           product_id: i.tipoLinea === "producto" || !i.tipoLinea ? i.productId : null,
           producto_nombre: i.productName,
           producto_codigo: i.productCode,
@@ -303,6 +329,23 @@ function NuevaCotizacionContent() {
                 </Button>
                 <Button variant="outline" size="sm" onClick={addLineaLibre}>+ Línea libre</Button>
                 <Button variant="outline" size="sm" onClick={addDescuento}>+ Descuento</Button>
+                <div className="flex items-center gap-1.5 border rounded-md px-2 h-9">
+                  <Label className="text-xs whitespace-nowrap text-muted-foreground">Desc. general</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    value={descuentoGeneralPct}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value) || 0
+                      setDescuentoGeneralPct(Math.min(100, Math.max(0, v)))
+                    }}
+                    className="h-7 w-16 text-sm text-right"
+                    title="Descuento general del cliente (editable). Se aplica sobre el neto de productos."
+                  />
+                  <span className="text-xs text-muted-foreground">%</span>
+                </div>
               </div>
             </div>
 
@@ -472,6 +515,18 @@ function NuevaCotizacionContent() {
                     <span className="text-muted-foreground">Subtotal (sin IVA)</span>
                     <span>{formatCurrencyExact(subtotalSinIva)}</span>
                   </div>
+                  {lineaDescGeneral && (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Descuento general ({descuentoGeneralPct}%)</span>
+                        <span className="text-red-600">{formatCurrencyExact(lineaDescGeneral.price)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Subtotal con descuento</span>
+                        <span>{formatCurrencyExact(totalesDoc.subtotalSinIva)}</span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">IVA 21%</span>
                     <span>{formatCurrencyExact(ivaCalculado)}</span>

@@ -2898,6 +2898,7 @@ export async function createCotizacionVenta(cot: {
   plazo_entrega?: string | null
   observaciones?: string | null
   total: number
+  descuento_general_pct?: number | null
   items: {
     product_id?: string | null
     producto_nombre: string
@@ -2926,6 +2927,7 @@ export async function createCotizacionVenta(cot: {
       plazo_entrega: cot.plazo_entrega || null,
       observaciones: cot.observaciones || null,
       total: cot.total,
+      descuento_general_pct: cot.descuento_general_pct ?? 0,
       estado: "pendiente",
     })
     .select("id")

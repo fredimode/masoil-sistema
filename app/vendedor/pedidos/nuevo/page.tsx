@@ -13,6 +13,7 @@ import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import { fetchClientsByVendedor, fetchProducts, createOrder } from "@/lib/supabase/queries"
 import type { Client, Product } from "@/lib/types"
 import { formatCurrency, formatCurrencyExact } from "@/lib/utils"
+import { calcularTotales, construirLineaDescuentoGeneral } from "@/lib/descuentos"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, Plus, Trash2, Search, AlertTriangle, History } from "lucide-react"
 import Link from "next/link"
@@ -62,6 +63,8 @@ function NuevoPedidoContent() {
   const [histDialog, setHistDialog] = useState<{ open: boolean; productId?: string; productName?: string }>({ open: false })
   const [clientSearch, setClientSearch] = useState("")
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
+  // Descuento general (%) del documento: se precarga del cliente y es editable.
+  const [descuentoGeneralPct, setDescuentoGeneralPct] = useState(0)
   const [selectedProductId, setSelectedProductId] = useState("")
   const [quantity, setQuantity] = useState(1)
   const [notes, setNotes] = useState("")
@@ -94,6 +97,13 @@ function NuevoPedidoContent() {
   }, [products, productSearch])
 
   const selectedClient = clients.find((c) => c.id === selectedClientId)
+
+  // Precarga del descuento general del cliente al seleccionarlo (incluye el
+  // cliente preseleccionado por query param, una vez que cargan los clientes).
+  useEffect(() => {
+    const c = clients.find((cl) => cl.id === selectedClientId)
+    setDescuentoGeneralPct(c?.descuentoGeneralPct || 0)
+  }, [selectedClientId, clients])
 
   const addProduct = () => {
     const product = products.find((p) => p.id === selectedProductId)
@@ -140,11 +150,13 @@ function NuevoPedidoContent() {
   }
 
   // J.4: precios en el form son SIN IVA. subtotalSinIva = suma items
-  // (descuentos restan); totalConIva = subtotal + IVA 21% (lo que se
-  // persiste en orders.total).
+  // (descuentos restan). El descuento general (renglón derivado) y el IVA/total
+  // salen del helper común (lib/descuentos).
   const subtotalSinIva = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  const ivaCalculado = Math.round(subtotalSinIva * 0.21 * 100) / 100
-  const totalConIva = Math.round((subtotalSinIva + ivaCalculado) * 100) / 100
+  const lineaDescGeneral = construirLineaDescuentoGeneral(orderItems, descuentoGeneralPct)
+  const totalesDoc = calcularTotales(orderItems, descuentoGeneralPct)
+  const ivaCalculado = totalesDoc.iva
+  const totalConIva = totalesDoc.total
   const subtotal = totalConIva
 
   const hasCustomProduct = orderItems.some((item) => {
@@ -189,6 +201,20 @@ function NuevoPedidoContent() {
       return
     }
 
+    // Renglón de descuento general como item real (tipo_linea="descuento"),
+    // para que la facturación lo herede igual que los demás descuentos.
+    const itemsToSave: OrderItem[] = [...orderItems]
+    if (lineaDescGeneral) {
+      itemsToSave.push({
+        productId: `descgral-${Date.now()}`,
+        productCode: lineaDescGeneral.productCode,
+        productName: lineaDescGeneral.descripcion,
+        quantity: 1,
+        price: lineaDescGeneral.price,
+        tipoLinea: "descuento",
+      })
+    }
+
     setSubmitting(true)
     try {
       const orderId = await createOrder({
@@ -201,7 +227,7 @@ function NuevoPedidoContent() {
         isCustom: hasCustomProduct,
         isUrgent,
         total: totalConIva,
-        items: orderItems.map((i) => ({
+        items: itemsToSave.map((i) => ({
           productId: i.tipoLinea === "producto" || !i.tipoLinea ? i.productId : null,
           productCode: i.productCode,
           productName: i.productName,
@@ -215,7 +241,8 @@ function NuevoPedidoContent() {
       })
 
       // Save delivery fields if provided
-      const deliveryFields: Record<string, string> = {}
+      const deliveryFields: Record<string, any> = {}
+      if (descuentoGeneralPct > 0) deliveryFields.descuento_general_pct = descuentoGeneralPct
       if (sector) deliveryFields.sector = sector
       if (solicita) deliveryFields.solicita = solicita
       if (recibe) deliveryFields.recibe = recibe
@@ -326,6 +353,23 @@ function NuevoPedidoContent() {
                 </Button>
                 <Button variant="outline" size="sm" onClick={addLineaLibre}>+ Línea libre</Button>
                 <Button variant="outline" size="sm" onClick={addDescuento}>+ Descuento</Button>
+                <div className="flex items-center gap-1.5 border rounded-md px-2 h-9">
+                  <Label className="text-xs whitespace-nowrap text-muted-foreground">Desc. general</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.01"
+                    value={descuentoGeneralPct}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value) || 0
+                      setDescuentoGeneralPct(Math.min(100, Math.max(0, v)))
+                    }}
+                    className="h-7 w-16 text-sm text-right"
+                    title="Descuento general del cliente (editable). Se aplica sobre el neto de productos."
+                  />
+                  <span className="text-xs text-muted-foreground">%</span>
+                </div>
               </div>
             </div>
 
@@ -455,7 +499,13 @@ function NuevoPedidoContent() {
                             step="0.01"
                             min={esDescuento ? undefined : 0}
                             value={item.price}
-                            onChange={(e) => setOrderItems(orderItems.map((i) => (i.productId === item.productId ? { ...i, price: parseFloat(e.target.value) || 0 } : i)))}
+                            onChange={(e) => {
+                              const parsed = parseFloat(e.target.value) || 0
+                              // Unificado con admin: en líneas de descuento el monto
+                              // SIEMPRE resta (se coacciona a negativo).
+                              const newPrice = esDescuento ? -Math.abs(parsed) : parsed
+                              setOrderItems(orderItems.map((i) => (i.productId === item.productId ? { ...i, price: newPrice } : i)))
+                            }}
                             placeholder="Precio unitario"
                             className="h-8 text-sm"
                           />
@@ -496,6 +546,18 @@ function NuevoPedidoContent() {
                     <span className="text-muted-foreground">Subtotal (sin IVA)</span>
                     <span>{formatCurrencyExact(subtotalSinIva)}</span>
                   </div>
+                  {lineaDescGeneral && (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Descuento general ({descuentoGeneralPct}%)</span>
+                        <span className="text-red-600">{formatCurrencyExact(lineaDescGeneral.price)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Subtotal con descuento</span>
+                        <span>{formatCurrencyExact(totalesDoc.subtotalSinIva)}</span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">IVA 21%</span>
                     <span>{formatCurrencyExact(ivaCalculado)}</span>

@@ -22,6 +22,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import type { Client, Product, Vendedor } from "@/lib/types"
 import { formatCurrencyExact, normalizeSearch } from "@/lib/utils"
+import { calcularTotales, construirLineaDescuentoGeneral } from "@/lib/descuentos"
 
 interface CotItem {
   productId: string | null
@@ -84,6 +85,8 @@ export default function NuevaCotizacionVentaPage() {
   const [selectedVendedorId, setSelectedVendedorId] = useState("")
   const [razonSocial, setRazonSocial] = useState("")
   const [items, setItems] = useState<CotItem[]>([])
+  // Descuento general (%) del documento: se precarga del cliente y es editable.
+  const [descuentoGeneralPct, setDescuentoGeneralPct] = useState(0)
   const [productSearch, setProductSearch] = useState("")
   const [showProductResults, setShowProductResults] = useState(false)
 
@@ -143,6 +146,12 @@ export default function NuevaCotizacionVentaPage() {
     if (selectedClient?.condicionPago && !formaPago) setFormaPago(selectedClient.condicionPago)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedClient?.id])
+
+  // Precarga del descuento general del cliente al seleccionarlo (editable después).
+  useEffect(() => {
+    const c = clients.find((cl) => cl.id === selectedClientId)
+    setDescuentoGeneralPct(c?.descuentoGeneralPct || 0)
+  }, [selectedClientId, clients])
 
   const filteredClients = useMemo(() => {
     if (!clientSearch) return clients.slice(0, 15)
@@ -221,8 +230,11 @@ export default function NuevaCotizacionVentaPage() {
   // con IVA. El campo `total` que se persiste sigue siendo el neto (sin IVA),
   // consistente con el detalle/PDF que recalculan el IVA a partir de los items.
   const subtotal = useMemo(() => items.reduce((s, i) => s + i.price * i.quantity, 0), [items])
-  const ivaCalculado = useMemo(() => Math.round(subtotal * 0.21 * 100) / 100, [subtotal])
-  const totalConIva = useMemo(() => Math.round((subtotal + ivaCalculado) * 100) / 100, [subtotal, ivaCalculado])
+  // Renglón derivado de descuento general (no vive en items; se agrega al persistir).
+  const lineaDescGeneral = useMemo(() => construirLineaDescuentoGeneral(items, descuentoGeneralPct), [items, descuentoGeneralPct])
+  const totalesDoc = useMemo(() => calcularTotales(items, descuentoGeneralPct), [items, descuentoGeneralPct])
+  const ivaCalculado = totalesDoc.iva
+  const totalConIva = totalesDoc.total
 
   async function handleSubmit() {
     if (!selectedClientId || items.length === 0) {
@@ -248,6 +260,20 @@ export default function NuevaCotizacionVentaPage() {
     try {
       const numero = await getNextCotizacionVentaNumero(iniciales)
       const client = clients.find((c) => c.id === selectedClientId)!
+      // Renglón de descuento general como item real (tipo_linea="descuento"),
+      // para que el detalle/PDF/export y la facturación lo hereden.
+      const itemsToSave: CotItem[] = [...items]
+      if (lineaDescGeneral) {
+        itemsToSave.push({
+          productId: `descgral-${Date.now()}`,
+          productCode: lineaDescGeneral.productCode,
+          productName: lineaDescGeneral.descripcion,
+          quantity: 1,
+          price: lineaDescGeneral.price,
+          stock: 999999,
+          tipoLinea: "descuento",
+        })
+      }
       const id = await createCotizacionVenta({
         numero,
         client_id: selectedClientId,
@@ -261,8 +287,11 @@ export default function NuevaCotizacionVentaPage() {
         forma_pago: formaPago || null,
         plazo_entrega: plazoEntrega || null,
         observaciones: observaciones || null,
-        total: subtotal,
-        items: items.map((i) => ({
+        // El total persistido es el NETO sin IVA (incluye el descuento general),
+        // consistente con Σ subtotales de items (que ahora incluyen ese renglón).
+        total: totalesDoc.subtotalSinIva,
+        descuento_general_pct: descuentoGeneralPct,
+        items: itemsToSave.map((i) => ({
           // Líneas descuento/libre usan productId sintético "desc-…"/"libre-…"
           // en el form para tracking; al persistir lo enviamos como null para no
           // romper la FK contra products(id). Solo las líneas de catálogo guardan
@@ -404,6 +433,23 @@ export default function NuevaCotizacionVentaPage() {
               <Button type="button" variant="outline" size="sm" onClick={addDescuento}>
                 + Línea de descuento
               </Button>
+              <div className="flex items-center gap-1.5 border rounded-md px-2 h-9">
+                <Label className="text-xs whitespace-nowrap text-muted-foreground">Desc. general</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  value={descuentoGeneralPct}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value) || 0
+                    setDescuentoGeneralPct(Math.min(100, Math.max(0, v)))
+                  }}
+                  className="h-7 w-16 text-sm text-right"
+                  title="Descuento general del cliente (editable). Se aplica sobre el neto de productos."
+                />
+                <span className="text-xs text-muted-foreground">%</span>
+              </div>
             </div>
           </div>
           <div className="relative mb-4">
@@ -621,6 +667,20 @@ export default function NuevaCotizacionVentaPage() {
                     <td className="px-2 py-1.5 text-right text-sm">{formatCurrencyExact(subtotal)}</td>
                     <td />
                   </tr>
+                  {lineaDescGeneral && (
+                    <>
+                      <tr className="bg-muted/50">
+                        <td colSpan={4} className="px-2 py-1.5 text-right text-sm text-muted-foreground">Descuento general ({descuentoGeneralPct}%)</td>
+                        <td className="px-2 py-1.5 text-right text-sm text-red-600">{formatCurrencyExact(lineaDescGeneral.price)}</td>
+                        <td />
+                      </tr>
+                      <tr className="bg-muted/50">
+                        <td colSpan={4} className="px-2 py-1.5 text-right text-sm text-muted-foreground">Subtotal con descuento</td>
+                        <td className="px-2 py-1.5 text-right text-sm">{formatCurrencyExact(totalesDoc.subtotalSinIva)}</td>
+                        <td />
+                      </tr>
+                    </>
+                  )}
                   <tr className="bg-muted/50">
                     <td colSpan={4} className="px-2 py-1.5 text-right text-sm text-muted-foreground">IVA 21%</td>
                     <td className="px-2 py-1.5 text-right text-sm">{formatCurrencyExact(ivaCalculado)}</td>

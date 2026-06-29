@@ -16,6 +16,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import type { Client, Product, Vendedor } from "@/lib/types"
 import { formatCurrency, formatCurrencyExact } from "@/lib/utils"
+import { calcularTotales, construirLineaDescuentoGeneral } from "@/lib/descuentos"
 import { ArrowLeft, Plus, Trash2, Search, AlertTriangle, PackagePlus, History, CircleDot, Truck } from "lucide-react"
 import Link from "next/link"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -47,6 +48,9 @@ export default function AdminNuevoPedidoPage() {
   const [selectedVendedorId, setSelectedVendedorId] = useState("")
   const [clientSearch, setClientSearch] = useState("")
   const [orderItems, setOrderItems] = useState<OrderItem[]>([])
+  // Descuento general (%) del documento. Se precarga del cliente al
+  // seleccionarlo y es editable acá (el operador puede ajustarlo o ponerlo en 0).
+  const [descuentoGeneralPct, setDescuentoGeneralPct] = useState(0)
   const [productSearch, setProductSearch] = useState("")
   const [showProductResults, setShowProductResults] = useState(false)
   const [notes, setNotes] = useState("")
@@ -122,6 +126,13 @@ export default function AdminNuevoPedidoPage() {
       .catch((err) => console.error("Error:", err))
       .finally(() => setLoading(false))
   }, [])
+
+  // Precarga del descuento general del cliente al seleccionarlo. Solo se
+  // dispara al cambiar de cliente; después el operador puede editarlo a mano.
+  useEffect(() => {
+    const c = clients.find((cl) => cl.id === selectedClientId)
+    setDescuentoGeneralPct(c?.descuentoGeneralPct || 0)
+  }, [selectedClientId, clients])
 
   if (loading) return <div className="p-8 flex items-center justify-center min-h-[400px]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
 
@@ -239,12 +250,15 @@ export default function AdminNuevoPedidoPage() {
   }
 
   // J.4: el precio mostrado en el form es SIN IVA. subtotalSinIva es la
-  // suma de items con su signo (descuentos restan). ivaCalculado se asume
-  // 21% (no hay metadata de alicuota por producto). totalConIva es lo que
-  // se persiste en orders.total.
+  // suma de items con su signo (descuentos restan). El descuento general
+  // (renglón derivado) y el IVA/total salen del helper común (lib/descuentos).
   const subtotalSinIva = orderItems.reduce((sum, i) => sum + i.price * i.quantity, 0)
-  const ivaCalculado = Math.round(subtotalSinIva * 0.21 * 100) / 100
-  const totalConIva = Math.round((subtotalSinIva + ivaCalculado) * 100) / 100
+  // Renglón derivado de descuento general (no vive en orderItems; se calcula
+  // del % + productos y se agrega recién al persistir). null si pct=0 o sin base.
+  const lineaDescGeneral = construirLineaDescuentoGeneral(orderItems, descuentoGeneralPct)
+  const totalesDoc = calcularTotales(orderItems, descuentoGeneralPct)
+  const ivaCalculado = totalesDoc.iva
+  const totalConIva = totalesDoc.total
   // Alias para compat con codigo viejo que referencia "subtotal".
   const subtotal = totalConIva
   const hayItemsCotizacion = orderItems.some((i) => i.requiereCotizacion)
@@ -294,6 +308,23 @@ export default function AdminNuevoPedidoPage() {
     const client = clients.find((c) => c.id === selectedClientId)
     if (!client) return
 
+    // Renglón de descuento general como item real (tipo_linea="descuento"),
+    // para que la facturación lo herede igual que cualquier descuento. Se agrega
+    // recién acá; en el armado vive como derivado (lineaDescGeneral).
+    const itemsToSave: OrderItem[] = [...orderItems]
+    if (lineaDescGeneral) {
+      itemsToSave.push({
+        productId: `descgral-${Date.now()}`,
+        productCode: lineaDescGeneral.productCode,
+        productName: lineaDescGeneral.descripcion,
+        quantity: 1,
+        price: lineaDescGeneral.price,
+        stock: 999999,
+        requiereCotizacion: false,
+        tipoLinea: "descuento",
+      })
+    }
+
     setSubmitting(true)
     try {
       const orderId = await createOrder({
@@ -306,7 +337,7 @@ export default function AdminNuevoPedidoPage() {
         isCustom,
         isUrgent,
         total: totalConIva,
-        items: orderItems.map((i) => ({
+        items: itemsToSave.map((i) => ({
           // productId sintético "libre-…"/"desc-…" se filtra en queries.ts
           // (no es UUID válido) y queda como null en BD.
           productId: i.tipoLinea === "producto" || !i.tipoLinea ? i.productId : null,
@@ -325,6 +356,7 @@ export default function AdminNuevoPedidoPage() {
 
       // Update additional fields
       const updateFields: Record<string, any> = {}
+      if (descuentoGeneralPct > 0) updateFields.descuento_general_pct = descuentoGeneralPct
       if (hayItemsCotizacion) updateFields.requiere_cotizacion = true
       if (razonSocial) updateFields.razon_social = razonSocial
       if (sector) updateFields.sector = sector
@@ -449,6 +481,23 @@ export default function AdminNuevoPedidoPage() {
               <Button variant="outline" size="sm" onClick={addDescuento}>
                 + Descuento
               </Button>
+              <div className="flex items-center gap-1.5 border rounded-md px-2 h-9">
+                <Label className="text-xs whitespace-nowrap text-muted-foreground">Desc. general</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  value={descuentoGeneralPct}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value) || 0
+                    setDescuentoGeneralPct(Math.min(100, Math.max(0, v)))
+                  }}
+                  className="h-7 w-16 text-sm text-right"
+                  title="Descuento general del cliente (editable). Se aplica sobre el neto de productos."
+                />
+                <span className="text-xs text-muted-foreground">%</span>
+              </div>
               <Button variant="outline" size="sm" onClick={() => setShowNewProductDialog(true)}>
                 <PackagePlus className="h-4 w-4 mr-2" />
                 Crear Producto
@@ -672,6 +721,20 @@ export default function AdminNuevoPedidoPage() {
                     <td className="px-2 py-1.5 text-right text-sm">{formatCurrencyExact(subtotalSinIva)}</td>
                     <td />
                   </tr>
+                  {lineaDescGeneral && (
+                    <>
+                      <tr className="bg-muted/50">
+                        <td colSpan={4} className="px-2 py-1.5 text-right text-sm text-muted-foreground">Descuento general ({descuentoGeneralPct}%)</td>
+                        <td className="px-2 py-1.5 text-right text-sm text-red-600">{formatCurrencyExact(lineaDescGeneral.price)}</td>
+                        <td />
+                      </tr>
+                      <tr className="bg-muted/50">
+                        <td colSpan={4} className="px-2 py-1.5 text-right text-sm text-muted-foreground">Subtotal con descuento</td>
+                        <td className="px-2 py-1.5 text-right text-sm">{formatCurrencyExact(totalesDoc.subtotalSinIva)}</td>
+                        <td />
+                      </tr>
+                    </>
+                  )}
                   <tr className="bg-muted/50">
                     <td colSpan={4} className="px-2 py-1.5 text-right text-sm text-muted-foreground">IVA 21%</td>
                     <td className="px-2 py-1.5 text-right text-sm">{formatCurrencyExact(ivaCalculado)}</td>
