@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib"
 import QRCode from "qrcode"
 import type { Empresa, Modo, TipoFactura, BasePorAlicuota } from "@/lib/tusfacturas"
 import { EMPRESAS_DATA } from "@/lib/empresas"
+import { guardWinAnsi } from "@/lib/pdf/winansi"
 
 export interface FacturaPDFData {
   empresa: Empresa
@@ -123,6 +124,8 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<Uint8Arra
 
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([PAGE_W, PAGE_H])
+  // Sanitiza todo el texto del PDF a WinAnsi (evita "WinAnsi cannot encode …").
+  guardWinAnsi(page)
   const fontReg = await pdf.embedFont(StandardFonts.Helvetica)
   const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold)
 

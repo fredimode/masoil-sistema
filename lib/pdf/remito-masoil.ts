@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, degrees, rgb } from "pdf-lib"
 import bwipjs from "bwip-js/node"
 import { EMPRESAS_DATA } from "@/lib/empresas"
+import { guardWinAnsi } from "@/lib/pdf/winansi"
 import type { Empresa } from "@/lib/tusfacturas"
 
 export interface CaiInfo {
@@ -88,6 +89,9 @@ export async function generarRemitoPDF(data: RemitoPDFData): Promise<Uint8Array>
 
   const pdf = await PDFDocument.create()
   const page = pdf.addPage([PAGE_W, PAGE_H])
+  // Todo el texto que se dibuje pasa por el sanitizador WinAnsi: ningún emoji
+  // o carácter fuera de CP1252 puede romper el render del PDF.
+  guardWinAnsi(page)
   const fontReg = await pdf.embedFont(StandardFonts.Helvetica)
   const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold)
 
@@ -338,7 +342,7 @@ export async function generarRemitoPDF(data: RemitoPDFData): Promise<Uint8Array>
     size: 10, font: fontReg, color: data.caiVencido ? red : black,
   })
   if (data.caiVencido) {
-    page.drawText("⚠ VENCIDO", {
+    page.drawText("VENCIDO", {
       x: LEFT + 200, y: footerTop - 42,
       size: 10, font: fontBold, color: red,
     })
