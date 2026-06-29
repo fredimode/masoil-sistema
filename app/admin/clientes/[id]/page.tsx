@@ -39,6 +39,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
     vendedorId: "",
     paymentTerms: "",
     creditLimit: 0,
+    descuentoGeneralPct: 0,
     notes: "",
     domicilio: "",
     lugarEntrega: "",
@@ -89,6 +90,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
           vendedorId: clientData.vendedorId || "",
           paymentTerms: clientData.condicionPago || clientData.paymentTerms || "",
           creditLimit: clientData.creditLimit || 0,
+          descuentoGeneralPct: clientData.descuentoGeneralPct || 0,
           notes: clientData.notes || "",
           domicilio: clientData.domicilio || "",
           lugarEntrega: clientData.lugarEntrega || "",
@@ -141,6 +143,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
         condicion_pago: editForm.paymentTerms,
         payment_terms: editForm.paymentTerms,
         credit_limit: editForm.creditLimit,
+        descuento_general_pct: editForm.descuentoGeneralPct,
         notes: editForm.notes,
         cuit: editForm.cuit || null,
         condicion_iva: editForm.condicionIva || null,
@@ -173,6 +176,7 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
       vendedorId: client.vendedorId || "",
       paymentTerms: client.condicionPago || client.paymentTerms || "",
       creditLimit: client.creditLimit || 0,
+      descuentoGeneralPct: client.descuentoGeneralPct || 0,
       notes: client.notes || "",
       domicilio: client.domicilio || "",
       lugarEntrega: client.lugarEntrega || "",
@@ -439,6 +443,11 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
                   <CreditCard className="h-4 w-4 text-muted-foreground" />
                   <p className="font-semibold text-lg">{formatCurrencyExact(client.creditLimit)}</p>
                 </div>
+              </div>
+              <Separator />
+              <div>
+                <p className="text-sm text-muted-foreground mb-1">Descuento general</p>
+                <p className="font-semibold text-lg">{(client.descuentoGeneralPct ?? 0)}%</p>
               </div>
               <Separator />
               <div>
@@ -770,6 +779,25 @@ export default function AdminClientDetailPage({ params }: { params: Promise<{ id
                   onChange={(e) => setEditForm((f) => ({ ...f, creditLimit: parseFloat(e.target.value) || 0 }))}
                   className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
                 />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Descuento general (%)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  step="0.01"
+                  value={editForm.descuentoGeneralPct}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value) || 0
+                    setEditForm((f) => ({ ...f, descuentoGeneralPct: Math.min(100, Math.max(0, v)) }))
+                  }}
+                  className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-primary"
+                  placeholder="0"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Se aplica automáticamente en cotizaciones y pedidos (editable por documento).</p>
               </div>
             </div>
             <div>

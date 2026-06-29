@@ -93,6 +93,7 @@ function mapClient(row: any): Client {
     address: row.address || "",
     paymentTerms: row.payment_terms || "",
     creditLimit: Number(row.credit_limit || 0),
+    descuentoGeneralPct: Number(row.descuento_general_pct || 0),
     notes: row.notes || "",
     lastOrderDate: row.last_order_date ? new Date(row.last_order_date) : undefined,
     totalOrders: row.total_orders || 0,

@@ -104,6 +104,9 @@ export interface Client {
   address: string
   paymentTerms: string
   creditLimit: number
+  // Descuento general por cliente (porcentaje). Se precarga al armar
+  // cotizaciones/pedidos y se materializa como renglón negativo. Default 0.
+  descuentoGeneralPct?: number
   notes: string
   lastOrderDate?: Date
   totalOrders: number
