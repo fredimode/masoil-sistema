@@ -11,7 +11,7 @@ interface BodyInput {
   observaciones?: string
 }
 
-type Paso = "parse" | "cliente" | "numero" | "pdf" | "storage" | "db"
+type Paso = "parse" | "cliente" | "duplicado" | "numero" | "pdf" | "storage" | "db"
 
 function fail(paso: Paso, error: string, extra?: Record<string, unknown>, status = 500) {
   return NextResponse.json(
@@ -68,6 +68,29 @@ export async function POST(request: NextRequest) {
       .eq("id", order.factura_id)
       .maybeSingle()
     if (f) factura = f as unknown as FacturaRef
+  }
+
+  // ───────── Guard: UN SOLO REMITO POR FACTURA ─────────
+  // Si la factura del pedido ya tiene un remito, no se genera otro. Se devuelve
+  // el remito existente (con su PDF) para que el cliente lo muestre. Se prioriza
+  // factura_id; si el pedido no tiene factura asociada (legacy), se cae a
+  // order_id. Esto es el cerrojo a nivel lógica además del bloqueo en la UI.
+  {
+    const dupQuery = supabase.from("remitos").select("id, numero, pdf_url, storage_path")
+    const { data: existentes } = await (
+      order.factura_id != null
+        ? dupQuery.eq("factura_id", order.factura_id)
+        : dupQuery.eq("order_id", orderId)
+    ).limit(1)
+    if (existentes && existentes.length > 0) {
+      const ex = existentes[0]
+      return fail(
+        "duplicado",
+        `Esta factura ya tiene un remito generado (${ex.numero}). Solo se permite un remito por factura.`,
+        { remitoExistente: { id: ex.id, numero: ex.numero, pdfUrl: ex.pdf_url, storagePath: ex.storage_path } },
+        409,
+      )
+    }
   }
 
   let cliente: { razonSocial: string; cuit: string; domicilio: string } = {

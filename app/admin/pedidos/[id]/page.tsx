@@ -16,6 +16,7 @@ import {
   fetchOrdenCompraArchivos, createOrdenCompraArchivo, deleteOrdenCompraArchivo,
   fetchClients, fetchVendedores, esVendedorComercial, updateOrder,
   fetchMovableTargetOrders, moveOrderItemToOrder, cancelarPedidoLiberarStock,
+  getRemitoPdfUrl,
   type OrdenCompraArchivo,
 } from "@/lib/supabase/queries"
 import type { Vendedor } from "@/lib/types"
@@ -71,6 +72,9 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const [remitoObs, setRemitoObs] = useState("")
   const [remitoLoading, setRemitoLoading] = useState(false)
   const [remitoResult, setRemitoResult] = useState<{ numero: string; cai: string; pdfUrl: string; caiVencido: boolean; caiVencimiento: string } | null>(null)
+  // Remitos ya emitidos para este pedido (regla: un solo remito por factura).
+  const [remitosDelPedido, setRemitosDelPedido] = useState<{ id: number; numero: string; pdf_url: string | null; storage_path: string | null; factura_id: number | null }[]>([])
+  const [abriendoRemito, setAbriendoRemito] = useState(false)
 
   // Agregar productos a pedido existente
   const [agregarOpen, setAgregarOpen] = useState(false)
@@ -138,6 +142,15 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           .single()
         if (extraData) setOrderExtra(extraData)
 
+        // Remitos ya emitidos para este pedido (para bloquear "Generar Remito"
+        // si la factura ya tiene uno — un solo remito por factura).
+        const { data: remitosData } = await supabaseExtra
+          .from("remitos")
+          .select("id, numero, pdf_url, storage_path, factura_id")
+          .eq("order_id", id)
+          .order("numero_remito", { ascending: true })
+        if (remitosData) setRemitosDelPedido(remitosData as any)
+
         try {
           const archivos = await fetchOrdenCompraArchivos(id)
           setOcArchivos(archivos)
@@ -198,6 +211,16 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
   const nextStatuses = getNextStatuses(currentStatus)
   const isTerminal = ["ENTREGADO", "CANCELADO"].includes(currentStatus)
   const canCancel = !isTerminal
+
+  // Regla: UN SOLO REMITO POR FACTURA. Si la factura actual del pedido ya tiene
+  // un remito, se bloquea "Generar Remito" y se ofrece solo "Imprimir Remito".
+  // Para parciales (otra factura nueva) el match es por factura_id, así un nuevo
+  // remito de la nueva factura sí queda habilitado. Sin factura (legacy): por pedido.
+  const facturaActualId: number | null = orderExtra?.factura_id ?? null
+  const remitoExistente =
+    facturaActualId != null
+      ? remitosDelPedido.find((r) => r.factura_id === facturaActualId) || null
+      : remitosDelPedido[0] || null
 
   async function handleUpdateStatus() {
     if (!newStatus) return
@@ -973,6 +996,22 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
     setRemitoOpen(true)
   }
 
+  // "Imprimir Remito": abre el PDF del remito ya emitido (signed URL fresca).
+  async function handleImprimirRemito() {
+    if (!remitoExistente) return
+    setAbriendoRemito(true)
+    try {
+      const url = await getRemitoPdfUrl({ storage_path: remitoExistente.storage_path, pdf_url: remitoExistente.pdf_url })
+      if (url) window.open(url, "_blank")
+      else alert("Este remito no tiene PDF disponible")
+    } catch (e) {
+      console.error("Error abriendo remito:", e)
+      alert("No se pudo abrir el PDF del remito")
+    } finally {
+      setAbriendoRemito(false)
+    }
+  }
+
   async function handleGenerarRemito() {
     setRemitoLoading(true)
     try {
@@ -994,6 +1033,22 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
           caiVencido: data.caiVencido,
           caiVencimiento: data.caiVencimiento,
         })
+        // Reflejar el nuevo remito en el estado para bloquear "Generar Remito".
+        setRemitosDelPedido((prev) => [
+          ...prev,
+          { id: data.remitoId, numero: data.numero, pdf_url: data.pdfUrl, storage_path: null, factura_id: facturaActualId },
+        ])
+      } else if (res.status === 409 && data.remitoExistente) {
+        // Guard del backend: la factura ya tenía remito. Sincronizamos estado y
+        // avisamos sin crear un duplicado.
+        const ex = data.remitoExistente
+        setRemitosDelPedido((prev) =>
+          prev.some((r) => r.id === ex.id)
+            ? prev
+            : [...prev, { id: ex.id, numero: ex.numero, pdf_url: ex.pdfUrl, storage_path: ex.storagePath ?? null, factura_id: facturaActualId }],
+        )
+        setRemitoOpen(false)
+        alert(`${data.error}`)
       } else {
         const extra = data.rango ? `\nRango talonario: ${data.rango.desde}-${data.rango.hasta}\nÚltimo número usado: ${data.ultimo_numero ?? "(ninguno)"}` : ""
         alert(`Error en paso "${data.paso}":\n${data.error}${extra}`)
@@ -1060,12 +1115,20 @@ export default function AdminPedidoDetailPage({ params }: { params: Promise<{ id
             </Button>
           )}
 
-          {/* Generar Remito (solo post-facturado) */}
+          {/* Remito (solo post-facturado). Regla: UN SOLO REMITO POR FACTURA.
+              Si la factura ya tiene remito → solo "Imprimir Remito". */}
           {["FACTURADO", "FACTURADO_PARCIAL", "EN_PROCESO_ENTREGA", "ENTREGADO"].includes(currentStatus) && (
-            <Button variant="default" className="bg-blue-600 hover:bg-blue-700" onClick={openRemitoDialog}>
-              <FileText className="h-4 w-4 mr-2" />
-              Generar Remito
-            </Button>
+            remitoExistente ? (
+              <Button variant="outline" onClick={handleImprimirRemito} disabled={abriendoRemito}>
+                <Printer className="h-4 w-4 mr-2" />
+                {abriendoRemito ? "Abriendo..." : `Imprimir Remito ${remitoExistente.numero}`}
+              </Button>
+            ) : (
+              <Button variant="default" className="bg-blue-600 hover:bg-blue-700" onClick={openRemitoDialog}>
+                <FileText className="h-4 w-4 mr-2" />
+                Generar Remito
+              </Button>
+            )
           )}
 
           {/* Agregar productos */}
