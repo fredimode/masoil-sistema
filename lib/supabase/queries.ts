@@ -1,4 +1,5 @@
 import { createClient as createSupabaseClient } from "./client"
+import { netoAConIva, round2 } from "../descuentos"
 import type { Order, OrderProduct, StatusChange, Product, Client, Vendedor, OrderStatus, Zona } from "../types"
 
 // ---------------------------------------------------------------------------
@@ -561,7 +562,11 @@ export async function addItemsToOrder(
       order_id: orderId,
       product_id: esCatalogo && item.productId && item.productId.trim() !== "" ? item.productId : null,
       quantity: item.quantity,
-      unit_price: item.price,
+      // El modal "Agregar producto" trabaja en precios NETO (igual que
+      // pedidos/nuevo): persistimos CON IVA para mantener la convención
+      // unit_price con IVA en BD. Helper único: netoAConIva (preserva el signo
+      // de los renglones de descuento). Antes guardaba el neto → sub-facturaba.
+      unit_price: netoAConIva(item.price),
       reservado: tipo === "producto",
       reservado_at: new Date().toISOString(),
       tipo_linea: tipo,
@@ -572,14 +577,14 @@ export async function addItemsToOrder(
   const { error: itemsError } = await supabase.from("order_items").insert(rows)
   if (itemsError) throw itemsError
 
-  // Recalcular total sumando lo nuevo
+  // Recalcular total sumando lo nuevo (con IVA, consistente con unit_price).
   const { data: currentOrder } = await supabase
     .from("orders")
     .select("total")
     .eq("id", orderId)
     .single()
-  const delta = items.reduce((s, i) => s + i.quantity * i.price, 0)
-  const newTotal = Number(currentOrder?.total || 0) + delta
+  const delta = round2(rows.reduce((s, r) => s + r.quantity * r.unit_price, 0))
+  const newTotal = round2(Number(currentOrder?.total || 0) + delta)
   await supabase
     .from("orders")
     .update({ total: newTotal, updated_at: new Date().toISOString() })
