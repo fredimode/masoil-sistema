@@ -4,6 +4,7 @@ import {
   montoDescuentoGeneral,
   construirLineaDescuentoGeneral,
   calcularTotales,
+  netoAConIva,
   CODIGO_DESCUENTO_GENERAL,
   type LineaCalculo,
 } from "./descuentos"
@@ -11,6 +12,29 @@ import {
 const prod = (price: number, quantity = 1): LineaCalculo => ({ price, quantity, tipoLinea: "producto" })
 const libre = (price: number, quantity = 1): LineaCalculo => ({ price, quantity, tipoLinea: "libre" })
 const desc = (price: number): LineaCalculo => ({ price, quantity: 1, tipoLinea: "descuento" })
+
+describe("netoAConIva", () => {
+  it("aplica el 21% y redondea a 2 decimales", () => {
+    expect(netoAConIva(100)).toBe(121)
+    expect(netoAConIva(554.28)).toBe(670.68) // 554.28 × 1.21 = 670.6788 → 670.68
+  })
+
+  it("preserva el signo negativo (líneas de descuento)", () => {
+    expect(netoAConIva(-30)).toBe(-36.3)
+  })
+
+  it("tolera 0 / valores inválidos", () => {
+    expect(netoAConIva(0)).toBe(0)
+    expect(netoAConIva(NaN)).toBe(0)
+  })
+
+  it("revierte exacto al dividir por 1.21 en la facturación (no sub-factura)", () => {
+    // El bug: la conversión guardaba neto sin ×1.21 y la FC dividía /1.21.
+    // Con el helper, neto→conIVA→/1.21 recupera el neto (módulo redondeo).
+    const neto = 19965
+    expect(Math.round((netoAConIva(neto) / 1.21) * 100) / 100).toBe(neto)
+  })
+})
 
 describe("baseProductos", () => {
   it("suma el neto de los productos", () => {

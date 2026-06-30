@@ -16,7 +16,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import type { Client, Product, Vendedor } from "@/lib/types"
 import { formatCurrency, formatCurrencyExact } from "@/lib/utils"
-import { calcularTotales, construirLineaDescuentoGeneral } from "@/lib/descuentos"
+import { calcularTotales, construirLineaDescuentoGeneral, netoAConIva } from "@/lib/descuentos"
 import { ArrowLeft, Plus, Trash2, Search, AlertTriangle, PackagePlus, History, CircleDot, Truck } from "lucide-react"
 import Link from "next/link"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -344,10 +344,10 @@ export default function AdminNuevoPedidoPage() {
           productCode: i.productCode,
           productName: i.productName,
           quantity: i.quantity,
-          // J.4: el form muestra precios sin IVA; al persistir multiplicamos
-          // x1.21 para mantener la convencion unit_price con IVA en BD (compat
-          // con flow de facturacion que divide al emitir FC).
-          price: Math.round(i.price * 1.21 * 100) / 100,
+          // J.4: el form muestra precios sin IVA; al persistir pasamos a CON IVA
+          // (convención unit_price con IVA en BD, compat con el flow de
+          // facturación que divide al emitir FC). Helper único: netoAConIva.
+          price: netoAConIva(i.price),
           tipoLinea: i.tipoLinea || "producto",
         })),
         razonSocial,

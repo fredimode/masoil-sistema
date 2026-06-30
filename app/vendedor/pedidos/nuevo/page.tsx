@@ -13,7 +13,7 @@ import { useCurrentVendedor } from "@/lib/hooks/useCurrentVendedor"
 import { fetchClientsByVendedor, fetchProducts, createOrder } from "@/lib/supabase/queries"
 import type { Client, Product } from "@/lib/types"
 import { formatCurrency, formatCurrencyExact } from "@/lib/utils"
-import { calcularTotales, construirLineaDescuentoGeneral } from "@/lib/descuentos"
+import { calcularTotales, construirLineaDescuentoGeneral, netoAConIva } from "@/lib/descuentos"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, Plus, Trash2, Search, AlertTriangle, History } from "lucide-react"
 import Link from "next/link"
@@ -232,9 +232,9 @@ function NuevoPedidoContent() {
           productCode: i.productCode,
           productName: i.productName,
           quantity: i.quantity,
-          // J.4: form muestra sin IVA, persistimos x1.21 para mantener
-          // convencion unit_price con IVA en BD.
-          price: Math.round(i.price * 1.21 * 100) / 100,
+          // J.4: form muestra sin IVA, persistimos CON IVA para mantener la
+          // convención unit_price con IVA en BD. Helper único: netoAConIva.
+          price: netoAConIva(i.price),
           tipoLinea: i.tipoLinea || "producto",
         })),
         razonSocial,

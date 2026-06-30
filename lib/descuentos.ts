@@ -41,6 +41,19 @@ export function round2(n: number): number {
 }
 
 /**
+ * Convierte un precio NETO (sin IVA) a precio CON IVA, redondeado a 2 decimales.
+ * Fuente ÚNICA del factor ×1.21 que las pantallas de armado aplican al persistir
+ * `orders.unit_price` (convención del sistema: unit_price se guarda CON IVA y la
+ * facturación lo divide por 1.21 al emitir). Usar SIEMPRE este helper —nunca el
+ * ×1.21 inline— para que pedidos directos y pedidos convertidos desde cotización
+ * guarden el precio con la misma base. (La conversión copiaba el neto sin ×1.21,
+ * lo que sub-facturaba ~17,4% al dividir por 1.21 en la emisión.)
+ */
+export function netoAConIva(neto: number): number {
+  return round2((Number(neto) || 0) * (1 + IVA_RATE))
+}
+
+/**
  * Base sobre la que se aplica el descuento general: neto (sin IVA) de los
  * productos. Excluye los renglones de descuento y cualquier aporte negativo
  * (línea libre negativa), de modo que el descuento general nunca se calcule

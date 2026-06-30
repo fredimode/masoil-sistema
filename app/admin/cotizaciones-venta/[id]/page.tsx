@@ -18,6 +18,7 @@ import {
 } from "@/lib/supabase/queries"
 import { createClient as createSupabaseClient } from "@/lib/supabase/client"
 import { generateCotizacionPDF } from "@/lib/pdf/cotizacion-pdf"
+import { netoAConIva } from "@/lib/descuentos"
 import { formatCurrencyExact, formatDateStr } from "@/lib/utils"
 
 const ESTADO_BADGES: Record<string, { label: string; cls: string }> = {
@@ -363,7 +364,11 @@ export default function CotizacionVentaDetallePage() {
         notes: [cot.observaciones, `Origen: Cotización ${cot.numero}`].filter(Boolean).join(" - "),
         isCustom: false,
         isUrgent: false,
-        total: itemsAConvertir.reduce((s, i) => s + (Number(i.subtotal) || 0), 0),
+        // La cotización guarda precio NETO; el pedido guarda unit_price CON IVA.
+        // Pasamos el subtotal neto a CON IVA (netoAConIva) para que coincida con
+        // la convención de los pedidos directos y NO se sub-facture al emitir la
+        // FC (que divide unit_price por 1.21).
+        total: netoAConIva(itemsAConvertir.reduce((s, i) => s + (Number(i.subtotal) || 0), 0)),
         items: itemsAConvertir.map((i) => {
           // Propagamos tipo_linea de la cotizacion al pedido. Si el item
           // de cotizacion es descuento/libre, debe persistirse como tal en
@@ -375,13 +380,21 @@ export default function CotizacionVentaDetallePage() {
             productCode: i.producto_codigo || "",
             productName: i.producto_nombre,
             quantity: Number(i.cantidad) || 1,
-            price: Number(i.precio_unitario) || 0,
+            // Neto → CON IVA. Aplica igual a líneas de descuento (negativo neto
+            // → negativo con IVA), preservando el signo.
+            price: netoAConIva(Number(i.precio_unitario) || 0),
             tipoLinea: tipo,
           }
         }),
         razonSocial: cot.razon_social || undefined,
       })
       await updateCotizacionVenta(id, { estado: "convertida_pedido", order_id: orderId })
+      // Auditoría: arrastrar el % de descuento general de la cotización al pedido
+      // (la fila de descuento ya viaja como item; esto persiste el campo).
+      const dgp = Number(cot.descuento_general_pct) || 0
+      if (dgp > 0) {
+        await createSupabaseClient().from("orders").update({ descuento_general_pct: dgp }).eq("id", orderId)
+      }
       router.push(`/admin/pedidos/${orderId}`)
     } catch (e: any) {
       console.error("Error convertir cotización en pedido:", {

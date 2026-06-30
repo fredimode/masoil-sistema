@@ -14,6 +14,7 @@ import {
   createCotizacionVentaItem, fetchProducts, createOrder,
 } from "@/lib/supabase/queries"
 import { generateCotizacionPDF } from "@/lib/pdf/cotizacion-pdf"
+import { netoAConIva } from "@/lib/descuentos"
 import type { Client, Product } from "@/lib/types"
 import { formatCurrencyExact, formatDateStr, normalizeSearch } from "@/lib/utils"
 import { ArrowLeft, Pencil, Trash2, Plus, Check, X, Search, ShoppingCart, Download, MapPin, Phone } from "lucide-react"
@@ -174,18 +175,28 @@ export default function VendedorCotizacionDetallePage({ params }: { params: Prom
         notes: [cot.observaciones, `Origen: Cotización ${cot.numero}`].filter(Boolean).join(" - "),
         isCustom: false,
         isUrgent: false,
-        total: items.reduce((s, i) => s + (Number(i.subtotal) || 0), 0),
+        // La cotización guarda precio NETO; el pedido guarda unit_price CON IVA.
+        // Pasamos neto → CON IVA para no sub-facturar al emitir la FC (que divide
+        // unit_price por 1.21). Consistente con los pedidos directos.
+        total: netoAConIva(items.reduce((s, i) => s + (Number(i.subtotal) || 0), 0)),
         items: items.map((i) => ({
           productId: i.product_id || null,
           productCode: i.producto_codigo || "",
           productName: i.producto_nombre,
           quantity: Number(i.cantidad) || 1,
-          price: Number(i.precio_unitario) || 0,
+          // Neto → CON IVA. Aplica igual a líneas de descuento (preserva el signo).
+          price: netoAConIva(Number(i.precio_unitario) || 0),
           tipoLinea: (i.tipo_linea as "producto" | "libre" | "descuento") || "producto",
         })),
         razonSocial: cot.razon_social || undefined,
       })
       await updateCotizacionVenta(id, { estado: "convertida_pedido", order_id: orderId })
+      // Auditoría: arrastrar el % de descuento general de la cotización al pedido.
+      const dgp = Number(cot.descuento_general_pct) || 0
+      if (dgp > 0) {
+        const { createClient } = await import("@/lib/supabase/client")
+        await createClient().from("orders").update({ descuento_general_pct: dgp }).eq("id", orderId)
+      }
       router.push(`/vendedor/pedidos/${orderId}`)
     } catch (e: any) {
       alert("Error al convertir en pedido: " + (e?.message || ""))
