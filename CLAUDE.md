@@ -66,6 +66,33 @@ finanzas y contabilidad de IVA. Ver `docs/ESTADO_SISTEMA.md` (auditoría) y
 - Razón social del cliente: usar `clients.business_name` (la columna
   `razon_social` quedó contaminada por un import; ver P4 en el plan contable).
 
+## Precios: `unit_price` CON IVA — `netoAConIva` es la fuente única del ×1.21
+- **Convención invariante**: `order_items.unit_price` se guarda **CON IVA**
+  (neto ×1.21). La facturación (`/api/facturar`, modal en
+  `app/admin/pedidos/[id]`) **divide `unit_price / 1.21`** para mandar
+  `precio_unitario_sin_iva` a TusFacturas. Romper esta convención sub-factura.
+  - *Excepción*: las **cotizaciones** (`cotizacion_venta_items.precio_unitario`)
+    guardan **NETO** (sin IVA) — son presupuestos, suman +21% al mostrar/exportar.
+  - `products.price` es **NETO** (las pantallas de armado trabajan en neto y
+    aplican el ×1.21 recién al persistir el pedido).
+- **Fuente única del ×1.21: `netoAConIva(neto)` en `lib/descuentos.ts`**
+  (`round2(neto × 1.21)`, preserva el signo de los renglones de descuento). NO
+  escribir `* 1.21` inline. **Las 3 vías que persisten `unit_price` lo usan**:
+  1. **Pedido directo** — `app/admin/pedidos/nuevo` y `app/vendedor/pedidos/nuevo`.
+  2. **Conversión cotización→pedido** — `app/admin/cotizaciones-venta/[id]` y
+     `app/vendedor/cotizaciones/[id]` (la cotización guarda neto → al convertir
+     se pasa a CON IVA; también arrastra `descuento_general_pct`).
+  3. **Agregar producto a un pedido** — `addItemsToOrder` (`lib/supabase/queries.ts`).
+- **Bug histórico (cerrado en código y datos):** la conversión y `addItemsToOrder`
+  guardaban NETO sin ×1.21 → al dividir por 1.21 en la emisión sub-facturaban
+  ~17,4% (factor 1/1.21). Se centralizó en `netoAConIva` (cubierto por tests:
+  `lib/descuentos.test.ts`, `lib/supabase/queries.addItems.test.ts`) y se corrigió
+  el dato de los 5 pedidos convertidos sin facturar
+  (`supabase/fixes/20260630_fix_subfacturacion_conversion.sql`, aplicado por Fredi).
+- **Las facturas viejas sub-facturadas NO se corrigen**: son emisiones de
+  **testing** (CAE en blanco, `vencimiento_cae=2000-01-01`); se limpian en el
+  go-live. Solo 2 de 153 facturas tienen CAE real, ninguna del set afectado.
+
 ## Remitos — UN SOLO REMITO POR FACTURA (3 capas)
 - Regla invariante: **una factura = un remito**. El remito vive en la tabla
   `remitos` y se vincula por **`remitos.factura_id`** (= `orders.factura_id`).
