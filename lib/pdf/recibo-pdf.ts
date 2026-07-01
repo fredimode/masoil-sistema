@@ -20,6 +20,71 @@ function fmtDate(d: string | null | undefined): string {
   }
 }
 
+// ─── Importe en letras (ARS) ──────────────────────────────────────────────
+// Convierte un número a su expresión en letras en español, en MAYÚSCULAS, con
+// los centavos como "CON NN CTVS" (ej. 11,89 → "ONCE CON 89 CTVS"). Soporta
+// hasta cientos de millones (cubre la deuda migrada ~$92,7M).
+
+const UNIDADES = [
+  "", "UNO", "DOS", "TRES", "CUATRO", "CINCO", "SEIS", "SIETE", "OCHO", "NUEVE",
+  "DIEZ", "ONCE", "DOCE", "TRECE", "CATORCE", "QUINCE", "DIECISEIS",
+  "DIECISIETE", "DIECIOCHO", "DIECINUEVE", "VEINTE",
+]
+const DECENAS = ["", "", "VEINTI", "TREINTA", "CUARENTA", "CINCUENTA", "SESENTA", "SETENTA", "OCHENTA", "NOVENTA"]
+const CENTENAS = ["", "CIENTO", "DOSCIENTOS", "TRESCIENTOS", "CUATROCIENTOS", "QUINIENTOS", "SEISCIENTOS", "SETECIENTOS", "OCHOCIENTOS", "NOVECIENTOS"]
+
+function decenaALetras(n: number): string {
+  if (n <= 20) return UNIDADES[n]
+  const d = Math.floor(n / 10)
+  const u = n % 10
+  if (d === 2) return u === 0 ? "VEINTE" : "VEINTI" + UNIDADES[u]
+  return u > 0 ? `${DECENAS[d]} Y ${UNIDADES[u]}` : DECENAS[d]
+}
+
+function tresDigitos(n: number): string {
+  // 0..999
+  if (n === 0) return ""
+  if (n === 100) return "CIEN"
+  const c = Math.floor(n / 100)
+  const resto = n % 100
+  const parts = [c > 0 ? CENTENAS[c] : "", decenaALetras(resto)].filter(Boolean)
+  return parts.join(" ")
+}
+
+// Apócope de "UNO" → "UN" cuando precede a MIL / MILLONES
+// ("VEINTIUNO"→"VEINTIUN", "TREINTA Y UNO"→"TREINTA Y UN").
+function apocope(s: string): string {
+  return s.replace(/UNO$/, "UN")
+}
+
+function enteroALetras(n: number): string {
+  if (n === 0) return "CERO"
+  if (n < 0) return "MENOS " + enteroALetras(-n)
+  if (n >= 1_000_000_000) return String(n) // fuera de rango soportado
+  let out = ""
+  const millones = Math.floor(n / 1_000_000)
+  const miles = Math.floor((n % 1_000_000) / 1000)
+  const resto = n % 1000
+  if (millones > 0) {
+    out += millones === 1 ? "UN MILLON " : `${apocope(tresDigitos(millones))} MILLONES `
+  }
+  if (miles > 0) {
+    out += miles === 1 ? "MIL " : `${apocope(tresDigitos(miles))} MIL `
+  }
+  if (resto > 0) out += tresDigitos(resto)
+  return out.trim().replace(/\s+/g, " ")
+}
+
+export function numeroALetras(n: number): string {
+  const abs = Math.abs(n)
+  const entero = Math.floor(abs)
+  const centavos = Math.round((abs - entero) * 100)
+  const cc = String(centavos).padStart(2, "0")
+  return `${enteroALetras(entero)} CON ${cc} CTVS`
+}
+
+// ─── Tipos ────────────────────────────────────────────────────────────────
+
 export interface ReciboPDFData {
   numero_completo: string             // "AQ-0001" / "CO-0001" / "MA-0001"
   fecha: string | null
@@ -29,21 +94,39 @@ export interface ReciboPDFData {
     cuit?: string | null
     domicilio?: string | null
   }
+  // Columna izquierda — comprobantes que cancela (líneas positivas)
   imputaciones: {
-    comprobante: string               // "FC A 0001-00000123"
+    comprobante: string               // "FACTURA A 0001-00000123"
     total: number
     monto_imputado: number
     fecha?: string | null
   }[]
+  // Columna izquierda — retenciones (líneas negativas)
+  retenciones?: {
+    tipo: string                      // "IIBB_CABA" | "ARBA" | ...
+    numero?: string | null
+    fecha?: string | null
+    importe: number
+  }[]
+  // Columna derecha — valores con los que se paga
   medios_pago: {
-    tipo: string                      // "Efectivo" | "Transferencia" | "Cheque" | ... | "Ajuste"
+    tipo: string                      // "Efectivo" | "Transferencia" | "Cheque" | ...
     importe: number
     referencia?: string | null
     banco?: string | null
     numero?: string | null
   }[]
-  total: number
+  total: number                       // TOTAL destacado = NETO pagado (facturas − retenciones = Σ medios)
+  total_comprobantes?: number         // Σ facturas − Σ retenciones (fallback: se calcula)
+  total_pagos?: number                // Σ medios (fallback: se calcula)
   observaciones?: string | null
+}
+
+interface ColRow {
+  label: string
+  sub?: string | null
+  amount: number
+  negative?: boolean
 }
 
 export function generateReciboPDF(data: ReciboPDFData): Blob {
@@ -111,87 +194,136 @@ export function generateReciboPDF(data: ReciboPDFData): Blob {
     doc.text(l, margin, y)
     y += 12
   }
-  y += 8
+  y += 10
 
-  // Imputaciones (facturas que paga este recibo)
-  if (data.imputaciones.length > 0) {
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(10)
-    doc.text("CONCEPTOS IMPUTADOS", margin, y)
-    y += 12
+  // ─── Cuerpo en 2 columnas ───────────────────────────────────────────────
+  const gap = 20
+  const colW = (pageW - margin * 2 - gap) / 2
+  const colLeftX = margin
+  const colRightX = margin + colW + gap
+  const colTop = y
 
-    doc.setFont("helvetica", "bold")
-    doc.setFontSize(9)
-    doc.setFillColor(240, 240, 240)
-    doc.rect(margin, y - 10, pageW - margin * 2, 18, "F")
-    doc.text("Comprobante", margin + 4, y + 2)
-    doc.text("Fecha", margin + 220, y + 2)
-    doc.text("Total", pageW - margin - 180, y + 2, { align: "right" })
-    doc.text("Imputado", pageW - margin - 4, y + 2, { align: "right" })
-    y += 14
+  const retenciones = data.retenciones || []
+  const sumImput = data.imputaciones.reduce((s, i) => s + (i.monto_imputado ?? i.total ?? 0), 0)
+  const sumRets = retenciones.reduce((s, r) => s + (r.importe || 0), 0)
+  const sumMedios = data.medios_pago.reduce((s, m) => s + (m.importe || 0), 0)
+  const totalComprobantes = data.total_comprobantes ?? (sumImput - sumRets)
+  const totalPagos = data.total_pagos ?? sumMedios
 
-    doc.setFont("helvetica", "normal")
-    for (const imp of data.imputaciones) {
-      if (y > pageH - 180) {
-        doc.addPage()
-        y = margin
-      }
-      doc.text(imp.comprobante, margin + 4, y)
-      doc.text(fmtDate(imp.fecha), margin + 220, y)
-      doc.text(fmt(imp.total), pageW - margin - 180, y, { align: "right" })
-      doc.text(fmt(imp.monto_imputado), pageW - margin - 4, y, { align: "right" })
-      y += 12
-      doc.setDrawColor(230)
-      doc.line(margin, y - 4, pageW - margin, y - 4)
-    }
-    y += 10
-  }
+  // Filas columna izquierda: facturas (+) y retenciones (−)
+  const leftRows: ColRow[] = [
+    ...data.imputaciones.map((imp) => ({
+      label: imp.comprobante,
+      sub: fmtDate(imp.fecha),
+      amount: imp.monto_imputado ?? imp.total ?? 0,
+    })),
+    ...retenciones.map((r) => ({
+      label: `RET ${r.tipo}`,
+      sub: [r.numero ? `N° ${r.numero}` : null, fmtDate(r.fecha)].filter(Boolean).join(" · ") || null,
+      amount: r.importe || 0,
+      negative: true,
+    })),
+  ]
 
-  // Medios de pago
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(10)
-  doc.text("MEDIOS DE PAGO", margin, y)
-  y += 12
-
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(9)
-  doc.setFillColor(240, 240, 240)
-  doc.rect(margin, y - 10, pageW - margin * 2, 18, "F")
-  doc.text("Tipo", margin + 4, y + 2)
-  doc.text("Detalle", margin + 130, y + 2)
-  doc.text("Importe", pageW - margin - 4, y + 2, { align: "right" })
-  y += 14
-
-  doc.setFont("helvetica", "normal")
-  for (const m of data.medios_pago) {
-    if (y > pageH - 180) {
-      doc.addPage()
-      y = margin
-    }
-    const detail = [
+  // Filas columna derecha: medios de pago
+  const rightRows: ColRow[] = data.medios_pago.map((m) => ({
+    label: (m.tipo || "-").toUpperCase(),
+    sub: [
       m.banco ? `Banco: ${m.banco}` : null,
       m.numero ? `N° ${m.numero}` : null,
       m.referencia ? `Ref: ${m.referencia}` : null,
-    ].filter(Boolean).join(" — ")
-    doc.text(m.tipo, margin + 4, y)
-    if (detail) {
-      const split = doc.splitTextToSize(detail, 240)
-      doc.text(split, margin + 130, y)
+    ].filter(Boolean).join(" · ") || null,
+    amount: m.importe || 0,
+  }))
+
+  // Dibuja una tabla de una columna (título, filas, subtotal). Devuelve la Y final.
+  function drawColumn(x: number, startY: number, title: string, rows: ColRow[], totalLabel: string, totalValue: number): number {
+    let cy = startY
+    const amountX = x + colW - 4
+
+    // Título
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(9.5)
+    doc.setFillColor(225, 225, 225)
+    doc.rect(x, cy, colW, 16, "F")
+    doc.setTextColor(0)
+    doc.text(title, x + 4, cy + 11)
+    cy += 16
+
+    // Filas
+    if (rows.length === 0) {
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(8)
+      doc.setTextColor(130)
+      doc.text("Sin desglose", x + 4, cy + 10)
+      doc.setTextColor(0)
+      cy += 14
     }
-    doc.text(fmt(m.importe), pageW - margin - 4, y, { align: "right" })
-    y += 12
-    doc.setDrawColor(230)
-    doc.line(margin, y - 4, pageW - margin, y - 4)
+    for (const row of rows) {
+      if (cy > pageH - 160) {
+        doc.addPage()
+        cy = margin
+      }
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(8)
+      doc.setTextColor(0)
+      const labelLine = doc.splitTextToSize(row.label, colW - 68)[0]
+      doc.text(labelLine, x + 4, cy + 9)
+      const amtStr = (row.negative ? "-" : "") + fmt(Math.abs(row.amount))
+      doc.text(amtStr, amountX, cy + 9, { align: "right" })
+      let rowH = 12
+      if (row.sub) {
+        doc.setFontSize(7)
+        doc.setTextColor(125)
+        doc.text(doc.splitTextToSize(row.sub, colW - 8)[0], x + 4, cy + 18)
+        doc.setTextColor(0)
+        rowH = 21
+      }
+      cy += rowH
+      doc.setDrawColor(235)
+      doc.line(x, cy - 3, x + colW, cy - 3)
+    }
+
+    // Subtotal
+    cy += 4
+    doc.setDrawColor(120)
+    doc.line(x, cy - 1, x + colW, cy - 1)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(9.5)
+    doc.text(totalLabel, x + 4, cy + 12)
+    doc.text(fmt(totalValue), amountX, cy + 12, { align: "right" })
+    cy += 18
+    return cy
   }
 
-  y += 10
+  const endLeft = drawColumn(colLeftX, colTop, "COMPROBANTES", leftRows, "TOTAL COMPROBANTES", totalComprobantes)
+  const endRight = drawColumn(colRightX, colTop, "VALORES", rightRows, "TOTAL PAGOS", totalPagos)
+  y = Math.max(endLeft, endRight) + 16
 
-  // Total
+  // ─── Importe en letras + TOTAL destacado (ancho completo) ───────────────
+  if (y > pageH - 150) {
+    doc.addPage()
+    y = margin
+  }
+  doc.setDrawColor(180)
+  doc.line(margin, y, pageW - margin, y)
+  y += 16
+
+  doc.setFont("helvetica", "normal")
+  doc.setFontSize(9)
+  doc.text("Son pesos:", margin, y)
   doc.setFont("helvetica", "bold")
-  doc.setFontSize(13)
-  doc.text("TOTAL RECIBO:", pageW - margin - 130, y)
-  doc.text(fmt(data.total), pageW - margin, y, { align: "right" })
-  y += 24
+  doc.setFontSize(9)
+  const letras = numeroALetras(data.total)
+  const letrasLines = doc.splitTextToSize(letras, pageW - margin * 2 - 60)
+  doc.text(letrasLines, margin + 55, y)
+  y += 12 * letrasLines.length + 10
+
+  doc.setFont("helvetica", "bold")
+  doc.setFontSize(15)
+  doc.text("TOTAL:", pageW - margin - 170, y + 2)
+  doc.text(fmt(data.total), pageW - margin, y + 2, { align: "right" })
+  y += 28
 
   // Observaciones
   if (data.observaciones) {

@@ -2107,22 +2107,83 @@ function TabCobrosRealizados({ recibos, recibosCobranza }: { recibos: any[]; rec
         domicilio = cli?.address || cli?.domicilio_entrega || null
       }
 
-      // Imputaciones: para recibos nuevos miramos facturas_ids JSONB y
-      // hacemos lookup en facturas. Para legacy GP no hay desglose.
+      // Imputaciones (columna izquierda): para recibos nuevos miramos
+      // facturas_ids JSONB. OJO: los ids vienen con prefijo "f-<id>" cuando
+      // provienen de la tabla `facturas` (fetchCobranzasPendientes usa
+      // `id: \`f-${f.id}\``). `facturas.id` es bigint, así que pasar "f-137"
+      // directo al .in() rompe con error 22P02 y dejaba SIEMPRE vacía la
+      // columna. Fix: separar prefijo, castear a número y hacer el lookup.
+      // Los ids sin prefijo son pendientes legacy de `cobranzas_pendientes`.
       type ImputacionPDF = { comprobante: string; total: number; monto_imputado: number; fecha?: string | null }
       let imputaciones: ImputacionPDF[] = []
       if (esNuevo && Array.isArray(det.facturas_ids) && det.facturas_ids.length > 0) {
-        const { data: facts } = await supabase
-          .from("facturas")
-          .select("id, tipo, numero, comprobante_nro, fecha, total")
-          .in("id", det.facturas_ids)
-        imputaciones = (facts || []).map((f: any) => ({
-          comprobante: [f.tipo, f.comprobante_nro || f.numero].filter(Boolean).join(" ") || "-",
-          total: Number(f.total) || 0,
-          // Sin imputaciones parciales hoy: el recibo cancela la factura completa
-          // o queda como saldo a favor. Mostramos total como monto imputado.
-          monto_imputado: Number(f.total) || 0,
-          fecha: f.fecha || null,
+        const ids: string[] = det.facturas_ids.map((x: any) => String(x))
+        const facturaIds = ids
+          .filter((id) => /^f-\d+$/.test(id))
+          .map((id) => Number(id.replace(/^f-/, "")))
+        const legacyIds = ids.filter((id) => !/^f-\d+$/.test(id))
+
+        if (facturaIds.length > 0) {
+          const { data: facts } = await supabase
+            .from("facturas")
+            .select("id, tipo, numero, comprobante_nro, fecha, total")
+            .in("id", facturaIds)
+          for (const f of facts || []) {
+            imputaciones.push({
+              comprobante: [f.tipo, f.comprobante_nro || f.numero].filter(Boolean).join(" ") || "-",
+              total: Number(f.total) || 0,
+              // Sin imputaciones parciales hoy: el recibo cancela la factura
+              // completa o queda como saldo a favor.
+              monto_imputado: Number(f.total) || 0,
+              fecha: f.fecha || null,
+            })
+          }
+        }
+
+        // Fallback: pendientes legacy (cobranzas_pendientes). Si no resuelven,
+        // degradamos a fila genérica en vez de romper.
+        if (legacyIds.length > 0) {
+          try {
+            const { data: legacy } = await supabase
+              .from("cobranzas_pendientes")
+              .select("id, comprobante, fecha_comprobante, total")
+              .in("id", legacyIds)
+            const encontrados = new Set((legacy || []).map((l: any) => String(l.id)))
+            for (const l of legacy || []) {
+              imputaciones.push({
+                comprobante: l.comprobante || "Comprobante",
+                total: Number(l.total) || 0,
+                monto_imputado: Number(l.total) || 0,
+                fecha: l.fecha_comprobante || null,
+              })
+            }
+            for (const id of legacyIds) {
+              if (!encontrados.has(id)) {
+                imputaciones.push({ comprobante: "Comprobante", total: 0, monto_imputado: 0, fecha: null })
+              }
+            }
+          } catch {
+            for (const _id of legacyIds) {
+              imputaciones.push({ comprobante: "Comprobante", total: 0, monto_imputado: 0, fecha: null })
+            }
+          }
+        }
+      }
+
+      // Retenciones (columna izquierda, líneas negativas): viven en la tabla
+      // `retenciones` vinculadas por recibo_id. Antes NO se traían al PDF.
+      type RetencionPDF = { tipo: string; numero?: string | null; fecha?: string | null; importe: number }
+      let retenciones: RetencionPDF[] = []
+      if (esNuevo && det.id) {
+        const { data: rets } = await supabase
+          .from("retenciones")
+          .select("tipo, numero_comprobante, fecha, importe")
+          .eq("recibo_id", det.id)
+        retenciones = (rets || []).map((r: any) => ({
+          tipo: r.tipo || "-",
+          numero: r.numero_comprobante || null,
+          fecha: r.fecha || null,
+          importe: Number(r.importe) || 0,
         }))
       }
 
@@ -2145,6 +2206,19 @@ function TabCobrosRealizados({ recibos, recibosCobranza }: { recibos: any[]; rec
         }]
       }
 
+      // Totales del modelo Gestión PRO:
+      //   TOTAL COMPROBANTES = Σ facturas − Σ retenciones
+      //   TOTAL PAGOS        = Σ medios de pago
+      //   TOTAL destacado    = NETO pagado (deben coincidir los tres)
+      const sumFacturas = imputaciones.reduce((s, i) => s + (i.monto_imputado || 0), 0)
+      const sumRetenciones = retenciones.reduce((s, x) => s + (x.importe || 0), 0)
+      const sumMedios = medios_pago.reduce((s, m) => s + (m.importe || 0), 0)
+      const totalComprobantes = esNuevo ? sumFacturas - sumRetenciones : Number(r.importe) || 0
+      const totalPagos = esNuevo ? sumMedios : Number(r.importe) || 0
+      // El neto pagado autoritativo es la suma de medios (lo que efectivamente
+      // ingresó); para legacy GP no hay desglose y usamos el importe del recibo.
+      const totalNeto = esNuevo ? sumMedios : Number(r.importe) || 0
+
       const blob = generateReciboPDF({
         numero_completo: r.nro_comprobante || "-",
         fecha: r.fecha || null,
@@ -2155,8 +2229,11 @@ function TabCobrosRealizados({ recibos, recibosCobranza }: { recibos: any[]; rec
           domicilio,
         },
         imputaciones,
+        retenciones,
         medios_pago,
-        total: Number(r.importe) || 0,
+        total: totalNeto,
+        total_comprobantes: totalComprobantes,
+        total_pagos: totalPagos,
         observaciones: esNuevo ? det.observaciones : null,
       })
       const url = URL.createObjectURL(blob)
