@@ -12,11 +12,12 @@ import {
   fetchRetenciones, fetchRecibos, createRetencion, createMovimientoCuentaCorriente,
   deleteCobranzaPendiente, fetchVendedores, getNextReciboNumero,
   createReciboCobranza, createChequesRecibidos, fetchRecibosCobranza,
+  updateRetencion, deleteRetencion, esRetencionEditable,
 } from "@/lib/supabase/queries"
 import { calcularSaldoPorCuit, normalizarCuit } from "@/lib/saldos"
 import { formatCurrencyExact, normalizeSearch, formatDateStr } from "@/lib/utils"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
-import { Search, Download, Plus, Trash2, Eye, Printer, FileText } from "lucide-react"
+import { Search, Download, Plus, Trash2, Eye, Printer, FileText, Pencil, Lock } from "lucide-react"
 import { generateReciboPDF } from "@/lib/pdf/recibo-pdf"
 import { createClient } from "@/lib/supabase/client"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -170,7 +171,11 @@ export default function CobranzasPage() {
         </TabsContent>
 
         <TabsContent value="retenciones">
-          <TabRetenciones retenciones={retenciones} clients={clients} />
+          <TabRetenciones
+            retenciones={retenciones}
+            clients={clients}
+            onChanged={async () => setRetenciones(await fetchRetenciones())}
+          />
         </TabsContent>
 
         <TabsContent value="informe">
@@ -1489,12 +1494,62 @@ function TabRegistrarCobro({
 
 // ─── Tab 3: Retenciones ─────────────────────────────────────────────────────
 
-function TabRetenciones({ retenciones, clients }: { retenciones: any[]; clients: any[] }) {
+function TabRetenciones({ retenciones, clients, onChanged }: { retenciones: any[]; clients: any[]; onChanged?: () => void | Promise<void> }) {
   const [search, setSearch] = useState("")
   const [filtroTipo, setFiltroTipo] = useState("Todos")
   const [desde, setDesde] = useState("2000-01-01")
   const [hasta, setHasta] = useState(new Date().toISOString().slice(0, 10))
   const [page, setPage] = useState(1)
+  // Edición/eliminación — solo retenciones sueltas (recibo_id IS NULL).
+  const [editing, setEditing] = useState<any | null>(null)
+  const [editForm, setEditForm] = useState({ tipo: "ARBA", numero_comprobante: "", fecha: "", importe: 0 })
+  const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  function openEdit(r: any) {
+    setEditForm({
+      tipo: r.tipo || "ARBA",
+      numero_comprobante: r.numero_comprobante || r.nro_comprobante || "",
+      fecha: (r.fecha || "").slice(0, 10),
+      importe: Number(r.importe) || 0,
+    })
+    setEditing(r)
+  }
+
+  async function handleSaveEdit() {
+    if (!editing) return
+    if (!editForm.importe || editForm.importe <= 0) { alert("Indicá un importe válido"); return }
+    setSaving(true)
+    try {
+      await updateRetencion(editing.id, {
+        tipo: editForm.tipo,
+        numero_comprobante: editForm.numero_comprobante || null,
+        fecha: editForm.fecha,
+        importe: editForm.importe,
+      })
+      setEditing(null)
+      await onChanged?.()
+    } catch (e: any) {
+      console.error("Error al actualizar retención:", e)
+      alert("No se pudo actualizar: " + (e?.message || ""))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDelete(r: any) {
+    if (!confirm(`¿Eliminar la retención ${r.tipo || ""} ${r.numero_comprobante || r.nro_comprobante || ""} por ${formatCurrencyExact(Number(r.importe) || 0)}? Se borrará también su movimiento en cuenta corriente.`)) return
+    setDeletingId(r.id)
+    try {
+      await deleteRetencion(r.id)
+      await onChanged?.()
+    } catch (e: any) {
+      console.error("Error al eliminar retención:", e)
+      alert("No se pudo eliminar: " + (e?.message || ""))
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   const clientMap = useMemo(() => {
     const map: Record<string, string> = {}
@@ -1578,28 +1633,119 @@ function TabRetenciones({ retenciones, clients }: { retenciones: any[]; clients:
               <TableHead>Tipo</TableHead>
               <TableHead>Nro Comprobante</TableHead>
               <TableHead className="text-right">Importe</TableHead>
+              <TableHead className="text-center">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {pag.getPage(page).length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-gray-500 py-8">Sin retenciones</TableCell>
+                <TableCell colSpan={6} className="text-center text-gray-500 py-8">Sin retenciones</TableCell>
               </TableRow>
             ) : (
-              pag.getPage(page).map((r: any, i: number) => (
-                <TableRow key={r.id || i}>
-                  <TableCell>{formatDateStr(r.fecha)}</TableCell>
-                  <TableCell>{clientMap[r.client_id] || "-"}</TableCell>
-                  <TableCell><Badge variant="outline">{r.tipo}</Badge></TableCell>
-                  <TableCell>{r.nro_comprobante || r.numero_comprobante || "-"}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrencyExact(r.importe || 0)}</TableCell>
-                </TableRow>
-              ))
+              pag.getPage(page).map((r: any, i: number) => {
+                const editable = esRetencionEditable(r.recibo_id)
+                return (
+                  <TableRow key={r.id || i}>
+                    <TableCell>{formatDateStr(r.fecha)}</TableCell>
+                    <TableCell>{clientMap[r.client_id] || "-"}</TableCell>
+                    <TableCell><Badge variant="outline">{r.tipo}</Badge></TableCell>
+                    <TableCell>{r.nro_comprobante || r.numero_comprobante || "-"}</TableCell>
+                    <TableCell className="text-right font-medium">{formatCurrencyExact(r.importe || 0)}</TableCell>
+                    <TableCell>
+                      {editable ? (
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => openEdit(r)}
+                            className="p-1.5 rounded hover:bg-gray-100"
+                            title="Editar retención"
+                          >
+                            <Pencil className="h-4 w-4 text-blue-600" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(r)}
+                            disabled={deletingId === r.id}
+                            className="p-1.5 rounded hover:bg-gray-100 disabled:opacity-50"
+                            title="Eliminar retención"
+                          >
+                            <Trash2 className="h-4 w-4 text-red-600" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center gap-1 text-gray-400" title="Incluida en un recibo emitido: no se puede editar ni eliminar">
+                          <Lock className="h-4 w-4" />
+                          <span className="text-xs">En recibo</span>
+                        </div>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             )}
           </TableBody>
         </Table>
       </div>
       <TablePagination currentPage={page} totalPages={pag.totalPages} totalItems={pag.totalItems} pageSize={pag.pageSize} onPageChange={setPage} />
+
+      {/* Modal de edición — solo retenciones sueltas */}
+      <Dialog open={!!editing} onOpenChange={(o) => { if (!o) setEditing(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar retención</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium mb-1 block">Tipo</label>
+              <select
+                value={editForm.tipo}
+                onChange={(e) => setEditForm((f) => ({ ...f, tipo: e.target.value }))}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              >
+                {TIPOS_RETENCION.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Nro Comprobante</label>
+              <input
+                type="text"
+                value={editForm.numero_comprobante}
+                onChange={(e) => setEditForm((f) => ({ ...f, numero_comprobante: e.target.value }))}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Fecha</label>
+              <input
+                type="date"
+                value={editForm.fecha}
+                onChange={(e) => setEditForm((f) => ({ ...f, fecha: e.target.value }))}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-1 block">Importe</label>
+              <input
+                type="number"
+                step="0.01"
+                value={editForm.importe}
+                onChange={(e) => setEditForm((f) => ({ ...f, importe: Number(e.target.value) }))}
+                className="w-full border rounded-md px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button onClick={() => setEditing(null)} className="px-3 py-2 text-sm rounded-md border hover:bg-gray-50">Cancelar</button>
+              <button
+                onClick={handleSaveEdit}
+                disabled={saving}
+                className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {saving ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }

@@ -2683,6 +2683,101 @@ export async function createRetencion(retencion: Record<string, any>): Promise<s
   return data.id
 }
 
+// Solo las retenciones SUELTAS (sin recibo emitido) se pueden editar/eliminar.
+// Una retención con recibo_id poblado está incluida en un recibo → su importe
+// vive agregado en el RT del recibo y en los totales del recibo; no se toca.
+export function esRetencionEditable(recibo_id: string | null | undefined): boolean {
+  return recibo_id === null || recibo_id === undefined
+}
+
+// Guard de servidor OBLIGATORIO: re-lee recibo_id contra la DB antes de mutar y
+// aborta si la retención está en un recibo (defensa ante datos que cambiaron o
+// UI desactualizada). Devuelve la fila mínima si es editable.
+async function assertRetencionEditable(
+  supabase: ReturnType<typeof createSupabaseClient>,
+  retId: string,
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("retenciones")
+    .select("id, recibo_id")
+    .eq("id", retId)
+    .maybeSingle()
+  if (error) throw error
+  if (!data) throw new Error("La retención no existe")
+  if (!esRetencionEditable(data.recibo_id)) {
+    throw new Error("La retención está incluida en un recibo emitido: no se puede editar ni eliminar")
+  }
+}
+
+/**
+ * Elimina una retención SUELTA y su movimiento RT en cuenta_corriente_cliente.
+ * Orden seguro: primero el RT (referencia_id = retId, tipo='RT'), luego la
+ * retención. Así, si la 2da llamada falla, el saldo del cliente ya quedó bien
+ * (sin el haber huérfano) — la retención residual es cosmética y se puede
+ * reintentar. NO transaccional (patrón del subsistema de cobranzas).
+ */
+export async function deleteRetencion(retId: string): Promise<void> {
+  const supabase = createSupabaseClient()
+  await assertRetencionEditable(supabase, retId)
+
+  // 1) Borrar el/los movimientos RT vinculados (haber que reduce el saldo).
+  const { error: rtError } = await supabase
+    .from("cuenta_corriente_cliente")
+    .delete()
+    .eq("referencia_id", retId)
+    .eq("tipo_comprobante", "RT")
+  if (rtError) throw rtError
+
+  // 2) Borrar la retención.
+  const { error: retError } = await supabase
+    .from("retenciones")
+    .delete()
+    .eq("id", retId)
+  if (retError) throw retError
+}
+
+/**
+ * Actualiza una retención SUELTA y sincroniza su movimiento RT en cuenta
+ * corriente (haber = importe, fecha, numero_comprobante) para no descuadrar el
+ * saldo del cliente. Orden: primero el RT, luego la retención (prioriza que el
+ * saldo quede consistente ante un fallo parcial). NO transaccional.
+ */
+export async function updateRetencion(
+  retId: string,
+  updates: { tipo?: string; numero_comprobante?: string | null; fecha?: string; importe?: number },
+): Promise<void> {
+  const supabase = createSupabaseClient()
+  await assertRetencionEditable(supabase, retId)
+
+  // 1) Sincronizar el movimiento RT (si existe).
+  const rtUpdate: Record<string, any> = {}
+  if (updates.importe !== undefined) rtUpdate.haber = updates.importe
+  if (updates.fecha !== undefined) rtUpdate.fecha = updates.fecha
+  if (updates.numero_comprobante !== undefined) rtUpdate.numero_comprobante = updates.numero_comprobante ?? ""
+  if (Object.keys(rtUpdate).length > 0) {
+    const { error: rtError } = await supabase
+      .from("cuenta_corriente_cliente")
+      .update(rtUpdate)
+      .eq("referencia_id", retId)
+      .eq("tipo_comprobante", "RT")
+    if (rtError) throw rtError
+  }
+
+  // 2) Actualizar la retención.
+  const retUpdate: Record<string, any> = {}
+  if (updates.tipo !== undefined) retUpdate.tipo = updates.tipo
+  if (updates.numero_comprobante !== undefined) retUpdate.numero_comprobante = updates.numero_comprobante
+  if (updates.fecha !== undefined) retUpdate.fecha = updates.fecha
+  if (updates.importe !== undefined) retUpdate.importe = updates.importe
+  if (Object.keys(retUpdate).length > 0) {
+    const { error: retError } = await supabase
+      .from("retenciones")
+      .update(retUpdate)
+      .eq("id", retId)
+    if (retError) throw retError
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Recibos Cobranza (nuevos con correlativo)
 // ---------------------------------------------------------------------------
