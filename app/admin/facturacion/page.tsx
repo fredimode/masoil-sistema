@@ -4,8 +4,8 @@ import { useState, useEffect, useMemo } from "react"
 import { normalizeSearch, formatMoney, formatDateStr } from "@/lib/utils"
 import { fetchFacturasGestionpro, fetchFacturasGestionproCount, fetchFacturas, fetchRemitos, getRemitoPdfUrl } from "@/lib/supabase/queries"
 import { createClient } from "@/lib/supabase/client"
-import { fetchCuentaCorrienteCliente } from "@/lib/supabase/queries"
-import { calcularEstadoFacturas } from "@/lib/saldos"
+import { fetchCuentaCorrienteCliente, fetchRecibosCobranza } from "@/lib/supabase/queries"
+import { calcularEstadoFacturas, construirMovimientosPorFactura } from "@/lib/saldos"
 import { TablePagination, usePagination } from "@/components/ui/table-pagination"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -56,6 +56,7 @@ export default function FacturacionPage() {
   const [asociadas, setAsociadas] = useState<any[]>([])  // NC/ND que referencian esta factura
   const [facturaOrigen, setFacturaOrigen] = useState<any | null>(null)  // FC origen si viewingFactura es NC/ND
   const [ccData, setCcData] = useState<any[]>([])  // cuenta corriente for deuda calculation
+  const [recibosCob, setRecibosCob] = useState<any[]>([])  // recibos_cobranza para imputar cobros/retenciones a factura (Opción A)
   // T.4: remitos emitidos
   const [remitos, setRemitos] = useState<any[]>([])
   const [remSearch, setRemSearch] = useState("")
@@ -153,18 +154,20 @@ export default function FacturacionPage() {
     async function load() {
       setLoading(true)
       try {
-        const [data, count, facturasEmitidas, ccAll, remitosData] = await Promise.all([
+        const [data, count, facturasEmitidas, ccAll, remitosData, recibosCobData] = await Promise.all([
           fetchFacturasGestionpro(),
           fetchFacturasGestionproCount(),
           fetchFacturas(),
           fetchCuentaCorrienteCliente(),
           fetchRemitos(),
+          fetchRecibosCobranza(),
         ])
         setGpData(data as FacturaGP[])
         setTotalCount(count)
         setEmitidas(facturasEmitidas)
         setCcData(ccAll)
         setRemitos(remitosData)
+        setRecibosCob(recibosCobData)
       } catch (error) {
         console.error("Error cargando facturas:", error)
       } finally {
@@ -229,16 +232,20 @@ export default function FacturacionPage() {
     return { totalMonto, byTipo, topVendedores }
   }, [gpData])
 
-  // P2: estado de pago por factura vía fuente única lib/saldos.ts. El cobro baja
-  // la deuda porque su haber en cuenta_corriente_cliente referencia el id de la
-  // factura (referencia_id). movimientosPorFactura = Σ haber por referencia_id.
+  // P2 + Opción A: estado de pago por factura vía fuente única lib/saldos.ts.
+  // El cobro (RC) y la retención (RT) bajan la deuda de la factura aunque su
+  // haber referencie el RECIBO (UUID) o venga NULL: construirMovimientosPorFactura
+  // resuelve cada haber a la(s) factura(s) que cancela usando recibos_cobranza
+  // .facturas_ids (ver lib/saldos.ts). No toca /api/facturar ni la escritura.
   const deudaMap = useMemo(() => {
-    const movimientosPorFactura = new Map<string, number>()
-    for (const cc of ccData as any[]) {
-      if (!cc?.referencia_id) continue
-      const k = String(cc.referencia_id)
-      movimientosPorFactura.set(k, (movimientosPorFactura.get(k) || 0) + (Number(cc.haber) || 0))
-    }
+    const facturaTotalById = new Map<number, number>()
+    for (const f of emitidas as any[]) facturaTotalById.set(Number(f.id), Number(f.total) || 0)
+
+    const movimientosPorFactura = construirMovimientosPorFactura(
+      ccData as any[],
+      recibosCob as any[],
+      facturaTotalById,
+    )
     const estados = calcularEstadoFacturas(
       (emitidas as any[]).map((f) => ({ id: f.id, total: f.total, tipo: f.tipo })),
       movimientosPorFactura,
@@ -248,7 +255,7 @@ export default function FacturacionPage() {
       map[f.id] = Math.max(0, estados.get(String(f.id))?.saldo ?? (Number(f.total) || 0))
     }
     return map
-  }, [emitidas, ccData])
+  }, [emitidas, ccData, recibosCob])
 
   // Emitidas filtering (must be before early return to maintain hook order)
   useEffect(() => {
