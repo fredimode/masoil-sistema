@@ -55,6 +55,33 @@ finanzas y contabilidad de IVA. Ver `docs/ESTADO_SISTEMA.md` (auditoría) y
 - Los saldos son **REALES** (deuda migrada de GestionPro, ~$92,7M). NO resetear
   `cuenta_corriente_cliente` ni `cobranzas_pendientes`. Lo migrado se distingue
   por `observaciones LIKE 'GestionPro%'`.
+- **Deuda por factura (Facturación) vía recibo — `construirMovimientosPorFactura`
+  en `lib/saldos.ts`.** La pestaña Emitidas imputa cobros/retenciones **por
+  factura**, pero el ~98% de los RC/RT en `cuenta_corriente_cliente` referencian
+  el **recibo** (UUID) o vienen NULL, no la factura → sin esto las facturas
+  cobradas mostraban su deuda total. El helper resuelve cada `haber`: si
+  `referencia_id` es numérico → acredita directo a esa factura; si es UUID de un
+  **recibo** → distribuye entre las facturas `f-` de `recibos_cobranza.facturas_ids`
+  **proporcional al total** (single-factura = exacto); NULL / UUID que no es
+  recibo → queda como deuda. Cada fila cc se procesa una vez (sin doble conteo:
+  RC directo + RT vía recibo son filas distintas). Así Facturación queda
+  consistente con Cobranzas (que netea por CUIT). Cubierto por `lib/saldos.test.ts`.
+
+## Retenciones — editar/eliminar solo las SUELTAS
+- **Regla**: `retenciones.recibo_id IS NULL` = **suelta** = editable/eliminable
+  (se cargan por "carga rápida sin recibo"). `recibo_id` poblado = incluida en un
+  recibo emitido = **candado, no se toca** (su importe vive agregado en el RT del
+  recibo y en los totales del recibo). Predicado puro `esRetencionEditable`.
+- **Cada suelta tiene UN movimiento RT** en `cuenta_corriente_cliente`
+  (`referencia_id = retención.id`, `tipo='RT'`, `haber = importe`) que resta del
+  saldo del CUIT. Por eso `deleteRetencion`/`updateRetencion` (`queries.ts`)
+  **sincronizan ese RT**: borrar/editar la retención borra/actualiza el RT (haber,
+  fecha, numero). **Orden: el RT PRIMERO**, así ante fallo parcial (no hay
+  transacciones) el saldo ya queda bien. Helpers JS de 2 llamadas (patrón del
+  subsistema; RPC se reserva a `ajustar_stock`).
+- **Guard de servidor OBLIGATORIO `assertRetencionEditable`**: re-lee `recibo_id`
+  contra la DB antes de mutar y aborta si no es NULL (defensa ante UI vieja). UI:
+  columna Acciones en `TabRetenciones` (Editar/Eliminar vs candado "En recibo").
 
 ## Facturación
 - **Camino real = `app/api/facturar/route.ts`.** Existen dos legacy a evitar:
