@@ -1706,7 +1706,10 @@ function TabInforme({ ccMovimientos, clients }: { ccMovimientos: any[]; clients:
         fecha_comprobante: m.fecha,
         tipo_comprobante: m.tipo_comprobante,
         numero_comprobante: m.numero_comprobante,
-        total: debe > 0 ? debe : haber, // monto del comprobante (display)
+        // Monto del comprobante FIRMADO para el display: los que van al haber
+        // (NC/RC/RT) se muestran en NEGATIVO, consistente con la columna Saldo.
+        // NO afecta el cálculo del saldo/acumulado (usan `saldo`/saldoPorCuit).
+        total: debe > 0 ? debe : -haber,
         saldo: Math.round((debe - haber) * 100) / 100, // contribución neta firmada
       })
     }
